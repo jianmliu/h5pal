@@ -73,8 +73,13 @@ gulp.task('serve', function() {
   });
 });
 
-gulp.task('dev', ['build', 'serve'], function() {
+function watchFiles() {
   gulp.watch(['src/js/**'], { interval: 500, debounceDelay: 1000 }, ['js']);
+  gulp.watch(['src/stylus/**', 'src/css/**'], { interval: 500, debounceDelay: 1000 }, ['style']);
+}
+
+gulp.task('dev', ['build', 'serve'], function() {
+  watchFiles();
 })
 
 gulp.task('default', function() {
