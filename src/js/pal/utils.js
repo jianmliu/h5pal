@@ -160,8 +160,8 @@ utils.Events = {
       var event = events[i],
         callbacks = this._events[event] || (this._events[event] = []);
       for (var j = 0; j < callbacks.length; ++j) {
-        if (callbacks[i] === callback) {
-          callbacks.splice(i, 1);
+        if (callbacks[j] === callback) {
+          callbacks.splice(j, 1);
           break;
         }
       }
