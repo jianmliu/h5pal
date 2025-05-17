@@ -1,85 +1,78 @@
-var gulp = require('gulp');
-var del = require('del');
-var connect = require('gulp-connect');
-var sourcemaps = require('gulp-sourcemaps');
-var to5 = require('gulp-6to5');
-var runSequence = require('run-sequence');
-var stylus = require('gulp-stylus');
-var rename = require('gulp-rename');
-var path = require('path');
+const { src, dest, series, parallel, watch } = require('gulp');
+const del = require('del');
+const connect = require('gulp-connect');
+const sourcemaps = require('gulp-sourcemaps');
+const babel = require('gulp-babel');
+const stylus = require('gulp-stylus');
+const rename = require('gulp-rename');
+const path = require('path');
 
-var JS = ['src/**/*.js'];
+const JS = ['src/**/*.js'];
+const port = 8005;
 
-var port = 8005;
-var reloadPort = 35729;
+function clean() {
+  return del(['.tmp', 'dist']);
+}
 
-// Clean Output Directory
-gulp.task('clean', function(callback) {
-  del(['.tmp', 'dist'], function(err, deletedFiles) {
-    callback();
-  });
-});
-
-gulp.task('js', function() {
-  gulp.src(JS)
+function js() {
+  return src(JS)
     .pipe(sourcemaps.init())
-    .pipe(to5({
-      blacklist: ['useStrict', 'regenerator'],
-      modules: 'amd'
+    .pipe(babel({
+      presets: [['@babel/preset-env', { modules: 'amd' }]]
     }))
-    //.pipe(concat('all.js'))
     .pipe(rename({ extname: '.js' }))
     .pipe(sourcemaps.write('.'))
-    .pipe(gulp.dest('dist/'));
-});
+    .pipe(dest('dist/'));
+}
 
-gulp.task('style', function() {
-  return gulp.src(['src/stylus/*.styl', 'src/css/**/*.css'])
+function style() {
+  return src(['src/stylus/*.styl', 'src/css/**/*.css'])
     .pipe(sourcemaps.init())
-    .pipe(stylus({
-      //linenos: true
-    }))
+    .pipe(stylus({}))
     .pipe(sourcemaps.write('.'))
-    .pipe(gulp.dest('dist/css/'));
-});
+    .pipe(dest('dist/css/'));
+}
 
-gulp.task('build-lib', function() {
-  var libs = {
-    'jquery': 'dist/*',
-    'requirejs': 'require.js',
-    'sprintf': 'dist/sprintf.*',
-    'q': 'q.js',
-    'co': 'co.js'
+function buildLib() {
+  const libs = {
+    jquery: 'dist/*',
+    requirejs: 'require.js',
+    sprintf: 'dist/sprintf.*',
+    q: 'q.js',
+    co: 'co.js'
   };
-  for (var name in libs) {
-    var src = path.join('bower_components', name, libs[name]);
-    var dest = path.join('dist/lib', name);
-    gulp.src(src).pipe(gulp.dest(dest));
-  }
-})
 
-gulp.task('build', function(callback) {
-  runSequence(
-    ['build-lib'],
-    ['js', 'style'],
-    callback
-  );
-});
+  const promises = Object.keys(libs).map(name => new Promise((resolve, reject) => {
+    src(path.join('bower_components', name, libs[name]))
+      .pipe(dest(path.join('dist/lib', name)))
+      .on('end', resolve)
+      .on('error', reject);
+  }));
 
-gulp.task('serve', function() {
+  return Promise.all(promises);
+}
+
+const build = series(buildLib, parallel(js, style));
+
+function serve() {
   connect.server({
     host: '0.0.0.0',
     port: port
   });
-});
+}
 
-gulp.task('dev', ['build', 'serve'], function() {
-  gulp.watch(['src/js/**'], { interval: 500, debounceDelay: 1000 }, ['js']);
-})
+function watchFiles() {
+  watch(['src/js/**'], { delay: 1000 }, js);
+}
 
-gulp.task('default', function() {
-  runSequence(
-    ['clean'],
-    ['build']
-  );
-});
+const dev = series(build, parallel(serve, watchFiles));
+const defaultTask = series(clean, build);
+
+exports.clean = clean;
+exports.js = js;
+exports.style = style;
+exports.buildLib = buildLib;
+exports.build = build;
+exports.serve = serve;
+exports.dev = dev;
+exports.default = defaultTask;
