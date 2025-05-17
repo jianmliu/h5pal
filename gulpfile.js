@@ -52,7 +52,7 @@ gulp.task('build-lib', function() {
     'co': 'co.js'
   };
   for (var name in libs) {
-    var src = path.join('bower_components', name, libs[name]);
+    var src = path.join('node_modules', name, libs[name]);
     var dest = path.join('dist/lib', name);
     gulp.src(src).pipe(gulp.dest(dest));
   }

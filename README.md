@@ -15,11 +15,9 @@ h5pal
 
 * [Node.js](http://nodejs.org/)
 * [gulp](http://gulpjs.com/)
-* [bower](http://bower.io/)
 
 ## 构建
 
-* `bower install`
 * `npm install`
 * `gulp`
 * 建立`pal-assets/`目录，把仙剑95版（存档180~185KB的版本）的所有文件拷贝进去。（不要问我去哪里找）
@@ -95,11 +93,9 @@ GPL v3
 
 * [Node.js](http://nodejs.org/)
 * [gulp](http://gulpjs.com/)
-* [bower](http://bower.io/)
 
 ## Build
 
-* `bower install`
 * `npm install`
 * `gulp`
 * Create a folder named `pal-assets`. Copy all pal95 (which one save file is 180~185KB) files into it. (You may not find these files in this repo due to copyright reasons.)
