@@ -8,8 +8,9 @@ import ui from './ui';
 import scene from './scene';
 import game from './game';
 import rng from './rng';
+import co from './co';
 
-log.trace('main module load');
+console.trace('main module load');
 
 var main = {};
 

@@ -1,8 +1,10 @@
 import utils from './utils';
 import Global from './pal-global';
 import MKF from './mkf';
+import co from './co';
+import config from './config';
 
-log.trace('ajax module load');
+console.trace('ajax module load');
 
 /**
  * 异步加载文件
@@ -51,7 +53,7 @@ var loadBinaryFile = ajax.loadBinaryFile = function(path) {
       }
     };
 
-    xhr.open('GET', '/pal-assets/' + path, true);
+    xhr.open('GET', config.resolveAssetPath(path), true);
     xhr.responseType = 'arraybuffer';
     xhr.overrideMimeType('text/plain; charset=x-user-defined');
     xhr.send(null);
@@ -92,7 +94,7 @@ var loadBig5File = ajax.loadBig5File = function(path) {
       }
     };
 
-    xhr.open('GET', '/pal-assets/' + path, true);
+    xhr.open('GET', config.resolveAssetPath(path), true);
     //xhr.responseType = 'arraybuffer';
     xhr.overrideMimeType('text/plain; charset=big5');
     xhr.send(null);

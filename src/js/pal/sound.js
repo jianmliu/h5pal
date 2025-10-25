@@ -1,4 +1,4 @@
-log.trace('sound module load');
+console.trace('sound module load');
 
 var sound = {};
 

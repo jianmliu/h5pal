@@ -1,4 +1,4 @@
-log.trace('rle module load');
+console.trace('rle module load');
 
 /**
  * RLE，对Uint8Array进行一次封装，封装了width/height/content属性

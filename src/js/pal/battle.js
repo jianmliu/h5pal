@@ -550,6 +550,82 @@ battle.loadBattleSprites = function() {
 };
 
 /**
+ * Clone an existing enemy entry into another slot.
+ * @param {Number} targetIndex index of the enemy slot to populate.
+ * @param {Number} sourceIndex index of the source enemy slot.
+ * @param {Object} [options]   additional options {timeMeter, colorShift}.
+ * @return {BattleEnemy}
+ */
+battle.cloneEnemy = function(targetIndex, sourceIndex, options) {
+  var target = Global.battle.enemy[targetIndex];
+  var source = Global.battle.enemy[sourceIndex];
+  options = options || {};
+
+  target.reset();
+  target.objectID = source.objectID;
+  if (source.e) {
+    target.e = source.e.copy();
+  } else {
+    target.e = null;
+  }
+  target.scriptOnTurnStart = source.scriptOnTurnStart;
+  target.scriptOnBattleEnd = source.scriptOnBattleEnd;
+  target.scriptOnReady = source.scriptOnReady;
+  target.state = FighterState.Wait;
+  target.timeMeter = options.timeMeter != null ? options.timeMeter : 0;
+  target.colorShift = options.colorShift != null ? options.colorShift : 0;
+  return target;
+};
+
+/**
+ * Spawn an enemy from object definition into a slot.
+ * @param {Number} targetIndex index of the enemy slot.
+ * @param {Number} objectID    object id describing the enemy.
+ * @param {Object} [options]   additional options {timeMeter, colorShift}.
+ * @return {BattleEnemy}
+ */
+battle.spawnEnemy = function(targetIndex, objectID, options) {
+  var enemy = Global.battle.enemy[targetIndex];
+  options = options || {};
+
+  enemy.reset();
+  enemy.objectID = objectID;
+
+  if (objectID && objectID !== 0xFFFF) {
+    var objectEnemy = GameData.object[objectID].enemy;
+    enemy.e = GameData.enemy[objectEnemy.enemyID].copy();
+    enemy.scriptOnTurnStart = objectEnemy.scriptOnTurnStart;
+    enemy.scriptOnBattleEnd = objectEnemy.scriptOnBattleEnd;
+    enemy.scriptOnReady = objectEnemy.scriptOnReady;
+  } else {
+    enemy.e = null;
+    enemy.scriptOnTurnStart = 0;
+    enemy.scriptOnBattleEnd = 0;
+    enemy.scriptOnReady = 0;
+  }
+
+  enemy.state = FighterState.Wait;
+  enemy.timeMeter = options.timeMeter != null ? options.timeMeter : 0;
+  enemy.colorShift = options.colorShift != null ? options.colorShift : 0;
+  return enemy;
+};
+
+/**
+ * Recalculate the highest occupied enemy index.
+ * @return {Number} the new max enemy index.
+ */
+battle.recalculateMaxEnemyIndex = function() {
+  var maxIndex = 0;
+  for (var i = 0; i < Const.MAX_ENEMIES_IN_TEAM; i++) {
+    if (Global.battle.enemy[i].objectID != 0) {
+      maxIndex = i;
+    }
+  }
+  Global.battle.maxEnemyIndex = maxIndex;
+  return maxIndex;
+};
+
+/**
  * Load the screen background picture of the battle.
  */
 battle.loadBattleBackground = function() {
@@ -892,8 +968,8 @@ battle.playerEscape = function*() {
 battle.start = function*(enemyTeam, isBoss) {
   log.debug(['[BATTLE] start', enemyTeam, isBoss].join(' '));
   // Set the screen waving effects
-  prevWaveLevel = Global.screenWave;
-  prevWaveProgression = Global.waveProgression;
+  var prevWaveLevel = Global.screenWave;
+  var prevWaveProgression = Global.waveProgression;
 
   Global.waveProgression = 0;
   Global.screenWave = GameData.battleField[Global.numBattleField].screenWave;
@@ -982,7 +1058,7 @@ battle.start = function*(enemyTeam, isBoss) {
   Global.battle.UI.nextMsg = [];
   Global.battle.UI.msgShowTime = 0;
   Global.battle.UI.state = BattleUIState.Wait;
-  Global.battle.UI.autoAttack = false;
+  Global.battle.UI.autoAttack = Global.autoBattle;
   Global.battle.UI.selectedIndex = 0;
   Global.battle.UI.prevEnemyTarget = 0;
 

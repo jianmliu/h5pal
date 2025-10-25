@@ -5,7 +5,7 @@ import MKF from './mkf';
 import Sprite from './sprite';
 //var yj_1 = require('./yj_1');
 
-log.trace('map module load');
+console.trace('map module load');
 
 /**
  * 地图对象

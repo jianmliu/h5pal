@@ -1694,40 +1694,46 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
           w++;
         }
       }
-      if (w !== 1) {
-        // Duplication is only possible when only 1 enemy left
+      var sourceEnemy = Global.battle.enemy[eventObjectID];
+      if (w !== 1 || !sourceEnemy.e || sourceEnemy.e.health <= 1) {
+        // Duplication is only possible when only 1 enemy left with enough HP.
         if (sc.operand[1] !== 0) {
           scriptEntry = sc.operand[1] - 1;
         }
         break;
       }
-      w = sc.operand[0];
-      if (w === 0) {
-        w = 1;
-      }
-      for (i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-        if (w > 0 && Global.battle.enemy[i].objectID == 0) {
-          w--;
-          //memset(&(battle.enemy[i]), 0, sizeof(BATTLEENEMY));
-          //battle.resetEnemy(i);
 
-          Global.battle.enemy[i].reset();
-          Global.battle.enemy[i].objectID = Global.battle.enemy[eventObjectID].objectID;
-          Global.battle.enemy[i].e = Global.battle.enemy[eventObjectID].e.copy();
-          Global.battle.enemy[i].scriptOnTurnStart = Global.battle.enemy[eventObjectID].scriptOnTurnStart;
-          Global.battle.enemy[i].scriptOnBattleEnd = Global.battle.enemy[eventObjectID].scriptOnBattleEnd;
-          Global.battle.enemy[i].scriptOnReady = Global.battle.enemy[eventObjectID].scriptOnReady;
-          Global.battle.enemy[i].state = FighterState.Wait;
-          Global.battle.enemy[i].timerMeter = 50;
-          Global.battle.enemy[i].colorShift = 0;
+      var duplicateCount = sc.operand[0];
+      if (duplicateCount === 0) {
+        duplicateCount = 1;
+      }
+      var denominator = duplicateCount + 1;
+      var rounding = duplicateCount;
+      var splitHealth = ~~((sourceEnemy.e.health + rounding) / denominator);
+      if (splitHealth < 1) {
+        splitHealth = 1;
+      }
+
+      var clonesRemaining = duplicateCount;
+      for (i = 0; i < Const.MAX_ENEMIES_IN_TEAM && clonesRemaining > 0; i++) {
+        if (Global.battle.enemy[i].objectID == 0) {
+          var clone = battle.cloneEnemy(i, eventObjectID, { timeMeter: 50 });
+          if (clone.e) {
+            clone.e.health = splitHealth;
+          }
+          clonesRemaining--;
         }
       }
+
+      sourceEnemy.e.health = splitHealth;
+      battle.recalculateMaxEnemyIndex();
       battle.loadBattleSprites();
+
       for (i = 0; i <= Global.battle.maxEnemyIndex; i++) {
         if (Global.battle.enemy[i].objectID === 0) {
           continue;
         }
-        Global.battle.enemy[i].pos = Global.battle.enemy[eventObjectID].pos;
+        Global.battle.enemy[i].pos = sourceEnemy.pos;
       }
       for (i = 0; i < 10; i++) {
         for (j = 0; j <= Global.battle.maxEnemyIndex; j++) {
@@ -1763,25 +1769,15 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       } else {
         for (i = 0; i <= Global.battle.maxEnemyIndex; i++) {
           if (Global.battle.enemy[i].objectID === 0){
-            //battle.resetEnemy(i);
-            //memset(battle.enemy[i].uint8Array, 0, battle.enemy[i].uint8Array.length);
-
-            Global.battle.enemy[i].reset();
-            Global.battle.enemy[i].objectID = w;
-            Global.battle.enemy[i].e = GameData.enemy[GameData.object[w].enemy.enemyID].copy();
-
-            Global.battle.enemy[i].state = FighterState.Wait;
-            Global.battle.enemy[i].scriptOnTurnStart = GameData.object[w].enemy.scriptOnTurnStart;
-            Global.battle.enemy[i].scriptOnBattleEnd = GameData.object[w].enemy.scriptOnBattleEnd;
-            Global.battle.enemy[i].scriptOnReady = GameData.object[w].enemy.scriptOnReady;
-            Global.battle.enemy[i].timerMeter = 50;
-            Global.battle.enemy[i].colorShift = 8;
+            battle.spawnEnemy(i, w, { timeMeter: 50, colorShift: 8 });
+            // spawnEnemy copies enemy stats with full HP; leave as-is.
             y--;
             if (y <= 0) {
               break;
             }
           }
         }
+        battle.recalculateMaxEnemyIndex();
         yield battle.delay(2, 0, true);
         battle.backupScene();
         battle.loadBattleSprites();
@@ -1806,8 +1802,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
           Global.battle.enemy[eventObjectID].status[PlayerStatus.Confused] === 0){
         w = Global.battle.enemy[eventObjectID].e.health;
         Global.battle.enemy[eventObjectID].objectID = sc.operand[0];
-        Global.battle.enemy[eventObjectID].e = GameData.enemy[GameData.object[sc.operand[0]].enemy.enemyID];
-        Global.battle.enemy[eventObjectID].e.health = w;
+        var transformedEnemy = GameData.enemy[GameData.object[sc.operand[0]].enemy.enemyID].copy();
+        transformedEnemy.health = w;
+        Global.battle.enemy[eventObjectID].e = transformedEnemy;
         Global.battle.enemy[eventObjectID].wCurrentFrame = 0;
         for (i = 0; i < 6; i++) {
           Global.battle.enemy[eventObjectID].colorShift = i;

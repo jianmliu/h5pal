@@ -1,4 +1,4 @@
-log.trace('script_extras module load');
+console.trace('script_extras module load');
 
 var surface = null
 var abs = Math.abs;

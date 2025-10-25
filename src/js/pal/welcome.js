@@ -163,13 +163,13 @@ welcome.splashScreen = function*(surface) {
   input.shutdown();
   input.clear();
 
-  delete up;
-  delete down;
-  delete currentPalette;
-  delete palette;
-  delete titleSprite;
-  delete titleBitmap;
-  delete craneSprite;
+  up = null;
+  down = null;
+  currentPalette = null;
+  palette = null;
+  titleSprite = null;
+  titleBitmap = null;
+  craneSprite = null;
 };
 
 export default welcome;

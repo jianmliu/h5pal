@@ -5,11 +5,54 @@
  */
 
 import utils from './utils';
+import config from './config';
 
-log.trace('input module load');
+console.trace('input module load');
+
+const root = (typeof global !== 'undefined' && global) ||
+  (typeof window !== 'undefined' && window) ||
+  (typeof self !== 'undefined' && self) ||
+  {};
+
+const Key = root.Key || {
+  Menu: 1,
+  Search: 2,
+  Down: 4,
+  Left: 8,
+  Up: 16,
+  Right: 32,
+  PageUp: 64,
+  PageDown: 128,
+  Repeat: 256,
+  Auto: 512,
+  Defend: 1024,
+  UseItem: 2048,
+  ThrowItem: 4096,
+  Flee: 8192,
+  Status: 16384,
+  Force: 32768
+};
+
+const Direction = root.Direction || {
+  South: 0,
+  West: 1,
+  North: 2,
+  East: 3,
+  Unknown: 4
+};
+
+if (!root.Key) {
+  root.Key = Key;
+}
+if (!root.Direction) {
+  root.Direction = Direction;
+}
 
 var MIN_DEADZONE = -16384;
 var MAX_DEADZONE = 16384;
+var TOUCH_MOVE_THRESHOLD = 12;
+var TOUCH_TAP_DISTANCE = 16;
+var TOUCH_TAP_TIME = 350;
 
 var KeyCodes = {
   A: 65,
@@ -69,8 +112,7 @@ var KeyCodes = {
   INSERT: 45
 };
 
-var KeyCodesToPalKeys = {
-};
+var KeyCodesToPalKeys = {};
 
 KeyCodesToPalKeys[KeyCodes.UP]       = KeyCodesToPalKeys[KeyCodes.KP8]    = Key.Up;
 KeyCodesToPalKeys[KeyCodes.DOWN]     = KeyCodesToPalKeys[KeyCodes.KP2]    = Key.Down;
@@ -88,6 +130,7 @@ KeyCodesToPalKeys[KeyCodes.W] = Key.ThrowItem;
 KeyCodesToPalKeys[KeyCodes.Q] = Key.Flee;
 KeyCodesToPalKeys[KeyCodes.S] = Key.Status;
 KeyCodesToPalKeys[KeyCodes.F] = Key.Force;
+
 var PalKeysToPalDirs = {};
 PalKeysToPalDirs[Key.Up]    = Direction.North;
 PalKeysToPalDirs[Key.Down]  = Direction.South;
@@ -104,6 +147,41 @@ var input = {
 
 utils.extend(input, utils.Events);
 
+function pressKey(palKey) {
+  var previous = input.keyPress;
+  input.keyPress |= palKey;
+  if (palKey in PalKeysToPalDirs) {
+    if (input.dir !== PalKeysToPalDirs[palKey]) {
+      input.prevDir = (Global.inBattle ? Direction.Unknown : input.dir);
+      input.dir = PalKeysToPalDirs[palKey];
+      log.trace('[INPUT] turn from %d to %d', input.prevDir, input.dir);
+    }
+  }
+  if (previous !== input.keyPress) {
+    log.trace('[INPUT] press %d', palKey);
+  }
+  input.fire('keydown', palKey);
+}
+
+function releaseKey(palKey) {
+  var previous = input.keyPress;
+  input.keyPress &= ~palKey;
+  if (palKey in PalKeysToPalDirs) {
+    if (input.dir === PalKeysToPalDirs[palKey]) {
+      log.trace('[INPUT] walking %d back to %d', input.dir, input.prevDir);
+      input.dir = input.prevDir;
+      input.prevDir = Direction.Unknown;
+    } else if (input.prevDir === PalKeysToPalDirs[palKey]) {
+      log.trace('[INPUT] cancel prev walking %d', input.prevDir);
+      input.prevDir = Direction.Unknown;
+    }
+  }
+  if (previous !== input.keyPress) {
+    log.trace('[INPUT] release %d', palKey);
+  }
+  input.fire('keyup', palKey);
+}
+
 function keyboardEventFilter(evt) {
   var processed = false;
   var keyCode = evt.keyCode;
@@ -114,108 +192,16 @@ function keyboardEventFilter(evt) {
     switch (evt.type) {
       case 'keydown':
         // Pressed a key
-        input.keyPress |= palKey;
-        if (palKey in PalKeysToPalDirs){
-          if (input.dir !== PalKeysToPalDirs[palKey]) {
-            input.prevDir = (Global.inBattle ? Direction.Unknown : input.dir);
-            input.dir = PalKeysToPalDirs[palKey];
-            log.trace('[INPUT] turn from %d to %d', input.prevDir, input.dir);
-          }
-        }
-        /*
-        switch (keyCode){
-          case KeyCodes.UP:
-          case KeyCodes.KP8:
-             break;
-          case KeyCodes.DOWN:
-          case KeyCodes.KP2:
-             break;
-          case KeyCodes.LEFT:
-          case KeyCodes.KP4:
-             break;
-          case KeyCodes.RIGHT:
-          case KeyCodes.KP6:
-             break;
-          case KeyCodes.ESCAPE:
-          case KeyCodes.INSERT:
-          //case KeyCodes.ALT:
-          case KeyCodes.KP0:
-             break;
-          case KeyCodes.RETURN:
-          case KeyCodes.SPACE:
-          case KeyCodes.CTRL:
-             break;
-          case KeyCodes.PAGEUP:
-          case KeyCodes.KP9:
-             break;
-          case KeyCodes.PAGEDOWN:
-          case KeyCodes.KP3:
-             break;
-          //case KeyCodes.7: //7 for mobile device
-          case KeyCodes.R:
-             break;
-          //case KeyCodes.2: //2 for mobile device
-          case KeyCodes.A:
-             break;
-          case KeyCodes.D:
-             break;
-          case KeyCodes.E:
-             break;
-          case KeyCodes.W:
-             break;
-          case KeyCodes.Q:
-             break;
-          case KeyCodes.S:
-             break;
-          case KeyCodes.F:
-          //case KeyCodes.5: // 5 for mobile device
-             break;
-          //case KeyCodes.HASH: //# for mobile device
-          case KeyCodes.P:
-             //VIDEO_SaveScreenshot();
-             break;
-          default:
-             break;
-        }
-        */
+        pressKey(palKey);
         break;
       case 'keyup':
         // Released a key
-        input.keyPress &= ~palKey;
-        if (palKey in PalKeysToPalDirs) {
-          if (input.dir === PalKeysToPalDirs[palKey]) {
-            log.trace('[INPUT] walking %d back to %d', input.dir, input.prevDir);
-            input.dir = input.prevDir;
-            input.prevDir = Direction.Unknown;
-          } else if (input.prevDir === PalKeysToPalDirs[palKey]) {
-            log.trace('[INPUT] cancel prev walking %d', input.prevDir);
-            input.prevDir = Direction.Unknown;
-          }
-        }
-        /*
-        switch (evt.keyCode){
-          case KeyCodes.UP:
-          case KeyCodes.KP8:
-            break;
-          case KeyCodes.DOWN:
-          case KeyCodes.KP2:
-            break;
-          case KeyCodes.LEFT:
-          case KeyCodes.KP4:
-            break;
-          case KeyCodes.RIGHT:
-          case KeyCodes.KP6:
-            break;
-          default:
-            break;
-        }
-        */
+        releaseKey(palKey);
         break;
     }
     if (processed) {
       evt.preventDefault();
       evt.stopPropagation();
-      input.fire(evt.type, palKey);
     }
   }
 }
@@ -229,6 +215,9 @@ input.init = function() {
   if (input.listening) return;
   input.dir = input.prevDir = Direction.Unknown;
   $(window).on('keydown keyup', keyboardEventFilter);
+  if (!input.touchListening && config.enableTouch && typeof window !== 'undefined' && ('ontouchstart' in window || (window.navigator && window.navigator.maxTouchPoints > 0))) {
+    input.touchListening = setupTouchListeners();
+  }
   input.listening = true;
 };
 
@@ -254,6 +243,10 @@ input.clear = function() {
 input.shutdown = function() {
   if (!input.listening) return;
   $(window).off('keydown keyup', keyboardEventFilter);
+  if (input._removeTouchListeners) {
+    input._removeTouchListeners();
+    input.touchListening = false;
+  }
   input.listening = false;
 };
 
@@ -271,5 +264,114 @@ input.waitForKey = function*(timeout) {
     yield sleepByFrame(1);
   }
 };
+
+function setupTouchListeners() {
+  var cvs = document.getElementById('cvs');
+  if (!cvs) {
+    log.warn('[INPUT] canvas element not found, touch disabled');
+    return false;
+  }
+
+  var state = {
+    key: null,
+    identifier: null,
+    startX: 0,
+    startY: 0,
+    startTime: 0,
+    moved: false
+  };
+  input._touchState = state;
+
+  function setDirectionalKey(newKey) {
+    if (state.key === newKey) return;
+    if (state.key) {
+      releaseKey(state.key);
+    }
+    state.key = newKey;
+    if (newKey) {
+      pressKey(newKey);
+    }
+  }
+
+  function directionFromPoint(clientX, clientY) {
+    var rect = cvs.getBoundingClientRect();
+    var width = rect.width || cvs.width;
+    var height = rect.height || cvs.height;
+    if (!width || !height) return null;
+    var relX = clientX - rect.left;
+    var relY = clientY - rect.top;
+    if (relX < 0 || relY < 0 || relX > width || relY > height) return null;
+    var offsetX = relX - width / 2;
+    var offsetY = relY - height / 2;
+    if (Math.abs(offsetX) > Math.abs(offsetY)) {
+      return offsetX < 0 ? Key.Left : Key.Right;
+    }
+    return offsetY < 0 ? Key.Up : Key.Down;
+  }
+
+  function handleTouchStart(ev) {
+    if (state.identifier !== null) return;
+    var touch = ev.changedTouches[0];
+    state.identifier = touch.identifier;
+    state.startX = touch.clientX;
+    state.startY = touch.clientY;
+    state.startTime = Date.now();
+    state.moved = false;
+    setDirectionalKey(directionFromPoint(touch.clientX, touch.clientY));
+    ev.preventDefault();
+  }
+
+  function handleTouchMove(ev) {
+    for (var i = 0; i < ev.changedTouches.length; ++i) {
+      var touch = ev.changedTouches[i];
+      if (touch.identifier !== state.identifier) continue;
+      var dx = touch.clientX - state.startX;
+      var dy = touch.clientY - state.startY;
+      if (!state.moved && (Math.abs(dx) > TOUCH_MOVE_THRESHOLD || Math.abs(dy) > TOUCH_MOVE_THRESHOLD)) {
+        state.moved = true;
+      }
+      setDirectionalKey(directionFromPoint(touch.clientX, touch.clientY));
+      ev.preventDefault();
+      break;
+    }
+  }
+
+  function handleTouchEnd(ev) {
+    for (var i = 0; i < ev.changedTouches.length; ++i) {
+      var touch = ev.changedTouches[i];
+      if (touch.identifier !== state.identifier) continue;
+      setDirectionalKey(null);
+      state.identifier = null;
+      var duration = Date.now() - state.startTime;
+      var dx = touch.clientX - state.startX;
+      var dy = touch.clientY - state.startY;
+      var distance = Math.sqrt(dx * dx + dy * dy);
+      if (!state.moved && distance < TOUCH_TAP_DISTANCE && duration < TOUCH_TAP_TIME) {
+        pressKey(Key.Search);
+        releaseKey(Key.Search);
+      }
+      ev.preventDefault();
+      break;
+    }
+  }
+
+  cvs.addEventListener('touchstart', handleTouchStart, { passive: false });
+  cvs.addEventListener('touchmove', handleTouchMove, { passive: false });
+  cvs.addEventListener('touchend', handleTouchEnd, { passive: false });
+  cvs.addEventListener('touchcancel', handleTouchEnd, { passive: false });
+  log.debug('[INPUT] touch controls enabled');
+
+  input._removeTouchListeners = function() {
+    cvs.removeEventListener('touchstart', handleTouchStart);
+    cvs.removeEventListener('touchmove', handleTouchMove);
+    cvs.removeEventListener('touchend', handleTouchEnd);
+    cvs.removeEventListener('touchcancel', handleTouchEnd);
+    state.key = null;
+    state.identifier = null;
+    delete input._touchState;
+  };
+
+  return true;
+}
 
 export default input;

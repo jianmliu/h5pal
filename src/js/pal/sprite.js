@@ -1,7 +1,7 @@
 import utils from './utils';
 import RLE from './rle';
 
-log.trace('sprite module load');
+console.trace('sprite module load');
 
 /**
  * 一组Sprite动画

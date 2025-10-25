@@ -1,3 +1,5 @@
+import co from './co';
+
 /**
  * @module utils
  */

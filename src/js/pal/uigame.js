@@ -10,6 +10,29 @@ import RLE from './rle';
 import input from './input';
 import music from './music';
 
+function getGlobalObject() {
+  if (typeof global !== 'undefined') {
+    return global;
+  }
+  if (typeof window !== 'undefined') {
+    return window;
+  }
+  return null;
+}
+
+function getGame() {
+  var root = getGlobalObject();
+  return root && root.game ? root.game : null;
+}
+
+function requireGame() {
+  var gameInstance = getGame();
+  if (!gameInstance) {
+    throw new Error('PAL game module has not been initialized');
+  }
+  return gameInstance;
+}
+
 log.trace('uigame module load');
 
 var uigame = {};
@@ -84,15 +107,10 @@ uigame.saveSlotMenu = function*(defaultSlot) {
   }
 
   // Draw the numbers of saved times
-  var rpgs = yield ajax.load('1.rpg', '2.rpg', '3.rpg', '4.rpg', '5.rpg');
   for (var i = 1; i <= 5; i++) {
-    var fp = rpgs[i], savedTimes = 0;
-    if (fp) {
-      var reader = new BinaryReader(fp);
-      savedTimes = reader.getUint16(1);
-    }
-    // Draw the number
-    //ui.drawNumber((UINT)wSavedTimes, 4, PAL_XY(270, 38 * i - 17), NumColor.Yellow, NumAlign.Right);
+    var gameInstance = getGame();
+    var meta = (gameInstance && typeof gameInstance.getSaveSlotMeta === 'function') ? gameInstance.getSaveSlotMeta(i) : null;
+    var savedTimes = meta && meta.savedTimes ? meta.savedTimes : 0;
     ui.drawNumber(savedTimes, 4, PAL_XY(270, 38 * i - 17), NumColor.Yellow, NumAlign.Right);
   }
 
@@ -288,35 +306,33 @@ uigame.systemMenu = function*() {
     if (yield uigame.confirmMenu()) {
       music.play(0, false, 2);
       yield surface.fadeOut(2);
-      game.shutdown();
+      var gameInstance = getGame();
+      if (gameInstance && typeof gameInstance.shutdown === 'function') {
+        gameInstance.shutdown();
+      }
     }
   };
   switch(returnValue) {
     case 1:
       // Save Game
-      var slot = yield uigame.saveSlotMenu(Global.currentSaveSlot);
+      var slot = yield uigame.saveSlotMenu(Global.currentSaveSlot || 1);
       if (slot != ui.MENUITEM_VALUE_CANCELLED) {
+        var gameInstance = requireGame();
         Global.currentSaveSlot = slot;
-        var savedTimes = 0;
-        var rpgs = yield ajax.load('1.rpg', '2.rpg', '3.rpg', '4.rpg', '5.rpg');
-        for (var i = 1; i <= 5; i++) {
-          var fp = rpgs[i], savedTimes = 0;
-          if (fp) {
-            var reader = new BinaryReader(fp);
-            var time = reader.getUint16(1);
-            if (time > savedTimes) savedTimes = time;
+        if (!gameInstance.saveGame(slot)) {
+          if (typeof window !== 'undefined' && window.alert) {
+            window.alert('保存失败');
           }
         }
-        yield game.saveGame(slot, savedTime + 1);
       }
       break;
     case 2:
       // Load Game
-      var slot = yield uigame.saveSlotMenu(Global.currentSaveSlot);
+      var slot = yield uigame.saveSlotMenu(Global.currentSaveSlot || 1);
       if (slot != ui.MENUITEM_VALUE_CANCELLED) {
         music.play(0, false, 1);
         yield surface.fadeOut(1);
-        yield game.initGameData(slot);
+        yield requireGame().initGameData(slot);
       }
       break;
     case 3:

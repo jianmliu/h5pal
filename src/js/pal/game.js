@@ -11,6 +11,76 @@ log.trace('game module load');
 
 var game = {};
 
+var SAVE_STORAGE_PREFIX = 'PAL-SAVE-';
+
+function getStorage() {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return null;
+  }
+  return window.localStorage;
+}
+
+function getStorageKey(slot) {
+  return SAVE_STORAGE_PREFIX + slot;
+}
+
+function encodeSavePayload(saveData, savedTimes, timestamp) {
+  var buf = saveData.uint8Array;
+  var arr = new Array(buf.length);
+  for (var i = 0; i < buf.length; ++i) {
+    arr[i] = buf[i];
+  }
+  return JSON.stringify({
+    version: 1,
+    savedTimes: savedTimes || 0,
+    timestamp: timestamp || Date.now(),
+    bytes: arr
+  });
+}
+
+function readStorageSlot(slot) {
+  var storage = getStorage();
+  if (!storage) return null;
+  var raw = storage.getItem(getStorageKey(slot));
+  if (!raw && slot == 1) {
+    raw = storage.getItem('PAL-SAVE');
+  }
+  if (!raw) return null;
+  var parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (ex) {
+    return null;
+  }
+  var bytes = null;
+  if (Array.isArray(parsed)) {
+    bytes = parsed;
+    parsed = { bytes: bytes };
+  } else if (parsed && parsed.bytes) {
+    bytes = parsed.bytes;
+  }
+  if (!bytes || !bytes.length) {
+    return null;
+  }
+  var buf = new Uint8Array(bytes.length);
+  for (var i = 0; i < bytes.length; ++i) {
+    buf[i] = bytes[i] & 0xFF;
+  }
+  var saveData = new SaveData(buf);
+  var savedTimes = 0;
+  if (parsed.savedTimes != null) {
+    savedTimes = parsed.savedTimes;
+    saveData.savedTimes = savedTimes;
+  } else if (typeof saveData.savedTimes === 'number') {
+    savedTimes = saveData.savedTimes;
+  }
+  return {
+    saveData: saveData,
+    savedTimes: savedTimes,
+    timestamp: parsed.timestamp || 0
+  };
+}
+
 game.init = function*(surf) {
   log.debug('[Game] init');
   global.game = game;
@@ -91,6 +161,10 @@ game.initGlobalGameData = function*() {
 };
 
 game.loadGame = function*(slot) {
+  var entry = readStorageSlot(slot);
+  if (entry) {
+    return game._loadGame(entry.saveData);
+  }
   // Try to open the specified file
   // Read all data from the file and close.
   try {
@@ -196,6 +270,33 @@ game._saveGame = function() {
   memcpy(saveData.eventObject.uint8Array, GameData.eventObject.uint8Array, saveData.eventObject.uint8Array.length);
 
   return saveData;
+};
+
+game.getSaveSlotMeta = function(slot) {
+  var entry = readStorageSlot(slot);
+  if (!entry) return null;
+  return {
+    savedTimes: entry.savedTimes || 0,
+    timestamp: entry.timestamp || 0
+  };
+};
+
+game.saveGame = function(slot) {
+  var storage = getStorage();
+  if (!storage) return false;
+  slot = slot || Global.currentSaveSlot || 1;
+  var existing = readStorageSlot(slot);
+  var saveData = game._saveGame();
+  var nextSavedTimes = (existing ? existing.savedTimes : (saveData.savedTimes || 0)) + 1;
+  saveData.savedTimes = nextSavedTimes & 0xFFFF;
+  try {
+    storage.setItem(getStorageKey(slot), encodeSavePayload(saveData, nextSavedTimes & 0xFFFF, Date.now()));
+    storage.setItem(SAVE_STORAGE_PREFIX + 'lastSlot', slot);
+  } catch (ex) {
+    console.warn('Failed to persist save data', ex);
+    return false;
+  }
+  return true;
 };
 
 game.initGameData = function*(slot) {

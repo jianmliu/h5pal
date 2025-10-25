@@ -339,7 +339,7 @@ text.init = function*(surf, _ui) {
           textLib.dialogPosition !== DialogPosition.Center) {
         // palette shift
         var t = palette[0xF9];
-        for (i = 0xF9; i < 0xFE; i++) {
+        for (var i = 0xF9; i < 0xFE; i++) {
            palette[i] = palette[i + 1];
         }
         palette[0xFE] = t;

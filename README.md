@@ -9,6 +9,14 @@ h5pal
 
 [English version of this README](#ENG)
 
+## 最近更新
+
+- 支持触控手势：点击屏幕中部确认，划动控制主角移动，移动端直接可玩。
+- 新增 `PAL_CONFIG` 配置，默认从 `pal-assets/` 读取资源，可按需重定向或开启背景音乐。
+- 音乐可选：默认关闭 MP3 播放，若准备好原版 MP3 资源，将 `PAL_CONFIG.enableAudio` 设为 `true` 并提供 `audioBaseUrl`。
+- 系统菜单的存档/读档使用浏览器 localStorage，可选择 1~5 号槽位。
+- 构建产物可直接复制到 `xianjian.github.com/ultimate/`，包含运行所需资源。
+
 # 如何搞起
 
 ## 环境
@@ -22,13 +30,14 @@ h5pal
 * `bower install`
 * `npm install`
 * `gulp`
-* 建立`pal-assets/`目录，把仙剑95版（存档180~185KB的版本）的所有文件拷贝进去。（不要问我去哪里找）
+* 若需要替换资源，可准备仙剑95版（存档180~185KB版本）的所有文件放入`pal-assets/`目录（仓库已预置示例）。
 
 ## 运行
 
 * `gulp serve`
 * 在`chrome://flags`里打开_“启用实验性JavaScript”_
 * 打开[http://localhost:8005/h5pal.html](http://localhost:8005/h5pal.html) 
+* 或直接打开 `dist/h5pal.html`（构建完成后），可整包部署至 `xianjian.github.com/ultimate/`
 * Enjoy
 
 # 其他
@@ -102,7 +111,7 @@ GPL v3
 * `bower install`
 * `npm install`
 * `gulp`
-* Create a folder named `pal-assets`. Copy all pal95 (which one save file is 180~185KB) files into it. (You may not find these files in this repo due to copyright reasons.)
+* Optionally replace the bundled assets by copying pal95 (180~185KB save) files into `pal-assets/` (a sample set is already included).
 
 ## Run
 

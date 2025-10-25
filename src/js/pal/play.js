@@ -221,7 +221,7 @@ play.equipItem = function*() {
  * Process searching trigger events.
  */
 play.search = function*() {
-  var x, y, xOffset, yOffset, dx, dy, dh, ex, ey, eh, i, k, l;
+  var x, y, xOffset, yOffset, dx, dy, dh, ex, ey, eh, i, k, l, p;
   var poses = [];
 
   // Get the party location

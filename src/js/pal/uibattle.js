@@ -526,67 +526,118 @@ uibattle.pickAutoMagic = function(playerRole, randomRange) {
  */
 uibattle.update = function*() {
   uibattle.frame++;
-  if (Global.battle.UI.autoAttack && !Global.autoBattle) {
-    // Draw the "auto attack" message if in the autoattack mode.
-    if (input.isKeyPressed(Key.Menu)) {
-      Global.battle.UI.autoAttack = false;
-    } else {
-      ui.drawText(
-        ui.getWord(BATTLEUI_LABEL_AUTO),
-        PAL_XY(280, 10),
-        ui.MENUITEM_COLOR_CONFIRMED,
-        true,
-        false
-      );
+  if (input.isKeyPressed(Key.Auto)) {
+    var enableAuto = !Global.autoBattle;
+    Global.autoBattle = enableAuto;
+    Global.battle.UI.autoAttack = enableAuto;
+    Global.battle.UI.menuState = BattleMenuState.Main;
+    if (!enableAuto && Global.battle.UI.state != BattleUIState.Wait) {
+      Global.battle.UI.state = BattleUIState.Wait;
     }
   }
 
   if (Global.autoBattle) {
-    battle.playerCheckReady();
+    ui.drawText(
+      ui.getWord(BATTLEUI_LABEL_AUTO),
+      PAL_XY(280, 10),
+      ui.MENUITEM_COLOR_CONFIRMED,
+      true,
+      false
+    );
 
-    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-      if (Global.battle.player[i].state == FighterState.Com) {
-        uibattle.playerReady(i);
-        break;
-      }
+    if (input.isKeyPressed(Key.Menu) || input.isKeyPressed(Key.Search)) {
+      Global.autoBattle = false;
+      Global.battle.UI.autoAttack = false;
+      return end();
     }
 
-    if (Global.battle.UI.state != BattleUIState.Wait) {
-      var w = uibattle.pickAutoMagic(
-        Global.party[Global.battle.UI.curPlayerIndex].playerRole,
-        9999
-      );
+    if (Global.battle.phase == BattlePhase.SelectAction && !Global.battle.enemyCleared) {
+      battle.playerCheckReady();
 
-      if (w == 0) {
-        Global.battle.UI.actionType = BattleActionType.Attack;
-        Global.battle.UI.selectedIndex = battle.selectAutoTarget();
-      } else {
-        Global.battle.UI.actionType = BattleActionType.Magic;
-        Global.battle.UI.objectID = w;
-
-        if (GameData.object[w].magic.flags & MagicFlag.ApplyToAll) {
-          Global.battle.UI.selectedIndex = -1;
-        } else {
-          Global.battle.UI.selectedIndex = battle.selectAutoTarget();
+      for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+        if (Global.battle.player[i].state == FighterState.Com) {
+          uibattle.playerReady(i);
+          break;
         }
       }
 
-      battle.commitAction(false);
+      if (Global.battle.UI.state != BattleUIState.Wait) {
+        var playerRole = Global.party[Global.battle.UI.curPlayerIndex].playerRole;
+        var actionDecided = false;
+
+        if (GameData.playerRoles.HP[playerRole] == 0 &&
+            Global.playerStatus[playerRole][PlayerStatus.Puppet]) {
+          Global.battle.UI.actionType = BattleActionType.Attack;
+          Global.battle.UI.objectID = 0;
+          if (script.playerCanAttackAll(playerRole)) {
+            Global.battle.UI.selectedIndex = -1;
+          } else {
+            var puppetTarget = battle.selectAutoTarget();
+            Global.battle.UI.selectedIndex = (puppetTarget < 0 ? -1 : puppetTarget);
+          }
+          actionDecided = true;
+        } else if (GameData.playerRoles.HP[playerRole] == 0 ||
+                   Global.playerStatus[playerRole][PlayerStatus.Sleep] != 0 ||
+                   Global.playerStatus[playerRole][PlayerStatus.Paralyzed] != 0) {
+          Global.battle.UI.actionType = BattleActionType.Pass;
+          Global.battle.UI.objectID = 0;
+          Global.battle.UI.selectedIndex = -1;
+          actionDecided = true;
+        } else if (Global.playerStatus[playerRole][PlayerStatus.Confused] != 0) {
+          Global.battle.UI.actionType = BattleActionType.AttackMate;
+          Global.battle.UI.objectID = 0;
+          Global.battle.UI.selectedIndex = -1;
+          actionDecided = true;
+        } else {
+          var magicObject = uibattle.pickAutoMagic(playerRole, 9999);
+          var targetIndex = -1;
+
+          if (magicObject !== 0) {
+            var magicFlags = GameData.object[magicObject].magic.flags;
+            if (magicFlags & MagicFlag.ApplyToAll) {
+              Global.battle.UI.selectedIndex = -1;
+            } else {
+              targetIndex = battle.selectAutoTarget();
+              if (targetIndex < 0) {
+                magicObject = 0;
+              }
+            }
+          }
+
+          if (magicObject === 0) {
+            targetIndex = battle.selectAutoTarget();
+            if (targetIndex < 0) {
+              Global.battle.UI.actionType = BattleActionType.Pass;
+              Global.battle.UI.selectedIndex = -1;
+            } else {
+              Global.battle.UI.actionType = BattleActionType.Attack;
+              Global.battle.UI.selectedIndex = targetIndex;
+            }
+            Global.battle.UI.objectID = 0;
+          } else {
+            Global.battle.UI.actionType = BattleActionType.Magic;
+            Global.battle.UI.objectID = magicObject;
+            if (!(GameData.object[magicObject].magic.flags & MagicFlag.ApplyToAll)) {
+              Global.battle.UI.selectedIndex = targetIndex;
+            }
+          }
+          actionDecided = true;
+        }
+
+        if (actionDecided) {
+          battle.commitAction(false);
+        }
+      }
     }
 
     return end();
-  }
-
-  if (input.isKeyPressed(Key.Auto)) {
-    Global.battle.UI.autoAttack = !Global.battle.UI.autoAttack;
-    Global.battle.UI.menuState = BattleMenuState.Main;
   }
 
   if (Global.battle.phase == BattlePhase.PerformAction) {
     return end();
   }
 
-  if (!Global.battle.UI.autoAttack) {
+  if (!Global.autoBattle) {
     // Draw the player info boxes.
     for (var i = 0; i <= Global.maxPartyMemberIndex; i++)
     {
@@ -640,7 +691,7 @@ uibattle.update = function*() {
       return end(); // don't go further
     }
 
-    if (Global.battle.UI.autoAttack) {
+    if (Global.autoBattle) {
       Global.battle.UI.actionType = BattleActionType.Attack;
 
       if (script.playerCanAttackAll(Global.party[Global.battle.UI.curPlayerIndex].playerRole)) {
@@ -895,7 +946,12 @@ uibattle.update = function*() {
                 battle.commitAction(false);
                 break;
               case 1: // auto
-                Global.battle.UI.autoAttack = true;
+                var enable = !Global.autoBattle;
+                Global.autoBattle = enable;
+                Global.battle.UI.autoAttack = enable;
+                if (!enable && Global.battle.UI.state != BattleUIState.Wait) {
+                  Global.battle.UI.state = BattleUIState.Wait;
+                }
                 break;
 
               case 4: // flee

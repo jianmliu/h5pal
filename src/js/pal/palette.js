@@ -1,7 +1,7 @@
 // 调色盘类
 import utils from './utils';
 
-log.trace('palette module load');
+console.trace('palette module load');
 
 /**
  * 调色盘对象
@@ -25,7 +25,7 @@ var Palette = function(buf) {
    * @type {Array}
    */
   this.night = new Array(256);
-  for (i = 0; i < 256; i++) {
+  for (var i = 0; i < 256; i++) {
     this.day[i] = {
       r: buf[i * 3] << 2,
       g: buf[i * 3 + 1] << 2,

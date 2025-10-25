@@ -777,6 +777,7 @@ fight.init = function*(surf, _battle) {
    * Backup HP and MP values of all players and enemies.
    */
   battle.backupStat = function() {
+    var playerRole;
     for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
       if (Global.battle.enemy[i].objectID == 0) {
         continue;
@@ -1278,13 +1279,12 @@ fight.init = function*(surf, _battle) {
             PAL_XY(x - ~~(frame.width / 2), y - frame.height)
           );
         }
-      } else if (GameData.magic[magicNum].type == MagicType.ApplyToPlayer) {
-        if (target == -1) {
-          throw 'should not be here';
-        }
+      } else if (GameData.magic[magicNum].type == MagicType.ApplyToPlayer ||
+                 GameData.magic[magicNum].type == MagicType.Trance) {
+        var effectTarget = (target === -1 ? playerIndex : target);
 
-        x = PAL_X(Global.battle.player[target].pos);
-        y = PAL_Y(Global.battle.player[target].pos);
+        x = PAL_X(Global.battle.player[effectTarget].pos);
+        y = PAL_Y(Global.battle.player[effectTarget].pos);
 
         x += SHORT(GameData.magic[magicNum].offsetX);
         y += SHORT(GameData.magic[magicNum].offsetY);
@@ -1295,9 +1295,9 @@ fight.init = function*(surf, _battle) {
         );
 
         // Repaint the previous player
-        if (target > 0 && Global.battle.hidingTime == 0) {
-          if (Global.playerStatus[Global.party[target - 1].playerRole][PlayerStatus.Confused] == 0) {
-            var targetPlayer = Global.battle.player[target - 1];
+        if (effectTarget > 0 && Global.battle.hidingTime == 0) {
+          if (Global.playerStatus[Global.party[effectTarget - 1].playerRole][PlayerStatus.Confused] == 0) {
+            var targetPlayer = Global.battle.player[effectTarget - 1];
             var p = targetPlayer.sprite.getFrame(targetPlayer.currentFrame)
             x = PAL_X(targetPlayer.pos);
             y = PAL_Y(targetPlayer.pos);
@@ -1324,7 +1324,10 @@ fight.init = function*(surf, _battle) {
           Global.battle.player[j].colorShift = i;
         }
       } else {
-         Global.battle.player[target].colorShift = i;
+        var effectTarget = (GameData.magic[magicNum].type == MagicType.Trance && target === -1)
+          ? playerIndex
+          : target;
+        Global.battle.player[effectTarget].colorShift = i;
       }
 
       yield battle.delay(1, 0, true);
@@ -1336,7 +1339,10 @@ fight.init = function*(surf, _battle) {
           Global.battle.player[j].colorShift = i;
         }
       } else {
-        Global.battle.player[target].colorShift = i;
+        var effectTarget = (GameData.magic[magicNum].type == MagicType.Trance && target === -1)
+          ? playerIndex
+          : target;
+        Global.battle.player[effectTarget].colorShift = i;
       }
 
       yield battle.delay(1, 0, true);

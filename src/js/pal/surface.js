@@ -540,7 +540,7 @@ utils.extend(Surface.prototype, {
     var startTime = timestamp();
     while (true) {
       var now = timestamp(),
-          elapsed = now - startTime;
+          elapsed = now - startTime,
           rate = (time - elapsed) / time;
       if (rate < 0) break;
       for (var i=0; i<256; ++i){

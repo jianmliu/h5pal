@@ -4,7 +4,7 @@
 import utils from './utils';
 import yj_1 from './yj_1';
 
-log.trace('mkf module load');
+console.trace('mkf module load');
 
 /**
  * MKF文件

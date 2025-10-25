@@ -1,85 +1,102 @@
-var gulp = require('gulp');
-var del = require('del');
-var connect = require('gulp-connect');
-var sourcemaps = require('gulp-sourcemaps');
-var to5 = require('gulp-6to5');
-var runSequence = require('run-sequence');
-var stylus = require('gulp-stylus');
-var rename = require('gulp-rename');
-var path = require('path');
+import gulp from 'gulp';
+import del from 'del';
+import connect from 'gulp-connect';
+import sourcemaps from 'gulp-sourcemaps';
+import babel from 'gulp-babel';
+import stylus from 'gulp-stylus';
+import rename from 'gulp-rename';
+import path from 'path';
 
-var JS = ['src/**/*.js'];
+const JS = ['src/**/*.js'];
 
-var port = 8005;
-var reloadPort = 35729;
+const port = 8005;
 
 // Clean Output Directory
-gulp.task('clean', function(callback) {
-  del(['.tmp', 'dist'], function(err, deletedFiles) {
-    callback();
-  });
-});
+function clean() {
+  console.log('Cleaning output directories...');
+  return del(['.tmp', 'dist']);
+}
 
-gulp.task('js', function() {
-  gulp.src(JS)
+// Process JavaScript files
+function js() {
+  console.log('Processing JavaScript files...');
+  return gulp.src(JS)
     .pipe(sourcemaps.init())
-    .pipe(to5({
-      blacklist: ['useStrict', 'regenerator'],
-      modules: 'amd'
+    .pipe(babel({
+      presets: ['@babel/preset-env'],
+      plugins: ['@babel/plugin-transform-modules-amd']
     }))
-    //.pipe(concat('all.js'))
     .pipe(rename({ extname: '.js' }))
     .pipe(sourcemaps.write('.'))
     .pipe(gulp.dest('dist/'));
-});
+}
 
-gulp.task('style', function() {
+// Process styles
+function style() {
+  console.log('Processing styles...');
   return gulp.src(['src/stylus/*.styl', 'src/css/**/*.css'])
     .pipe(sourcemaps.init())
-    .pipe(stylus({
-      //linenos: true
-    }))
+    .pipe(stylus())
     .pipe(sourcemaps.write('.'))
     .pipe(gulp.dest('dist/css/'));
-});
+}
 
-gulp.task('build-lib', function() {
-  var libs = {
+// Copy HTML files
+function html() {
+  console.log('Copying HTML files...');
+  return gulp.src(['h5pal.html', 'pal.ico'])
+    .pipe(gulp.dest('dist/'));
+}
+
+// Build libraries
+async function buildLib() {
+  console.log('Building libraries...');
+  const libs = {
     'jquery': 'dist/*',
     'requirejs': 'require.js',
     'sprintf': 'dist/sprintf.*',
     'q': 'q.js',
     'co': 'co.js'
   };
-  for (var name in libs) {
-    var src = path.join('bower_components', name, libs[name]);
-    var dest = path.join('dist/lib', name);
-    gulp.src(src).pipe(gulp.dest(dest));
-  }
-})
 
-gulp.task('build', function(callback) {
-  runSequence(
-    ['build-lib'],
-    ['js', 'style'],
-    callback
-  );
-});
-
-gulp.task('serve', function() {
-  connect.server({
-    host: '0.0.0.0',
-    port: port
+  const tasks = Object.keys(libs).map((name) => {
+    const src = path.join('bower_components', name, libs[name]);
+    const dest = path.join('dist/lib', name);
+    console.log(`Copying ${src} to ${dest}`);
+    return new Promise((resolve, reject) => {
+      gulp.src(src, { allowEmpty: true })
+        .pipe(gulp.dest(dest))
+        .on('end', resolve)
+        .on('error', reject);
+    });
   });
-});
 
-gulp.task('dev', ['build', 'serve'], function() {
-  gulp.watch(['src/js/**'], { interval: 500, debounceDelay: 1000 }, ['js']);
-})
+  await Promise.all(tasks);
+}
 
-gulp.task('default', function() {
-  runSequence(
-    ['clean'],
-    ['build']
-  );
-});
+// Serve files
+function serve() {
+  console.log('Starting development server...');
+  connect.server({
+    root: '.', // Set the root directory to the project root
+    host: '0.0.0.0',
+    port: port,
+    livereload: true
+  });
+}
+
+// Watch files for changes
+function watchFiles() {
+  console.log('Watching files for changes...');
+  gulp.watch(['src/js/**'], { interval: 500, debounceDelay: 1000 }, js);
+  gulp.watch(['src/**/*.html'], html); // Watch for HTML changes
+  gulp.watch(['src/stylus/*.styl', 'src/css/**/*.css'], style); // Watch for CSS changes
+}
+
+// Define tasks
+const build = gulp.series(buildLib, gulp.parallel(js, style, html));
+const dev = gulp.series(build, gulp.parallel(serve, watchFiles));
+const defaultTask = gulp.series(clean, build);
+
+// Export tasks
+export { clean, js, style, html, buildLib, build, serve, dev, defaultTask as default };
