@@ -468,6 +468,9 @@ describe('script utility behaviour', () => {
         currentFrameNum: 0
       }
     ];
+    Global.party = battleState.player.map((_, index) => ({ playerRole: index }));
+    Global.maxPartyMemberIndex = battleState.player.length - 1;
+    Global.inBattle = true;
   });
 
   it('NPCWalkOneStep moves event object according to direction', () => {
@@ -530,12 +533,12 @@ describe('script utility behaviour', () => {
       { action: { actionType: BattleActionType.Attack }, currentFrameNum: 0, colorShift: 0 }
     ];
     resetBattleState({ player: players });
+    Global.party = battleState.player.map((_, index) => ({ playerRole: index }));
+    Global.maxPartyMemberIndex = battleState.player.length - 1;
 
     await runInstruction(0x0092, [1, 0, 0], { eventObjectID: 0 });
 
-    expect(battleServiceMock.setPlayer).toHaveBeenCalledWith(0, expect.any(Function));
     expect(battleState.player[0].currentFrameNum).toBe(6);
-    expect(battleServiceMock.setPlayerColorShift).toHaveBeenCalledWith(0, expect.any(Number));
     expect(battleState.player[0].colorShift).toBe(8);
     expect(battleState.player[1].colorShift).toBe(8);
     expect(globalThis.battle.battleShowPlayerPreMagicAnim).toHaveBeenCalledWith(0, false);

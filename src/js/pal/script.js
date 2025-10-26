@@ -371,11 +371,23 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     current = GameData.eventObject[i];
     curEventObjectID = sc.operand[0];
   }
-  if (sc.operand[0] < Const.MAX_PLAYABLE_PLAYER_ROLES) {
-    playerRole = Global.party[sc.operand[0]].playerRole;
-  } else {
-    playerRole = Global.party[0].playerRole;
+  var party = Array.isArray(Global.party) ? Global.party : [];
+  var partyIndex = sc.operand[0];
+  var partyMember = null;
+  if (party.length) {
+    if (partyIndex >= 0 && partyIndex < party.length) {
+      partyMember = party[partyIndex];
+    } else if (partyIndex < Const.MAX_PLAYABLE_PLAYER_ROLES) {
+      var clamped = Math.min(Math.max(partyIndex, 0), party.length - 1);
+      partyMember = party[clamped];
+    }
+    if (!partyMember) {
+      partyMember = party[0];
+    }
   }
+  playerRole = partyMember && typeof partyMember.playerRole !== 'undefined'
+    ? partyMember.playerRole
+    : 0;
   log.trace('[SCRIPT] interpretInstruction %d: (%d(0x%.4x) - %d, %d, %d)',
     scriptEntry, sc.operation, sc.operation,
     sc.operand[0], sc.operand[1],

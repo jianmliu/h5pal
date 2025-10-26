@@ -42,17 +42,23 @@ globalThis.timestamp = () => Date.now();
 
 
 if (!globalThis.crypto || typeof globalThis.crypto.getRandomValues !== 'function') {
-  const { randomBytes } = await import('crypto');
-  globalThis.crypto = {
-    getRandomValues(typedArray) {
-      if (!(typedArray instanceof Uint8Array)) {
-        throw new TypeError('Expected Uint8Array');
+  const { webcrypto, randomBytes } = await import('crypto');
+  if (webcrypto && typeof webcrypto.getRandomValues === 'function') {
+    globalThis.crypto = webcrypto;
+  } else {
+    globalThis.crypto = {
+      getRandomValues(typedArray) {
+        if (!typedArray || typeof typedArray.length !== 'number' || !ArrayBuffer.isView(typedArray)) {
+          throw new TypeError('Expected typed array view');
+        }
+        const bytes = randomBytes(typedArray.byteLength);
+        const TypedArrayConstructor = typedArray.constructor;
+        const temp = new TypedArrayConstructor(bytes.buffer, bytes.byteOffset, typedArray.length);
+        typedArray.set(temp);
+        return typedArray;
       }
-      const buf = randomBytes(typedArray.length);
-      typedArray.set(buf);
-      return typedArray;
-    }
-  };
+    };
+  }
 }
 
 globalThis.FrameTime = globalThis.FrameTime || (1000 / 24);

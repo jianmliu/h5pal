@@ -1200,8 +1200,8 @@ fight.init = function*(surf, _battle) {
         battle.updateFighters();
         yield battle.delay(1, 0, false);
 
-        BATTLE().summonSprite = null;
-        BATTLE().backgroundColorShift = 0;
+        setBattleField('summonSprite', null);
+        setBattleField('backgroundColorShift', 0);
 
         battle.backupScene();
         battle.makeScene();
@@ -2169,7 +2169,7 @@ fight.init = function*(surf, _battle) {
     var coopPos = [ [208, 157], [234, 170], [260, 183] ];
 
     setBattleField('movingPlayerIndex', playerIndex);
-    BATTLE().blow = 0;
+    battleService.setBattleBlow(0);
 
     battle.playerValidateAction(playerIndex);
     battle.backupStat();
@@ -3372,8 +3372,6 @@ fight.init = function*(surf, _battle) {
        ui.startDialog(DialogPosition.CenterWindow, 0, 0, false);
        ui.showDialogText(s);
     }
-
-    setPlayerPosition(playerIndex, currentPlayerPos);
   };
 
   /**
