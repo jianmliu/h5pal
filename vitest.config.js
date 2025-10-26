@@ -1,4 +1,9 @@
 import { defineConfig } from 'vitest/config';
+import { webcrypto } from 'crypto';
+
+if (!globalThis.crypto) {
+  globalThis.crypto = webcrypto;
+}
 
 export default defineConfig({
   test: {

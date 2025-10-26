@@ -1,11 +1,11 @@
 import utils from './utils';
-import ajax from './ajax';
 import ui from './ui';
 import uigame from './uigame';
 import input from './input';
 import play from './play';
 import script from './script';
 import res from './res';
+import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';
 import stateService from '../../services/state-service.js';
 
@@ -133,7 +133,7 @@ game.loadDefaultGame = function*() {
  * Initialize global game data.
  */
 game.initGlobalGameData = function*() {
-  //yield ajax.loadMKF('SSS', 'DATA');
+  // MKF bundles are preloaded during startup via the resource service.
   GameData.scriptEntry = readTypedArray(ScriptEntry, Files.SSS.readChunk(4));
   GameData.store = readTypedArray(Store, Files.DATA.readChunk(0));
   GameData.enemy = readTypedArray(Enemy, Files.DATA.readChunk(1));
@@ -157,7 +157,8 @@ game.loadGame = function*(slot) {
   // Try to open the specified file
   // Read all data from the file and close.
   try {
-    var buf = new Uint8Array((yield ajax.load(slot + '.RPG'))[0]);
+    var buffer = yield resourceService.loadFiles(slot + '.RPG');
+    var buf = new Uint8Array(buffer);
     var s = (new SaveData(buf)).copy();
   } catch(ex) {
     return false;

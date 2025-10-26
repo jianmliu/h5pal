@@ -1,5 +1,5 @@
 import utils from './utils';
-import ajax from './ajax';
+import resourceService from '../../services/resource-service.js';
 
 log.trace('font module load');
 
@@ -157,7 +157,7 @@ var big5Dict = {};
 font.init = function*(surf) {
   log.debug('[UI] init font');
   surface = surf;
-  var list = yield ajax.load('wor16.asc', 'wor16.fon');
+  var list = yield resourceService.loadFiles('wor16.asc', 'wor16.fon');
   var charBuf = new LPWORD(list[0]), fon = new LPBYTE(list[1]);
   var charCount = font.charCount = charBuf.length;
 

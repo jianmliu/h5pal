@@ -1,4 +1,3 @@
-import ajax from './ajax';
 
 /**
  * @module res

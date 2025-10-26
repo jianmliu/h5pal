@@ -1,9 +1,9 @@
 import utils from './utils';
-import ajax from './ajax';
 import input from './input';
 import Sprite from './sprite';
 import Map from './map';
 import stateService from '../../services/state-service.js';
+import resourceService from '../../services/resource-service.js';
 
 log.trace('scene module load');
 
@@ -55,10 +55,10 @@ scene.init = function*(surf) {
   surface = surf;
   global.scene = scene;
   var list = ['MAP', 'GOP', 'MGO'];
-  yield ajax.loadMKF(list);
-  list.forEach(function(name, i) {
-    Files[name] = ajax.MKF[name];
-  })
+  yield resourceService.loadMKF(...list);
+  list.forEach(function(name) {
+    Files[name] = resourceService.getMKF(name);
+  });
 };
 
 scene.makeScene = function*() {

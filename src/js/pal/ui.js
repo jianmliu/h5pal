@@ -5,12 +5,12 @@
 
 import utils from './utils';
 import Sprite from './Sprite';
-import ajax from './ajax';
 import input from './input';
 import text from './text';
 import uigame from './uigame';
 import itemmenu from './itemmenu';
 import magicmenu from './magicmenu';
+import resourceService from '../../services/resource-service.js';
 
 log.trace('ui module load');
 
@@ -31,9 +31,10 @@ ui.init = function*(surf, services) {
   log.debug('[UI] init');
   global.ui = ui;
   ui.services = services || null;
+  const resource = (ui.services && ui.services.resource) || resourceService;
   surface = surf;
-  var mkfs = yield ajax.loadMKF('DATA', 'FBP');
-  var data = ui.data = ajax.MKF.DATA;
+  yield resource.loadMKF('DATA', 'FBP');
+  var data = ui.data = resource.getMKF('DATA');
   ui.sprite = new Sprite(data.readChunk(ui.CHUNKNUM_SPRITEUI));
   initNumColors();
 
@@ -338,71 +339,8 @@ ui.readMenu = function*(onchange, list, defaultItem, labelColor, nocancel) {
   }
 };
 ui.loadObjectDesc = function*(filename) {
-  //FILE                      *fp;
-  //PAL_LARGE char             buf[512];
-  //char                      *p;
-  //LPOBJECTDESC               lpDesc = NULL, pNew = NULL;
-  //unsigned int               i;
-  var arraybuffer = (yield ajax.load(filename))[0];
-  var file = new Uint8Array(arraybuffer);
-  var list = [],
-      nl = '\n'.charCodeAt(0),
-      eq = '='.charCodeAt(0);
-  var start = 0;
-  for (var i=0; i<file.length; ++i) {
-    var b = file[i];
-    if (b == nl) {
-      list.push(file.subarray(start, i - 1));
-      start = i + 1;
-      i++;
-    }
-  }
-  var result = [];
-  list.forEach(function(line) {
-    var p = [].indexOf.call(line, eq);
-    var str = [].join.call(line, ',');
-    if (p >= 0){
-      var hexlen = 0, id = '';
-      for (; hexlen < p; ++hexlen) {
-        var ch = String.fromCharCode(line[hexlen]);
-        if ((/[0-9a-f]/).test(ch)){
-          id += ch;
-        }else{
-          break;
-        }
-      }
-      id = parseInt(id, 16);
-      var desc = line.subarray(p + 1);
-      // 这里存疑，应该从等号开始切，还是从括号开始？
-      result.push(new ObjectDesc(id, desc));
-    }
-  })
-  return result;
-/*
-  // Load the description data
-  while (fgets(buf, 512, fp) != NULL)
-  {
-    p = strchr(buf, '=');
-    if (p == NULL)
-    {
-      continue;
-    }
-
-    *p = '\0';
-    p++;
-
-    pNew = UTIL_calloc(1, sizeof(OBJECTDESC));
-
-    sscanf(buf, "%x", &i);
-    pNew->wObjectID = i;
-    pNew->lpDesc = strdup(p);
-
-    pNew->next = lpDesc;
-    lpDesc = pNew;
-  }
-
-  fclose(fp);
-  return lpDesc;*/
+  const resource = (ui.services && ui.services.resource) || resourceService;
+  return yield resource.loadObjectDesc(filename);
 };
 
 ui.getObjectDesc = function(list, id) {

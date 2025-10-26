@@ -40,6 +40,21 @@ globalThis.memcpy = (target, source, length) => {
 globalThis.PAL_XY = (x, y) => ((x & 0xFFFF) << 16) | (y & 0xFFFF);
 globalThis.timestamp = () => Date.now();
 
+
+if (!globalThis.crypto || typeof globalThis.crypto.getRandomValues !== 'function') {
+  const { randomBytes } = await import('crypto');
+  globalThis.crypto = {
+    getRandomValues(typedArray) {
+      if (!(typedArray instanceof Uint8Array)) {
+        throw new TypeError('Expected Uint8Array');
+      }
+      const buf = randomBytes(typedArray.length);
+      typedArray.set(buf);
+      return typedArray;
+    }
+  };
+}
+
 globalThis.FrameTime = globalThis.FrameTime || (1000 / 24);
 
 await import('../src/js/pal/binary-helper.js');

@@ -25,6 +25,6 @@
   },
   "scripts": {
     "test": "vitest",
-    "test:ci": "vitest run"
+    "test:ci": "NODE_OPTIONS=--experimental-global-webcrypto vitest run"
   }
 }

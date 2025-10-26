@@ -1,5 +1,5 @@
 import utils from './utils';
-import ajax from './ajax';
+import resourceService from '../../services/resource-service.js';
 import MKF from './mkf';
 import Sprite from './sprite';
 import Palette from './palette';
@@ -25,10 +25,10 @@ welcome.trademarkScreen = function*(surface) {
 };
 
 welcome.splashScreen = function*(surface) {
-  var list = yield ajax.loadMKF('FBP', 'PAT', 'MGO');
-  var fbp = ajax.MKF.FBP;
-  var pat = ajax.MKF.PAT;
-  var mgo = ajax.MKF.MGO;
+  yield resourceService.loadMKF('FBP', 'PAT', 'MGO');
+  var fbp = resourceService.getMKF('FBP');
+  var pat = resourceService.getMKF('PAT');
+  var mgo = resourceService.getMKF('MGO');
   var up = fbp.decompressChunk(BITMAPNUM_SPLASH_UP),
       down = fbp.decompressChunk(BITMAPNUM_SPLASH_DOWN);
   var titleSprite = new Sprite(mgo.decompressChunk(SPRITENUM_SPLASH_TITLE)),

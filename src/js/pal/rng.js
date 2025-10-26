@@ -1,5 +1,5 @@
-import ajax from './ajax';
 import yj_1 from './yj_1';
+import resourceService from '../../services/resource-service.js';
 
 log.trace('rng module load');
 
@@ -13,9 +13,9 @@ rng.init = function*(surf) {
   surface = surf;
   global.rng = rng;
   var list = ['RNG'];
-  yield ajax.loadMKF(list);
-  list.forEach(function(name, i) {
-    Files[name] = ajax.MKF[name];
+  yield resourceService.loadMKF(...list);
+  list.forEach(function(name) {
+    Files[name] = resourceService.getMKF(name);
   });
 };
 

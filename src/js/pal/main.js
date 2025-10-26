@@ -1,5 +1,4 @@
 import utils from './utils';
-import ajax from './ajax';
 import input from './input';
 import Surface from './surface';
 import Palette from './palette';
@@ -79,12 +78,12 @@ main.initGlobals = function*() {
 
   // Open files
   var mkfs = ['FBP', 'MGO', 'BALL', 'DATA', 'F', 'FIRE', 'RGM', 'SSS', 'PAT'];
-  yield ajax.loadMKF(mkfs);
-  mkfs.forEach(function(name, i) {
-    Files[name] = ajax.MKF[name];
-  })
+  yield services.resource.loadMKF(...mkfs);
+  mkfs.forEach(function(name) {
+    Files[name] = services.resource.getMKF(name);
+  });
 
-  Global.objectDesc = yield ui.loadObjectDesc('desc.dat');
+  Global.objectDesc = yield services.resource.loadObjectDesc('desc.dat');
 
   Global.currentSaveSlot = 1;
 };
@@ -92,6 +91,11 @@ main.initGlobals = function*() {
 main.start = function() {
   return co(function*() {
     yield main.initGlobals();
+
+    const resource = services.resource;
+    if (resource) {
+      yield resource.loadMKF('DATA', 'FBP');
+    }
 
     global.services = services;
 

@@ -1,11 +1,11 @@
 import utils from './utils';
 import MKF from './MKF';
 import RLE from './RLE';
-import ajax from './ajax';
 import font from './font';
 import Sprite from './sprite';
 import Palette from './palette';
 import input from './input';
+import resourceService from '../../services/resource-service.js';
 
 log.trace('text module load');
 
@@ -80,7 +80,7 @@ text.init = function*(surf, _ui) {
   global.text = text;
   surface = surf;
   yield font.init(surf);
-  var list = yield ajax.load('m.msg', 'word.dat');
+  var list = yield resourceService.loadFiles('m.msg', 'word.dat');
   var msgBuf = new Uint8Array(list[0]), wordBuf = new Uint8Array(list[1]);
   // Each word has 10 bytes
   var wordCount = ~~((wordBuf.length + (WORD_LENGTH - 1)) / WORD_LENGTH);
@@ -92,11 +92,11 @@ text.init = function*(surf, _ui) {
     msgCache: {}/*,
     words: new Array(wordCount)*/
   };
-  yield ajax.loadMKF('SSS', 'DATA', 'RGM');
+  yield resourceService.loadMKF('SSS', 'DATA', 'RGM');
   // Read the message offsets. The message offsets are in SSS.MKF #3
-  var SSS = text.SSS = ajax.MKF.SSS;
-  var DATA = text.DATA = ajax.MKF.DATA;
-  var RGM = text.RGM = ajax.MKF.RGM;
+  var SSS = text.SSS = resourceService.getMKF('SSS');
+  var DATA = text.DATA = resourceService.getMKF('DATA');
+  var RGM = text.RGM = resourceService.getMKF('RGM');
   var chunkSSS = SSS.readChunk(3);
   var msgOffset = textLib.msgOffset = new Uint32Array(chunkSSS.buffer, chunkSSS.byteOffset, chunkSSS.byteLength / 4);
   var msgCount = textLib.msgCount = msgOffset.length - 1;

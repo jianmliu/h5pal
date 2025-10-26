@@ -5,10 +5,10 @@
  */
 
 import utils from './utils';
-import ajax from './ajax';
 import RLE from './rle';
 import input from './input';
 import music from './music';
+import resourceService from '../../services/resource-service.js';
 
 function getGlobalObject() {
   if (typeof global !== 'undefined') {
@@ -40,6 +40,12 @@ var uigame = {};
 var surface = null;
 var ui = null;
 var itemmenu = null;
+var resolveResource = function() {
+  if (ui && ui.services && ui.services.resource) {
+    return ui.services.resource;
+  }
+  return resourceService;
+};
 
 uigame.init = function*(surf, _ui) {
   log.debug('[UI] init uigame');
@@ -53,8 +59,9 @@ uigame.init = function*(surf, _ui) {
  * 绘制开场菜单背景
  */
 uigame.drawOpeningMenuBackground = function*() {
-  yield ajax.loadMKF('FBP', 'PAT');
-  var bitmap = ajax.MKF.FBP.decompressChunk(ui.MAINMENU_BACKGROUND_FBPNUM);
+  var resource = resolveResource();
+  yield resource.loadMKF('FBP', 'PAT');
+  var bitmap = resource.getMKF('FBP').decompressChunk(ui.MAINMENU_BACKGROUND_FBPNUM);
   surface.blit(bitmap);
   yield surface.fadeIn(0, false, 1);
 };

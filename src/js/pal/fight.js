@@ -1,9 +1,9 @@
-import ajax from './ajax';
 import input from './input';
 import script from './script';
 import Sprite from './sprite';
 import uibattle from './uibattle';
 import sound from './sound';
+import resourceService from '../../services/resource-service.js';
 import utils from './utils';
 
 log.trace('fight module load');
@@ -18,9 +18,9 @@ fight.init = function*(surf, _battle) {
   surface = surf;
   battle = _battle;
 
-  yield ajax.loadMKF('FIRE', 'F');
-  Files.FIRE = ajax.MKF.FIRE;
-  Files.F = ajax.MKF.F;
+  yield resourceService.loadMKF('FIRE', 'F');
+  Files.FIRE = resourceService.getMKF('FIRE');
+  Files.F = resourceService.getMKF('F');
 
   /**
    * Pick an enemy target automatically.

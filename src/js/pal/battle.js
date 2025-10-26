@@ -1,12 +1,12 @@
 import utils from './utils';
 import scene from './scene';
-import ajax from './ajax';
 import Sprite from './sprite';
 import input from './input';
 import script from './script';
 import music from './music';
 import sound from './sound';
 import stateService from '../../services/state-service.js';
+import resourceService from '../../services/resource-service.js';
 import fight from './fight';
 import ui from './ui';
 import uibattle from './uibattle';
@@ -219,11 +219,11 @@ battle.init = function*(surf) {
   global.battle = battle;
   surface = surf;
 
-  yield ajax.loadMKF('DATA', 'FBP', 'ABC', 'F');
-  Files.DATA = ajax.MKF.DATA;
-  Files.FBP = ajax.MKF.FBP;
-  Files.ABC = ajax.MKF.ABC;
-  Files.F = ajax.MKF.F;
+  yield resourceService.loadMKF('DATA', 'FBP', 'ABC', 'F');
+  Files.DATA = resourceService.getMKF('DATA');
+  Files.FBP = resourceService.getMKF('FBP');
+  Files.ABC = resourceService.getMKF('ABC');
+  Files.F = resourceService.getMKF('F');
 
   yield fight.init(surf, battle);
   yield uibattle.init(surf, battle, ui);

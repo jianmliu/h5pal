@@ -1,4 +1,4 @@
-import ajax from './ajax';
+import resourceService from '../../services/resource-service.js';
 import Sprite from './sprite';
 import scene from './scene';
 
@@ -18,9 +18,9 @@ ending.init = function*(surf) {
   global.ending = ending;
   surface = surf;
   screen = surface.byteBuffer;
-  yield ajax.loadMKF('FBP', 'MGO');
-  Files.FBP = ajax.MKF.FBP;
-  Files.MGO = ajax.MKF.MGO;
+  yield resourceService.loadMKF('FBP', 'MGO');
+  Files.FBP = resourceService.getMKF('FBP');
+  Files.MGO = resourceService.getMKF('MGO');
 };
 
 /**

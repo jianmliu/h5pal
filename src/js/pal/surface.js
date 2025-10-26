@@ -1,5 +1,4 @@
 import utils from './utils';
-import ajax from './ajax';
 import Palette from './palette';
 
 log.trace('surface module load');
