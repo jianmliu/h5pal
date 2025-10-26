@@ -3,6 +3,7 @@ import ajax from './ajax';
 import input from './input';
 import Sprite from './sprite';
 import Map from './map';
+import stateService from '../../services/state-service.js';
 
 log.trace('scene module load');
 
@@ -108,7 +109,7 @@ scene.updateParty = function() {
     var xTarget = xSource + xOffset;
     var yTarget = ySource + yOffset;
 
-    Global.partyDirection = input.dir;
+    stateService.setGlobal('partyDirection', input.dir);
 
     // Check for obstacles on the destination location
     if (!scene.checkObstacle(PAL_XY(xTarget, yTarget), true, 0)) {
@@ -122,7 +123,7 @@ scene.updateParty = function() {
       trail[0].y = ySource;
 
       // Move the viewport
-      Global.viewport = PAL_XY(PAL_X(viewport) + xOffset, PAL_Y(viewport) + yOffset);
+      stateService.setGlobal('viewport', PAL_XY(PAL_X(viewport) + xOffset, PAL_Y(viewport) + yOffset));
 
       // Update gestures
       scene.updatePartyGestures(true);
@@ -309,12 +310,12 @@ scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
 
 scene.applyWave = function(buffer) {
   var wave = new Array(32);
-  Global.screenWave += Global.waveProgression;
+  stateService.setGlobal('screenWave', (stateService.getGlobal('screenWave') || 0) + (stateService.getGlobal('waveProgression') || 0));
   var buf = new Uint8Array(320);
   if (Global.screenWave === 0 || Global.screenWave >= 256) {
     // No need to wave the screen
-    Global.screenWave = 0;
-    Global.waveProgression = 0;
+    stateService.setGlobal('screenWave', 0);
+    stateService.setGlobal('waveProgression', 0);
     return;
   }
 
@@ -373,7 +374,7 @@ utils.extend(Scene.prototype, {
       var sprite = array[i] = new Sprite(MGO.decompressChunk(n));
       eventObjects[index].spriteFramesAuto = sprite.frameCount;
     }
-    Global.partyOffset = PAL_XY(160, 112);
+    stateService.setGlobal('partyOffset', PAL_XY(160, 112));
   },
   getEventObjectSprite: function(eventObjectID) {
     if (!this.eventObjectSprite) this.loadEventObjectSpites();
@@ -592,7 +593,7 @@ utils.extend(Scene.prototype, {
     if (Global.needToFadeIn) {
       //surface.refresh();
       yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
-      Global.needToFadeIn = false;
+      stateService.setGlobal('needToFadeIn', false);
     }
   }
 });

@@ -6,6 +6,7 @@ import input from './input';
 import script from './script';
 import music from './music';
 import sound from './sound';
+import stateService from '../../services/state-service.js';
 import fight from './fight';
 import ui from './ui';
 import uibattle from './uibattle';
@@ -1071,7 +1072,7 @@ battle.start = function*(enemyTeam, isBoss) {
   Global.battle.summonSprite = null;
   Global.battle.backgroundColorShift = 0;
 
-  Global.inBattle = true;
+  stateService.setGlobal('inBattle', true);
   Global.battle.battleResult = BattleResult.PreBattle;
 
   battle.updateFighters();
@@ -1133,7 +1134,7 @@ battle.start = function*(enemyTeam, isBoss) {
   Global.battle.background = null;
   Global.battle.sceneBuf = null;
 
-  Global.inBattle = false;
+  stateService.setGlobal('inBattle', false);
 
   music.play(Global.numMusic, true, 1);
 

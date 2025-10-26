@@ -3,6 +3,7 @@ import input from './input';
 import script from './script';
 import battle from './battle';
 import ending from './ending';
+import stateService from '../../services/state-service.js';
 
 log.trace('play module load');
 
@@ -31,7 +32,7 @@ play.update = function*(trigger) {
     // Check if we are entering a new scene
     if (Global.enteringScene) {
       // Run the script for entering the scene
-      Global.enteringScene = false;
+      stateService.setGlobal('enteringScene', false);
 
       var i = Global.numScene - 1;
       var sc = GameData.scene[i];
@@ -146,10 +147,10 @@ play.update = function*(trigger) {
 
         if (!scene.checkObstacle(pos, true, 0)) {
           // move here
-          Global.viewport = PAL_XY(
+          stateService.setGlobal('viewport', PAL_XY(
             PAL_X(pos) - PAL_X(Global.partyOffset),
             PAL_Y(pos) - PAL_Y(Global.partyOffset)
-          );
+          ));
 
           break;
         }
@@ -159,7 +160,7 @@ play.update = function*(trigger) {
     }
   }
 
-  Global.frameNum++;
+  stateService.setGlobal('frameNum', (stateService.getGlobal('frameNum') || 0) + 1);
 };
 
 /**
@@ -349,9 +350,9 @@ play.startFrame = function*() {
     }
   }
 
-  Global.chaseSpeedChangeCycles--;
-  if (Global.chaseSpeedChangeCycles === 0) {
-    Global.chaseRange = 1;
+  stateService.setGlobal('chaseSpeedChangeCycles', (stateService.getGlobal('chaseSpeedChangeCycles') || 0) - 1);
+  if ((stateService.getGlobal('chaseSpeedChangeCycles') || 0) === 0) {
+    stateService.setGlobal('chaseRange', 1);
   }
 };
 
