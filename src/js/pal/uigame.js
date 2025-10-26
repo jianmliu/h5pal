@@ -315,10 +315,10 @@ uigame.systemMenu = function*() {
   switch(returnValue) {
     case 1:
       // Save Game
-      var slot = yield uigame.saveSlotMenu(Global.currentSaveSlot || 1);
+      var slot = yield uigame.saveSlotMenu(stateService.getGlobal('currentSaveSlot') || 1);
       if (slot != ui.MENUITEM_VALUE_CANCELLED) {
         var gameInstance = requireGame();
-        Global.currentSaveSlot = slot;
+        stateService.setGlobal('currentSaveSlot', slot);
         if (!gameInstance.saveGame(slot)) {
           if (typeof window !== 'undefined' && window.alert) {
             window.alert('保存失败');
@@ -328,7 +328,7 @@ uigame.systemMenu = function*() {
       break;
     case 2:
       // Load Game
-      var slot = yield uigame.saveSlotMenu(Global.currentSaveSlot || 1);
+      var slot = yield uigame.saveSlotMenu(stateService.getGlobal('currentSaveSlot') || 1);
       if (slot != ui.MENUITEM_VALUE_CANCELLED) {
         music.play(0, false, 1);
         yield surface.fadeOut(1);

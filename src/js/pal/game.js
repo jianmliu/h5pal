@@ -6,23 +6,12 @@ import input from './input';
 import play from './play';
 import script from './script';
 import res from './res';
+import storageService from '../../services/storage-service.js';
+import stateService from '../../services/state-service.js';
 
 log.trace('game module load');
 
 var game = {};
-
-var SAVE_STORAGE_PREFIX = 'PAL-SAVE-';
-
-function getStorage() {
-  if (typeof window === 'undefined' || !window.localStorage) {
-    return null;
-  }
-  return window.localStorage;
-}
-
-function getStorageKey(slot) {
-  return SAVE_STORAGE_PREFIX + slot;
-}
 
 function encodeSavePayload(saveData, savedTimes, timestamp) {
   var buf = saveData.uint8Array;
@@ -30,28 +19,28 @@ function encodeSavePayload(saveData, savedTimes, timestamp) {
   for (var i = 0; i < buf.length; ++i) {
     arr[i] = buf[i];
   }
-  return JSON.stringify({
+  return {
     version: 1,
     savedTimes: savedTimes || 0,
     timestamp: timestamp || Date.now(),
     bytes: arr
-  });
+  };
 }
 
 function readStorageSlot(slot) {
-  var storage = getStorage();
-  if (!storage) return null;
-  var raw = storage.getItem(getStorageKey(slot));
-  if (!raw && slot == 1) {
-    raw = storage.getItem('PAL-SAVE');
+  var entry = storageService.readSlot(slot);
+  if (!entry && slot == 1 && storageService.isAvailable() && storageService.storage) {
+    var legacyRaw = storageService.storage.getItem('PAL-SAVE');
+    if (legacyRaw) {
+      try {
+        entry = JSON.parse(legacyRaw);
+      } catch (ex) {
+        entry = null;
+      }
+    }
   }
-  if (!raw) return null;
-  var parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (ex) {
-    return null;
-  }
+  if (!entry) return null;
+  var parsed = entry;
   var bytes = null;
   if (Array.isArray(parsed)) {
     bytes = parsed;
@@ -282,27 +271,23 @@ game.getSaveSlotMeta = function(slot) {
 };
 
 game.saveGame = function(slot) {
-  var storage = getStorage();
-  if (!storage) return false;
-  slot = slot || Global.currentSaveSlot || 1;
+  slot = slot || stateService.getGlobal('currentSaveSlot') || 1;
   var existing = readStorageSlot(slot);
   var saveData = game._saveGame();
   var nextSavedTimes = (existing ? existing.savedTimes : (saveData.savedTimes || 0)) + 1;
   saveData.savedTimes = nextSavedTimes & 0xFFFF;
-  try {
-    storage.setItem(getStorageKey(slot), encodeSavePayload(saveData, nextSavedTimes & 0xFFFF, Date.now()));
-    storage.setItem(SAVE_STORAGE_PREFIX + 'lastSlot', slot);
-  } catch (ex) {
-    console.warn('Failed to persist save data', ex);
-    return false;
+  var payload = encodeSavePayload(saveData, nextSavedTimes & 0xFFFF, Date.now());
+  var ok = storageService.writeSlot(slot, payload);
+  if (!ok) {
+    console.warn('Failed to persist save data');
   }
-  return true;
+  return ok;
 };
 
 game.initGameData = function*(slot) {
   yield game.initGlobalGameData();
 
-  Global.currentSaveSlot = slot;
+  stateService.setGlobal('currentSaveSlot', slot);
 
   // try loading from the saved game file.
   if (slot == 0 || !(yield game.loadGame(slot))) {
@@ -310,7 +295,7 @@ game.initGameData = function*(slot) {
     yield game.loadDefaultGame();
   }
 
-  Global.gameStart = true;
+  stateService.setGlobal('gameStart', true);
   Global.needToFadeIn = false;
   Global.curInvMenuItem = 0;
   Global.inBattle = false;
@@ -325,7 +310,7 @@ game._initGameData = function*(s) {
 
   game._loadGame(s);
 
-  Global.gameStart = true;
+  stateService.setGlobal('gameStart', true);
   Global.needToFadeIn = false;
   Global.curInvMenuItem = 0;
   Global.inBattle = false;
@@ -356,13 +341,13 @@ game.start = function*() {
 game.main = function*() {
   var slot = yield uigame.openingMenu(); // 主菜单
   //var slot = 5;
-  Global.currentSaveSlot = slot;
+  stateService.setGlobal('currentSaveSlot', slot);
   yield game.initGameData(slot); // 加载游戏
 
   while (true) {
-    if (Global.gameStart) {
+    if (stateService.getGlobal('gameStart')) {
       yield game.start();
-      Global.gameStart = false;
+      stateService.setGlobal('gameStart', false);
     }
     yield res.loadResources();
     input.clear();

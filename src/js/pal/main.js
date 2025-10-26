@@ -9,6 +9,7 @@ import scene from './scene';
 import game from './game';
 import rng from './rng';
 import co from './co';
+import services from '../../services/index.js';
 
 console.trace('main module load');
 
@@ -92,12 +93,14 @@ main.start = function() {
   return co(function*() {
     yield main.initGlobals();
 
+    global.services = services;
+
     Palette.init(Files.PAT);
 
     //var surf = new Surface(document.getElementById('cvs'), 320, 200, document.getElementById('debug'));
     var surf = new Surface(document.getElementById('cvs'), 320, 200, null);
 
-    yield ui.init(surf); // 初始化UI，内含初始化文字
+    yield ui.init(surf, services); // 初始化UI，内含初始化文字
 
     yield rng.init(surf);
 

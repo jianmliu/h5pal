@@ -27,9 +27,10 @@ var surface = null;
  * @param  {Surface} surf
  * @return {Promise}
  */
-ui.init = function*(surf) {
+ui.init = function*(surf, services) {
   log.debug('[UI] init');
   global.ui = ui;
+  ui.services = services || null;
   surface = surf;
   var mkfs = yield ajax.loadMKF('DATA', 'FBP');
   var data = ui.data = ajax.MKF.DATA;
