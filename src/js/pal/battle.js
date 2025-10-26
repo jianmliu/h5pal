@@ -10,6 +10,7 @@ import resourceService from '../../services/resource-service.js';
 import fight from './fight';
 import ui from './ui';
 import uibattle from './uibattle';
+import battleService from '../../services/battle-service.js';
 
 log.trace('battle module load');
 
@@ -20,6 +21,8 @@ var battle = {
     [[180, 180], [234, 170], [270, 146]]  // three players
   ]
 };
+
+battleService.bindModule(battle);
 
 global.BattleResult = {
   Won:        3,      // player won the battle
@@ -229,6 +232,7 @@ battle.init = function*(surf) {
   yield uibattle.init(surf, battle, ui);
 
   Global.battle = new Battle();
+  battleService.replaceState(Global.battle);
 };
 
 /**

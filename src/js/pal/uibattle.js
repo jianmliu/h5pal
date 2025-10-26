@@ -7,6 +7,7 @@
 import utils from './utils';
 import input from './input';
 import uigame from './uigame';
+import battleServiceDefault from '../../services/battle-service.js';
 
 log.trace('uibattle module load');
 
@@ -75,6 +76,18 @@ var battle = null;
 var ui = null;
 var itemmenu = null;
 var magicmenu = null;
+var battleService = battleServiceDefault;
+
+function BATTLE() {
+  var state = battleService.getState();
+  if (state) {
+    return state;
+  }
+  if (typeof Global !== 'undefined' && Global && Global.battle) {
+    return Global.battle;
+  }
+  return {};
+}
 
 uibattle.init = function*(surf, _battle, _ui) {
   log.debug('[BATTLE] init uibattle');
@@ -264,7 +277,7 @@ uibattle.playerInfoBox = function(pos, playerRole, timeMeter, timeMeterColor, up
  * @return {Boolean}         true if the action is valid, false if not.
  */
 uibattle.isActionValid = function(actionType) {
-  var playerRole = Global.party[Global.battle.UI.curPlayerIndex].playerRole;
+  var playerRole = Global.party[BATTLE().UI.curPlayerIndex].playerRole;
 
   switch (actionType) {
     case BattleUIAction.Attack:
@@ -414,14 +427,14 @@ uibattle.miscItemSubMenuUpdate = function() {
  */
 uibattle.showText = function(text, duration) {
   var now = hrtime();
-  if (now < Global.battle.UI.msgShowTime) {
-    // Global.battle.UI.nextMsg = utils.arrClone(text);
-    Global.battle.UI.nextMsg = text;
-    Global.battle.UI.nextMsgDuration = duration;
+  if (now < BATTLE().UI.msgShowTime) {
+    // BATTLE().UI.nextMsg = utils.arrClone(text);
+    BATTLE().UI.nextMsg = text;
+    BATTLE().UI.nextMsgDuration = duration;
   } else {
-    // Global.battle.UI.msg = utils.arrClone(text);
-    Global.battle.UI.msg = text;
-    Global.battle.UI.msgShowTime = now + duration;
+    // BATTLE().UI.msg = utils.arrClone(text);
+    BATTLE().UI.msg = text;
+    BATTLE().UI.msgShowTime = now + duration;
   }
 };
 
@@ -430,10 +443,10 @@ uibattle.showText = function(text, duration) {
  * @param  {Number} playerIndex the player index.
  */
 uibattle.playerReady = function(playerIndex) {
-  Global.battle.UI.curPlayerIndex = playerIndex;
-  Global.battle.UI.state = BattleUIState.SelectMove;
-  Global.battle.UI.selectedAction = 0;
-  Global.battle.UI.menuState = BattleMenuState.Main;
+  BATTLE().UI.curPlayerIndex = playerIndex;
+  BATTLE().UI.state = BattleUIState.SelectMove;
+  BATTLE().UI.selectedAction = 0;
+  BATTLE().UI.menuState = BattleMenuState.Main;
 };
 
 /**
@@ -444,17 +457,17 @@ uibattle.useItem = function() {
 
   if (selectedItem != 0xFFFF) {
     if (selectedItem != 0) {
-      Global.battle.UI.actionType = BattleActionType.UseItem;
-      Global.battle.UI.objectID = selectedItem;
+      BATTLE().UI.actionType = BattleActionType.UseItem;
+      BATTLE().UI.objectID = selectedItem;
 
       if (GameData.object[selectedItem].item.flags & ItemFlag.ApplyToAll) {
-        Global.battle.UI.state = BattleUIState.SelectTargetPlayerAll;
+        BATTLE().UI.state = BattleUIState.SelectTargetPlayerAll;
       } else {
-        Global.battle.UI.selectedIndex = 0;
-        Global.battle.UI.state = BattleUIState.SelectTargetPlayer;
+        BATTLE().UI.selectedIndex = 0;
+        BATTLE().UI.state = BattleUIState.SelectTargetPlayer;
       }
     } else {
-      Global.battle.UI.menuState = BattleMenuState.Main;
+      BATTLE().UI.menuState = BattleMenuState.Main;
     }
   }
 };
@@ -467,17 +480,17 @@ uibattle.throwItem = function() {
 
   if (selectedItem != 0xFFFF) {
     if (selectedItem != 0) {
-      Global.battle.UI.actionType = BattleActionType.ThrowItem;
-      Global.battle.UI.objectID = selectedItem;
+      BATTLE().UI.actionType = BattleActionType.ThrowItem;
+      BATTLE().UI.objectID = selectedItem;
 
       if (GameData.object[selectedItem].item.flags & ItemFlag.ApplyToAll) {
-        Global.battle.UI.state = BattleUIState.SelectTargetEnemyAll;
+        BATTLE().UI.state = BattleUIState.SelectTargetEnemyAll;
       } else {
-        Global.battle.UI.selectedIndex = Global.battle.UI.prevEnemyTarget;
-        Global.battle.UI.state = BattleUIState.SelectTargetEnemy;
+        BATTLE().UI.selectedIndex = BATTLE().UI.prevEnemyTarget;
+        BATTLE().UI.state = BattleUIState.SelectTargetEnemy;
       }
     } else {
-      Global.battle.UI.menuState = BattleMenuState.Main;
+      BATTLE().UI.menuState = BattleMenuState.Main;
     }
   }
 };
@@ -529,10 +542,10 @@ uibattle.update = function*() {
   if (input.isKeyPressed(Key.Auto)) {
     var enableAuto = !Global.autoBattle;
     Global.autoBattle = enableAuto;
-    Global.battle.UI.autoAttack = enableAuto;
-    Global.battle.UI.menuState = BattleMenuState.Main;
-    if (!enableAuto && Global.battle.UI.state != BattleUIState.Wait) {
-      Global.battle.UI.state = BattleUIState.Wait;
+    BATTLE().UI.autoAttack = enableAuto;
+    BATTLE().UI.menuState = BattleMenuState.Main;
+    if (!enableAuto && BATTLE().UI.state != BattleUIState.Wait) {
+      BATTLE().UI.state = BattleUIState.Wait;
     }
   }
 
@@ -547,46 +560,46 @@ uibattle.update = function*() {
 
     if (input.isKeyPressed(Key.Menu) || input.isKeyPressed(Key.Search)) {
       Global.autoBattle = false;
-      Global.battle.UI.autoAttack = false;
+      BATTLE().UI.autoAttack = false;
       return end();
     }
 
-    if (Global.battle.phase == BattlePhase.SelectAction && !Global.battle.enemyCleared) {
+    if (BATTLE().phase == BattlePhase.SelectAction && !BATTLE().enemyCleared) {
       battle.playerCheckReady();
 
       for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-        if (Global.battle.player[i].state == FighterState.Com) {
+        if (BATTLE().player[i].state == FighterState.Com) {
           uibattle.playerReady(i);
           break;
         }
       }
 
-      if (Global.battle.UI.state != BattleUIState.Wait) {
-        var playerRole = Global.party[Global.battle.UI.curPlayerIndex].playerRole;
+      if (BATTLE().UI.state != BattleUIState.Wait) {
+        var playerRole = Global.party[BATTLE().UI.curPlayerIndex].playerRole;
         var actionDecided = false;
 
         if (GameData.playerRoles.HP[playerRole] == 0 &&
             Global.playerStatus[playerRole][PlayerStatus.Puppet]) {
-          Global.battle.UI.actionType = BattleActionType.Attack;
-          Global.battle.UI.objectID = 0;
+          BATTLE().UI.actionType = BattleActionType.Attack;
+          BATTLE().UI.objectID = 0;
           if (script.playerCanAttackAll(playerRole)) {
-            Global.battle.UI.selectedIndex = -1;
+            BATTLE().UI.selectedIndex = -1;
           } else {
             var puppetTarget = battle.selectAutoTarget();
-            Global.battle.UI.selectedIndex = (puppetTarget < 0 ? -1 : puppetTarget);
+            BATTLE().UI.selectedIndex = (puppetTarget < 0 ? -1 : puppetTarget);
           }
           actionDecided = true;
         } else if (GameData.playerRoles.HP[playerRole] == 0 ||
                    Global.playerStatus[playerRole][PlayerStatus.Sleep] != 0 ||
                    Global.playerStatus[playerRole][PlayerStatus.Paralyzed] != 0) {
-          Global.battle.UI.actionType = BattleActionType.Pass;
-          Global.battle.UI.objectID = 0;
-          Global.battle.UI.selectedIndex = -1;
+          BATTLE().UI.actionType = BattleActionType.Pass;
+          BATTLE().UI.objectID = 0;
+          BATTLE().UI.selectedIndex = -1;
           actionDecided = true;
         } else if (Global.playerStatus[playerRole][PlayerStatus.Confused] != 0) {
-          Global.battle.UI.actionType = BattleActionType.AttackMate;
-          Global.battle.UI.objectID = 0;
-          Global.battle.UI.selectedIndex = -1;
+          BATTLE().UI.actionType = BattleActionType.AttackMate;
+          BATTLE().UI.objectID = 0;
+          BATTLE().UI.selectedIndex = -1;
           actionDecided = true;
         } else {
           var magicObject = uibattle.pickAutoMagic(playerRole, 9999);
@@ -595,7 +608,7 @@ uibattle.update = function*() {
           if (magicObject !== 0) {
             var magicFlags = GameData.object[magicObject].magic.flags;
             if (magicFlags & MagicFlag.ApplyToAll) {
-              Global.battle.UI.selectedIndex = -1;
+              BATTLE().UI.selectedIndex = -1;
             } else {
               targetIndex = battle.selectAutoTarget();
               if (targetIndex < 0) {
@@ -607,18 +620,18 @@ uibattle.update = function*() {
           if (magicObject === 0) {
             targetIndex = battle.selectAutoTarget();
             if (targetIndex < 0) {
-              Global.battle.UI.actionType = BattleActionType.Pass;
-              Global.battle.UI.selectedIndex = -1;
+              BATTLE().UI.actionType = BattleActionType.Pass;
+              BATTLE().UI.selectedIndex = -1;
             } else {
-              Global.battle.UI.actionType = BattleActionType.Attack;
-              Global.battle.UI.selectedIndex = targetIndex;
+              BATTLE().UI.actionType = BattleActionType.Attack;
+              BATTLE().UI.selectedIndex = targetIndex;
             }
-            Global.battle.UI.objectID = 0;
+            BATTLE().UI.objectID = 0;
           } else {
-            Global.battle.UI.actionType = BattleActionType.Magic;
-            Global.battle.UI.objectID = magicObject;
+            BATTLE().UI.actionType = BattleActionType.Magic;
+            BATTLE().UI.objectID = magicObject;
             if (!(GameData.object[magicObject].magic.flags & MagicFlag.ApplyToAll)) {
-              Global.battle.UI.selectedIndex = targetIndex;
+              BATTLE().UI.selectedIndex = targetIndex;
             }
           }
           actionDecided = true;
@@ -633,7 +646,7 @@ uibattle.update = function*() {
     return end();
   }
 
-  if (Global.battle.phase == BattlePhase.PerformAction) {
+  if (BATTLE().phase == BattlePhase.PerformAction) {
     return end();
   }
 
@@ -642,7 +655,7 @@ uibattle.update = function*() {
     for (var i = 0; i <= Global.maxPartyMemberIndex; i++)
     {
       var playerRole = Global.party[i].playerRole;
-      var w = WORD(Global.battle.player[i].timeMeter);
+      var w = WORD(BATTLE().player[i].timeMeter);
       var j = uibattle.TIMEMETER_COLOR_DEFAULT;
 
       if (Global.playerStatus[playerRole][PlayerStatus.Sleep] != 0 ||
@@ -659,17 +672,17 @@ uibattle.update = function*() {
     return end();
   }
 
-  if (Global.battle.UI.state != BattleUIState.Wait) {
-    var playerRole = Global.party[Global.battle.UI.curPlayerIndex].playerRole;
+  if (BATTLE().UI.state != BattleUIState.Wait) {
+    var playerRole = Global.party[BATTLE().UI.curPlayerIndex].playerRole;
 
     if (GameData.playerRoles.HP[playerRole] == 0 &&
         Global.playerStatus[playerRole][PlayerStatus.Puppet]) {
-      Global.battle.UI.actionType = BattleActionType.Attack;
+      BATTLE().UI.actionType = BattleActionType.Attack;
 
-      if (script.playerCanAttackAll(Global.party[Global.battle.UI.curPlayerIndex].playerRole)) {
-        Global.battle.UI.selectedIndex = -1;
+      if (script.playerCanAttackAll(Global.party[BATTLE().UI.curPlayerIndex].playerRole)) {
+        BATTLE().UI.selectedIndex = -1;
       } else {
-        Global.battle.UI.selectedIndex = battle.selectAutoTarget();
+        BATTLE().UI.selectedIndex = battle.selectAutoTarget();
       }
 
       battle.commitAction(false);
@@ -680,24 +693,24 @@ uibattle.update = function*() {
     if (GameData.playerRoles.HP[playerRole] == 0 ||
         Global.playerStatus[playerRole][PlayerStatus.Sleep] != 0 ||
         Global.playerStatus[playerRole][PlayerStatus.Paralyzed] != 0) {
-      Global.battle.UI.actionType = BattleActionType.Pass;
+      BATTLE().UI.actionType = BattleActionType.Pass;
       battle.commitAction(false);
       return end(); // don't go further
     }
 
     if (Global.playerStatus[playerRole][PlayerStatus.Confused] != 0) {
-      Global.battle.UI.actionType = BattleActionType.AttackMate;
+      BATTLE().UI.actionType = BattleActionType.AttackMate;
       battle.commitAction(false);
       return end(); // don't go further
     }
 
     if (Global.autoBattle) {
-      Global.battle.UI.actionType = BattleActionType.Attack;
+      BATTLE().UI.actionType = BattleActionType.Attack;
 
-      if (script.playerCanAttackAll(Global.party[Global.battle.UI.curPlayerIndex].playerRole)) {
-        Global.battle.UI.selectedIndex = -1;
+      if (script.playerCanAttackAll(Global.party[BATTLE().UI.curPlayerIndex].playerRole)) {
+        BATTLE().UI.selectedIndex = -1;
       } else {
-        Global.battle.UI.selectedIndex = battle.selectAutoTarget();
+        BATTLE().UI.selectedIndex = battle.selectAutoTarget();
       }
       battle.commitAction(false);
       return end(); // don't go further
@@ -709,19 +722,19 @@ uibattle.update = function*() {
       i = SPRITENUM_BATTLE_ARROW_CURRENTPLAYER;
     }
 
-    var x = battle.playerPos[Global.maxPartyMemberIndex][Global.battle.UI.curPlayerIndex][0] - 8;
-    var y = battle.playerPos[Global.maxPartyMemberIndex][Global.battle.UI.curPlayerIndex][1] - 74;
+    var x = battle.playerPos[Global.maxPartyMemberIndex][BATTLE().UI.curPlayerIndex][0] - 8;
+    var y = battle.playerPos[Global.maxPartyMemberIndex][BATTLE().UI.curPlayerIndex][1] - 74;
 
     surface.blitRLE(ui.sprite.getFrame(i), PAL_XY(x, y));
   }
 
-  switch (Global.battle.UI.state) {
+  switch (BATTLE().UI.state) {
     case BattleUIState.Wait:
-      if (!Global.battle.enemyCleared) {
+      if (!BATTLE().enemyCleared) {
         battle.playerCheckReady();
 
         for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          if (Global.battle.player[i].state == FighterState.Com) {
+          if (BATTLE().player[i].state == FighterState.Com) {
             uibattle.playerReady(i);
             break;
           }
@@ -738,28 +751,28 @@ uibattle.update = function*() {
         { spriteNum: SPRITENUM_BATTLEICON_MISCMENU,  pos: PAL_XY(27, 170), action: BattleUIState.ActionMisc }
       ];
 
-      if (Global.battle.UI.menuState == BattleMenuState.Main) {
+      if (BATTLE().UI.menuState == BattleMenuState.Main) {
         if (input.dir == Direction.North) {
-          Global.battle.UI.selectedAction = 0;
+          BATTLE().UI.selectedAction = 0;
         } else if (input.dir == Direction.South) {
-           Global.battle.UI.selectedAction = 3;
+           BATTLE().UI.selectedAction = 3;
         } else if (input.dir == Direction.West) {
           if (uibattle.isActionValid(BattleUIState.ActionMagic)) {
-            Global.battle.UI.selectedAction = 1;
+            BATTLE().UI.selectedAction = 1;
           }
         } else if (input.dir == Direction.East) {
           if (uibattle.isActionValid(BattleUIState.ActionCoopMagic)) {
-            Global.battle.UI.selectedAction = 2;
+            BATTLE().UI.selectedAction = 2;
           }
         }
       }
 
-      if (!uibattle.isActionValid(items[Global.battle.UI.selectedAction].action)) {
-        Global.battle.UI.selectedAction = 0;
+      if (!uibattle.isActionValid(items[BATTLE().UI.selectedAction].action)) {
+        BATTLE().UI.selectedAction = 0;
       }
 
       for (var i = 0; i < 4; i++) {
-        if (Global.battle.UI.selectedAction == i) {
+        if (BATTLE().UI.selectedAction == i) {
            surface.blitRLE(ui.sprite.getFrame(items[i].spriteNum), items[i].pos);
         } else if (uibattle.isActionValid(items[i].action)) {
            surface.blitRLEMonoColor(ui.sprite.getFrame(items[i].spriteNum), items[i].pos, 0, -4);
@@ -768,126 +781,126 @@ uibattle.update = function*() {
         }
       }
 
-      switch (Global.battle.UI.menuState) {
+      switch (BATTLE().UI.menuState) {
         case BattleMenuState.Main:
           if (input.isKeyPressed(Key.Search)) {
-            switch (Global.battle.UI.selectedAction) {
+            switch (BATTLE().UI.selectedAction) {
               case 0:
                 // Attack
-                Global.battle.UI.actionType = BattleActionType.Attack;
-                if (script.playerCanAttackAll(Global.party[Global.battle.UI.curPlayerIndex].playerRole)) {
-                  Global.battle.UI.state = BattleUIState.SelectTargetEnemyAll;
+                BATTLE().UI.actionType = BattleActionType.Attack;
+                if (script.playerCanAttackAll(Global.party[BATTLE().UI.curPlayerIndex].playerRole)) {
+                  BATTLE().UI.state = BattleUIState.SelectTargetEnemyAll;
                 } else {
-                   Global.battle.UI.selectedIndex = Global.battle.UI.prevEnemyTarget;
-                   Global.battle.UI.state = BattleUIState.SelectTargetEnemy;
+                   BATTLE().UI.selectedIndex = BATTLE().UI.prevEnemyTarget;
+                   BATTLE().UI.state = BattleUIState.SelectTargetEnemy;
                 }
                 break;
 
               case 1:
                 // Magic
-                Global.battle.UI.menuState = BattleMenuState.MagicSelect;
+                BATTLE().UI.menuState = BattleMenuState.MagicSelect;
                 magicmenu.magicSelectMenuInit(playerRole, true, 0);
                 break;
 
               case 2:
                 // Cooperative magic
-                var w = Global.party[Global.battle.UI.curPlayerIndex].playerRole;
+                var w = Global.party[BATTLE().UI.curPlayerIndex].playerRole;
                 w = script.getPlayerCooperativeMagic(w);
 
-                Global.battle.UI.actionType = BattleActionType.CoopMagic;
-                Global.battle.UI.objectID = w;
+                BATTLE().UI.actionType = BattleActionType.CoopMagic;
+                BATTLE().UI.objectID = w;
 
                 if (GameData.object[w].magic.flags & MagicFlag.UsableToEnemy) {
                   if (GameData.object[w].magic.flags & MagicFlag.ApplyToAll) {
-                    Global.battle.UI.state = BattleUIState.SelectTargetEnemyAll;
+                    BATTLE().UI.state = BattleUIState.SelectTargetEnemyAll;
                   } else {
-                    Global.battle.UI.selectedIndex = Global.battle.UI.prevEnemyTarget;
-                    Global.battle.UI.state = BattleUIState.SelectTargetEnemy;
+                    BATTLE().UI.selectedIndex = BATTLE().UI.prevEnemyTarget;
+                    BATTLE().UI.state = BattleUIState.SelectTargetEnemy;
                   }
                 } else {
                   if (GameData.object[w].magic.flags & MagicFlag.ApplyToAll) {
-                    Global.battle.UI.state = BattleUIState.SelectTargetPlayerAll;
+                    BATTLE().UI.state = BattleUIState.SelectTargetPlayerAll;
                   } else {
-                    Global.battle.UI.selectedIndex = 0;
-                    Global.battle.UI.state = BattleUIState.SelectTargetPlayer;
+                    BATTLE().UI.selectedIndex = 0;
+                    BATTLE().UI.state = BattleUIState.SelectTargetPlayer;
                   }
                 }
                 break;
 
               case 3:
                 // Misc menu
-                Global.battle.UI.menuState = BattleMenuState.Misc;
+                BATTLE().UI.menuState = BattleMenuState.Misc;
                 uibattle.curMiscMenuItem = 0;
                 break;
             }
           } else if (input.isKeyPressed(Key.Defend)) {
-            Global.battle.UI.actionType = BattleActionType.Defend;
+            BATTLE().UI.actionType = BattleActionType.Defend;
             battle.commitAction(false);
           } else if (input.isKeyPressed(Key.Force)) {
-            var w = uibattle.pickAutoMagic(Global.party[Global.battle.UI.curPlayerIndex].playerRole, 60);
+            var w = uibattle.pickAutoMagic(Global.party[BATTLE().UI.curPlayerIndex].playerRole, 60);
 
             if (w == 0) {
-              Global.battle.UI.actionType = BattleActionType.Attack;
+              BATTLE().UI.actionType = BattleActionType.Attack;
 
-              if (script.playerCanAttackAll(Global.party[Global.battle.UI.curPlayerIndex].playerRole)) {
-                Global.battle.UI.selectedIndex = -1;
+              if (script.playerCanAttackAll(Global.party[BATTLE().UI.curPlayerIndex].playerRole)) {
+                BATTLE().UI.selectedIndex = -1;
               } else {
-                Global.battle.UI.selectedIndex = battle.selectAutoTarget();
+                BATTLE().UI.selectedIndex = battle.selectAutoTarget();
               }
             } else {
-              Global.battle.UI.actionType = BattleActionType.Magic;
-              Global.battle.UI.objectID = w;
+              BATTLE().UI.actionType = BattleActionType.Magic;
+              BATTLE().UI.objectID = w;
 
               if (GameData.object[w].magic.flags & MagicFlag.ApplyToAll) {
-                 Global.battle.UI.selectedIndex = -1;
+                 BATTLE().UI.selectedIndex = -1;
               } else {
-                 Global.battle.UI.selectedIndex = battle.selectAutoTarget();
+                 BATTLE().UI.selectedIndex = battle.selectAutoTarget();
               }
             }
 
             battle.commitAction(false);
           } else if (input.isKeyPressed(Key.Flee)) {
-            Global.battle.UI.actionType = BattleActionType.Flee;
+            BATTLE().UI.actionType = BattleActionType.Flee;
             battle.commitAction(false);
           } else if (input.isKeyPressed(Key.UseItem)) {
-            Global.battle.UI.menuState = BattleMenuState.UseItemSelect;
+            BATTLE().UI.menuState = BattleMenuState.UseItemSelect;
             itemmenu.itemSelectMenuInit(ItemFlag.Usable);
           } else if (input.isKeyPressed(Key.ThrowItem)) {
-            Global.battle.UI.menuState = BattleMenuState.ThrowItemSelect;
+            BATTLE().UI.menuState = BattleMenuState.ThrowItemSelect;
             itemmenu.itemSelectMenuInit(ItemFlag.Throwable);
           } else if (input.isKeyPressed(Key.Repeat)) {
             battle.commitAction(true);
           } else if (input.isKeyPressed(Key.Menu)) {
-            Global.battle.player[Global.battle.UI.curPlayerIndex].state = FighterState.Wait;
-            Global.battle.UI.state = BattleUIState.Wait;
+            BATTLE().player[BATTLE().UI.curPlayerIndex].state = FighterState.Wait;
+            BATTLE().UI.state = BattleUIState.Wait;
 
-            if (Global.battle.UI.curPlayerIndex > 0) {
+            if (BATTLE().UI.curPlayerIndex > 0) {
               // Revert to the previous player
               do {
-                Global.battle.player[--Global.battle.UI.curPlayerIndex].state = FighterState.Wait;
+                BATTLE().player[--BATTLE().UI.curPlayerIndex].state = FighterState.Wait;
 
-                if (Global.battle.player[Global.battle.UI.curPlayerIndex].action.ActionType == BattleActionType.ThrowItem) {
+                if (BATTLE().player[BATTLE().UI.curPlayerIndex].action.ActionType == BattleActionType.ThrowItem) {
                   for (i = 0; i < Const.MAX_INVENTORY; i++) {
-                    if (Global.inventory[i].item == Global.battle.player[Global.battle.UI.curPlayerIndex].action.actionID) {
+                    if (Global.inventory[i].item == BATTLE().player[BATTLE().UI.curPlayerIndex].action.actionID) {
                       Global.inventory[i].amountInUse--;
                       break;
                     }
                   }
-                } else if (Global.battle.player[Global.battle.UI.curPlayerIndex].action.ActionType == BattleActionType.UseItem) {
-                  if (GameData.object[Global.battle.player[Global.battle.UI.curPlayerIndex].action.actionID].item.flags & ItemFlag.Consuming) {
+                } else if (BATTLE().player[BATTLE().UI.curPlayerIndex].action.ActionType == BattleActionType.UseItem) {
+                  if (GameData.object[BATTLE().player[BATTLE().UI.curPlayerIndex].action.actionID].item.flags & ItemFlag.Consuming) {
                     for (i = 0; i < Const.MAX_INVENTORY; i++) {
-                      if (Global.inventory[i].item == Global.battle.player[Global.battle.UI.curPlayerIndex].action.actionID) {
+                      if (Global.inventory[i].item == BATTLE().player[BATTLE().UI.curPlayerIndex].action.actionID) {
                         Global.inventory[i].amountInUse--;
                         break;
                       }
                     }
                   }
                 }
-              } while (Global.battle.UI.curPlayerIndex > 0 &&
-                 (GameData.playerRoles.HP[Global.party[Global.battle.UI.curPlayerIndex].playerRole] == 0 ||
-                  Global.playerStatus[Global.party[Global.battle.UI.curPlayerIndex].playerRole][PlayerStatus.Confused] > 0 ||
-                  Global.playerStatus[Global.party[Global.battle.UI.curPlayerIndex].playerRole][PlayerStatus.Sleep] > 0 ||
-                  Global.playerStatus[Global.party[Global.battle.UI.curPlayerIndex].playerRole][PlayerStatus.Paralyzed] > 0));
+              } while (BATTLE().UI.curPlayerIndex > 0 &&
+                 (GameData.playerRoles.HP[Global.party[BATTLE().UI.curPlayerIndex].playerRole] == 0 ||
+                  Global.playerStatus[Global.party[BATTLE().UI.curPlayerIndex].playerRole][PlayerStatus.Confused] > 0 ||
+                  Global.playerStatus[Global.party[BATTLE().UI.curPlayerIndex].playerRole][PlayerStatus.Sleep] > 0 ||
+                  Global.playerStatus[Global.party[BATTLE().UI.curPlayerIndex].playerRole][PlayerStatus.Paralyzed] > 0));
             }
           }
           break;
@@ -896,25 +909,25 @@ uibattle.update = function*() {
           var w = magicmenu.magicSelectMenuUpdate();
 
           if (w != 0xFFFF) {
-            Global.battle.UI.menuState = BattleMenuState.Main;
+            BATTLE().UI.menuState = BattleMenuState.Main;
 
             if (w != 0) {
-              Global.battle.UI.actionType = BattleActionType.Magic;
-              Global.battle.UI.objectID = w;
+              BATTLE().UI.actionType = BattleActionType.Magic;
+              BATTLE().UI.objectID = w;
 
               if (GameData.object[w].magic.flags & MagicFlag.UsableToEnemy) {
                 if (GameData.object[w].magic.flags & MagicFlag.ApplyToAll) {
-                  Global.battle.UI.state = BattleUIState.SelectTargetEnemyAll;
+                  BATTLE().UI.state = BattleUIState.SelectTargetEnemyAll;
                 } else {
-                  Global.battle.UI.selectedIndex = Global.battle.UI.prevEnemyTarget;
-                  Global.battle.UI.state = BattleUIState.SelectTargetEnemy;
+                  BATTLE().UI.selectedIndex = BATTLE().UI.prevEnemyTarget;
+                  BATTLE().UI.state = BattleUIState.SelectTargetEnemy;
                 }
               } else {
                 if (GameData.object[w].magic.flags & MagicFlag.ApplyToAll) {
-                  Global.battle.UI.state = BattleUIState.SelectTargetPlayerAll;
+                  BATTLE().UI.state = BattleUIState.SelectTargetPlayerAll;
                 } else {
-                  Global.battle.UI.selectedIndex = 0;
-                  Global.battle.UI.state = BattleUIState.SelectTargetPlayer;
+                  BATTLE().UI.selectedIndex = 0;
+                  BATTLE().UI.state = BattleUIState.SelectTargetPlayer;
                 }
               }
             }
@@ -933,29 +946,29 @@ uibattle.update = function*() {
           var w = uibattle.miscMenuUpdate();
 
           if (w != 0xFFFF) {
-            Global.battle.UI.menuState = BattleMenuState.Main;
+            BATTLE().UI.menuState = BattleMenuState.Main;
 
             switch (w) {
               case 2: // item
-                Global.battle.UI.menuState = BattleMenuState.MiscItemSubMenu;
+                BATTLE().UI.menuState = BattleMenuState.MiscItemSubMenu;
                 uibattle.curSubMenuItem = 0;
                 break;
 
               case 3: // defend
-                Global.battle.UI.actionType = BattleActionType.Defend;
+                BATTLE().UI.actionType = BattleActionType.Defend;
                 battle.commitAction(false);
                 break;
               case 1: // auto
                 var enable = !Global.autoBattle;
                 Global.autoBattle = enable;
-                Global.battle.UI.autoAttack = enable;
-                if (!enable && Global.battle.UI.state != BattleUIState.Wait) {
-                  Global.battle.UI.state = BattleUIState.Wait;
+                BATTLE().UI.autoAttack = enable;
+                if (!enable && BATTLE().UI.state != BattleUIState.Wait) {
+                  BATTLE().UI.state = BattleUIState.Wait;
                 }
                 break;
 
               case 4: // flee
-                Global.battle.UI.actionType = BattleActionType.Flee;
+                BATTLE().UI.actionType = BattleActionType.Flee;
                 battle.commitAction(false);
                 break;
 
@@ -970,16 +983,16 @@ uibattle.update = function*() {
           var w = uibattle.miscItemSubMenuUpdate();
 
           if (w != 0xFFFF) {
-            Global.battle.UI.menuState = BattleMenuState.Main;
+            BATTLE().UI.menuState = BattleMenuState.Main;
 
             switch (w) {
               case 1: // use
-                Global.battle.UI.menuState = BattleMenuState.UseItemSelect;
+                BATTLE().UI.menuState = BattleMenuState.UseItemSelect;
                 itemmenu.itemSelectMenuInit(ItemFlag.Usable);
                 break;
 
               case 2: // throw
-                Global.battle.UI.menuState = BattleMenuState.ThrowItemSelect;
+                BATTLE().UI.menuState = BattleMenuState.ThrowItemSelect;
                 itemmenu.itemSelectMenuInit(ItemFlag.Throwable);
                 break;
             }
@@ -992,47 +1005,47 @@ uibattle.update = function*() {
       var maxEnemyIndex = -1;
       var enemyCount = 0;
 
-      for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-        if (Global.battle.enemy[i].objectID != 0) {
+      for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+        if (BATTLE().enemy[i].objectID != 0) {
           maxEnemyIndex = i;
           enemyCount++;
         }
       }
 
       if (maxEnemyIndex == -1) {
-        Global.battle.UI.state = BattleUIState.SelectMove;
+        BATTLE().UI.state = BattleUIState.SelectMove;
         break;
       }
 
-      if (Global.battle.UI.actionType == BattleActionType.CoopMagic) {
+      if (BATTLE().UI.actionType == BattleActionType.CoopMagic) {
         if (!uibattle.isActionValid(BattleActionType.CoopMagic)) {
-          Global.battle.UI.state = BattleUIState.SelectMove;
+          BATTLE().UI.state = BattleUIState.SelectMove;
           break;
         }
       }
 
       // Don't bother selecting when only 1 enemy left
       if (enemyCount == 1) {
-        Global.battle.UI.prevEnemyTarget = WORD(maxEnemyIndex);
+        BATTLE().UI.prevEnemyTarget = WORD(maxEnemyIndex);
         battle.commitAction(false);
         break;
       }
-      if (Global.battle.UI.selectedIndex > maxEnemyIndex) {
-        Global.battle.UI.selectedIndex = maxEnemyIndex;
+      if (BATTLE().UI.selectedIndex > maxEnemyIndex) {
+        BATTLE().UI.selectedIndex = maxEnemyIndex;
       }
 
       for (var i = 0; i <= maxEnemyIndex; i++) {
-        if (Global.battle.enemy[Global.battle.UI.selectedIndex].objectID != 0) {
+        if (BATTLE().enemy[BATTLE().UI.selectedIndex].objectID != 0) {
           break;
         }
-        Global.battle.UI.selectedIndex++;
-        Global.battle.UI.selectedIndex %= (maxEnemyIndex + 1);
+        BATTLE().UI.selectedIndex++;
+        BATTLE().UI.selectedIndex %= (maxEnemyIndex + 1);
       }
 
       // Highlight the selected enemy
       if (uibattle.frame & 1) {
-        var i = Global.battle.UI.selectedIndex;
-        var enemy = Global.battle.enemy[i];
+        var i = BATTLE().UI.selectedIndex;
+        var enemy = BATTLE().enemy[i];
 
         var x = PAL_X(enemy.pos);
         var y = PAL_Y(enemy.pos);
@@ -1045,24 +1058,24 @@ uibattle.update = function*() {
       }
 
       if (input.isKeyPressed(Key.Menu)) {
-        Global.battle.UI.state = BattleUIState.SelectMove;
+        BATTLE().UI.state = BattleUIState.SelectMove;
       } else if (input.isKeyPressed(Key.Search)) {
-        Global.battle.UI.prevEnemyTarget = Global.battle.UI.selectedIndex;
+        BATTLE().UI.prevEnemyTarget = BATTLE().UI.selectedIndex;
         battle.commitAction(false);
       } else if (input.isKeyPressed(Key.Left | Key.Down)) {
-        if (Global.battle.UI.selectedIndex != 0) {
-          Global.battle.UI.selectedIndex--;
-          while (Global.battle.UI.selectedIndex != 0 &&
-                 Global.battle.enemy[Global.battle.UI.selectedIndex].objectID == 0) {
-            Global.battle.UI.selectedIndex--;
+        if (BATTLE().UI.selectedIndex != 0) {
+          BATTLE().UI.selectedIndex--;
+          while (BATTLE().UI.selectedIndex != 0 &&
+                 BATTLE().enemy[BATTLE().UI.selectedIndex].objectID == 0) {
+            BATTLE().UI.selectedIndex--;
           }
         }
       } else if (input.isKeyPressed(Key.Right | Key.Up)) {
-        if (Global.battle.UI.selectedIndex < maxEnemyIndex) {
-          Global.battle.UI.selectedIndex++;
-          while (Global.battle.UI.selectedIndex < maxEnemyIndex &&
-                 Global.battle.enemy[Global.battle.UI.selectedIndex].objectID == 0) {
-            Global.battle.UI.selectedIndex++;
+        if (BATTLE().UI.selectedIndex < maxEnemyIndex) {
+          BATTLE().UI.selectedIndex++;
+          while (BATTLE().UI.selectedIndex < maxEnemyIndex &&
+                 BATTLE().enemy[BATTLE().UI.selectedIndex].objectID == 0) {
+            BATTLE().UI.selectedIndex++;
           }
         }
       }
@@ -1071,7 +1084,7 @@ uibattle.update = function*() {
     case BattleUIState.SelectTargetPlayer:
       // Don't bother selecting when only 1 player is in the party
       if (Global.maxPartyMemberIndex == 0) {
-        Global.battle.UI.selectedIndex = 0;
+        BATTLE().UI.selectedIndex = 0;
         battle.commitAction(false);
       }
 
@@ -1081,26 +1094,26 @@ uibattle.update = function*() {
       }
 
       // Draw arrows on the selected player
-      var x = battle.playerPos[Global.maxPartyMemberIndex][Global.battle.UI.selectedIndex][0] - 8;
-      var y = battle.playerPos[Global.maxPartyMemberIndex][Global.battle.UI.selectedIndex][1] - 67;
+      var x = battle.playerPos[Global.maxPartyMemberIndex][BATTLE().UI.selectedIndex][0] - 8;
+      var y = battle.playerPos[Global.maxPartyMemberIndex][BATTLE().UI.selectedIndex][1] - 67;
 
       surface.blitRLE(ui.sprite.getFrame(j), PAL_XY(x, y));
 
       if (input.isKeyPressed(Key.Menu)) {
-         Global.battle.UI.state = BattleUIState.SelectMove;
+         BATTLE().UI.state = BattleUIState.SelectMove;
       } else if (input.isKeyPressed(Key.Search)) {
          battle.commitAction(false);
       } else if (input.isKeyPressed(Key.Left | Key.Down)) {
-        if (Global.battle.UI.selectedIndex != 0) {
-          Global.battle.UI.selectedIndex--;
+        if (BATTLE().UI.selectedIndex != 0) {
+          BATTLE().UI.selectedIndex--;
         } else {
-          Global.battle.UI.selectedIndex = Global.maxPartyMemberIndex;
+          BATTLE().UI.selectedIndex = Global.maxPartyMemberIndex;
         }
       } else if (input.isKeyPressed(Key.Right | Key.Up)) {
-        if (Global.battle.UI.selectedIndex < Global.maxPartyMemberIndex) {
-          Global.battle.UI.selectedIndex++;
+        if (BATTLE().UI.selectedIndex < Global.maxPartyMemberIndex) {
+          BATTLE().UI.selectedIndex++;
         } else {
-          Global.battle.UI.selectedIndex = 0;
+          BATTLE().UI.selectedIndex = 0;
         }
       }
 
@@ -1108,19 +1121,19 @@ uibattle.update = function*() {
 
     case BattleUIState.SelectTargetEnemyAll:
       // Don't bother selecting
-      Global.battle.UI.selectedIndex = -1;
+      BATTLE().UI.selectedIndex = -1;
       battle.commitAction(false);
-      if (Global.battle.UI.actionType == BattleActionType.CoopMagic) {
+      if (BATTLE().UI.actionType == BattleActionType.CoopMagic) {
         if (!uibattle.isActionValid(BattleActionType.CoopMagic)) {
-          Global.battle.UI.state = BattleUIState.SelectMove;
+          BATTLE().UI.state = BattleUIState.SelectMove;
           break;
         }
       }
 
       if (uibattle.frame & 1) {
         // Highlight all enemies
-        for (var i = Global.battle.maxEnemyIndex; i >= 0; i--) {
-          var enemy = Global.battle.enemy[i];
+        for (var i = BATTLE().maxEnemyIndex; i >= 0; i--) {
+          var enemy = BATTLE().enemy[i];
           if (enemy.objectID == 0) {
             continue;
           }
@@ -1135,16 +1148,16 @@ uibattle.update = function*() {
           surface.blitRLEWithColorShift(frame, PAL_XY(x, y), 7);
         }
       } if (input.isKeyPressed(Key.Menu)) {
-        Global.battle.UI.state = BattleUIState.SelectMove;
+        BATTLE().UI.state = BattleUIState.SelectMove;
       } else if (input.isKeyPressed(Key.Search)) {
-        Global.battle.UI.selectedIndex = -1;
+        BATTLE().UI.selectedIndex = -1;
         battle.commitAction(false);
       }
       break;
 
     case BattleUIState.SelectTargetPlayerAll:
       // Don't bother selecting
-      Global.battle.UI.selectedIndex = -1;
+      BATTLE().UI.selectedIndex = -1;
       battle.commitAction(false);
       break;
   }
@@ -1155,16 +1168,16 @@ uibattle.update = function*() {
     // Show the text message if there is one.
     // Draw the numbers
     for (var i = 0; i < BATTLEUI_MAX_SHOWNUM; i++) {
-      if (Global.battle.UI.showNum[i].num > 0) {
-        if ((hrtime() - Global.battle.UI.showNum[i].time) / BattleFrameTime > 10) {
-          Global.battle.UI.showNum[i].num = 0;
+      if (BATTLE().UI.showNum[i].num > 0) {
+        if ((hrtime() - BATTLE().UI.showNum[i].time) / BattleFrameTime > 10) {
+          BATTLE().UI.showNum[i].num = 0;
         } else {
-          var x = PAL_X(Global.battle.UI.showNum[i].pos);
-          var y = PAL_Y(Global.battle.UI.showNum[i].pos) - ~~((hrtime() - Global.battle.UI.showNum[i].time) / BattleFrameTime);
+          var x = PAL_X(BATTLE().UI.showNum[i].pos);
+          var y = PAL_Y(BATTLE().UI.showNum[i].pos) - ~~((hrtime() - BATTLE().UI.showNum[i].time) / BattleFrameTime);
           ui.drawNumber(
-            Global.battle.UI.showNum[i].num, 5,
+            BATTLE().UI.showNum[i].num, 5,
             PAL_XY(x, y),
-            Global.battle.UI.showNum[i].color, NumAlign.Right
+            BATTLE().UI.showNum[i].color, NumAlign.Right
           );
         }
       }
@@ -1181,7 +1194,7 @@ uibattle.update = function*() {
  * @param  {NumColor} color color of the number.
  */
 uibattle.showNum = function(num, pos, color) {
-  var ss = Global.battle.UI.showNum;
+  var ss = BATTLE().UI.showNum;
   for (var i = 0; i < ss.length; ++i) {
     var sn = ss[i];
     if (sn.num == 0) {

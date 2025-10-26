@@ -1,9 +1,12 @@
 import scene from './scene';
 import input from './input';
 import script from '../../services/script-service.js';
-import battle from '../../services/battle-service.js';
+import battleModule from './battle';
+import battleService from '../../services/battle-service.js';
 import ending from './ending';
 import stateService from '../../services/state-service.js';
+
+battleService.bindModule(battleModule);
 
 log.trace('play module load');
 
@@ -17,7 +20,7 @@ play.init = function*(surf) {
   global.play = play;
   surface = surf;
   yield script.init(surf);
-  yield battle.init(surf);
+  yield battleService.init(surf);
   yield ending.init(surf);
 };
 

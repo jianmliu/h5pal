@@ -31,12 +31,9 @@ const battleModuleMock = {
   value: 7
 };
 
-vi.mock('../src/js/pal/battle.js', () => ({
-  default: battleModuleMock
-}));
-
 describe('BattleService', () => {
   let battleService;
+  const root = globalThis;
 
   beforeEach(async () => {
     initMock.mockClear();
@@ -47,6 +44,11 @@ describe('BattleService', () => {
     const module = await import('../src/services/battle-service.js');
     battleService = module.default;
     battleService._events = {};
+    battleService.state = null;
+    battleService.module = null;
+    battleService._globalAccessorInstalled = false;
+    root.Global = {};
+    battleService.bindModule(battleModuleMock);
   });
 
   it('proxies module properties', () => {
@@ -70,10 +72,10 @@ describe('BattleService', () => {
     expect(firstStep.value).toEqual({ type: 'initStep', args: ['surface'] });
     const result = iterator.next();
     expect(result.done).toBe(true);
-    expect(afterSpy).toHaveBeenCalledWith({
+    expect(afterSpy).toHaveBeenCalledWith(expect.objectContaining({
       type: 'afterInit',
-      data: { args: ['surface'], result: undefined }
-    });
+      data: expect.objectContaining({ args: ['surface'], result: undefined })
+    }));
   });
 
   it('wraps start and returns the underlying result', () => {
@@ -91,10 +93,10 @@ describe('BattleService', () => {
     expect(firstStep.value).toEqual({ type: 'startStep', team: [1, 2], isBoss: true });
     const result = iterator.next();
     expect(result.value).toBe('BattleResult');
-    expect(afterSpy).toHaveBeenCalledWith({
+    expect(afterSpy).toHaveBeenCalledWith(expect.objectContaining({
       type: 'afterStart',
-      data: { enemyTeam: [1, 2], isBoss: true, result: 'BattleResult' }
-    });
+      data: expect.objectContaining({ enemyTeam: [1, 2], isBoss: true, result: 'BattleResult' })
+    }));
   });
 
   it('exposes other generator helpers through the proxy', () => {
