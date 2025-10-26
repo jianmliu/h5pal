@@ -77,6 +77,7 @@ var ui = null;
 var itemmenu = null;
 var magicmenu = null;
 var battleService = battleServiceDefault;
+var battleServiceSubscription = null;
 
 function BATTLE() {
   var state = battleService.getState();
@@ -97,6 +98,18 @@ uibattle.init = function*(surf, _battle, _ui) {
   magicmenu = ui.magicmenu;
   global.uibattle = ui.uibattle = uibattle;
   surface = surf;
+
+  if (battleService && typeof battleService.bindModule === 'function') {
+    battleService.bindModule(_battle);
+  }
+  if (battleService && typeof battleService.on === 'function') {
+    const handler = function(event) {
+      uibattle._pendingStateMutation = event;
+    };
+    battleService.on('stateMutated', handler);
+    battleService.on('stateChanged', handler);
+    battleServiceSubscription = handler;
+  }
 };
 
 var ShowNum = uibattle.ShowNum = function() {
@@ -539,6 +552,10 @@ uibattle.pickAutoMagic = function(playerRole, randomRange) {
  */
 uibattle.update = function*() {
   uibattle.frame++;
+  if (uibattle._pendingStateMutation) {
+    uibattle.lastStateMutation = uibattle._pendingStateMutation;
+    uibattle._pendingStateMutation = null;
+  }
   if (input.isKeyPressed(Key.Auto)) {
     var enableAuto = !Global.autoBattle;
     Global.autoBattle = enableAuto;

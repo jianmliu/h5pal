@@ -16,8 +16,10 @@ class BattleService extends EventBus {
   constructor() {
     super();
     this.module = null;
+    this.rawState = null;
     this.state = null;
     this._globalAccessorInstalled = false;
+    this._proxyCache = new WeakMap();
   }
 
   bindModule(moduleRef) {
@@ -33,10 +35,70 @@ class BattleService extends EventBus {
 
   _syncStateFromGlobal() {
     const gameGlobal = getGameGlobal();
-    if (gameGlobal && gameGlobal.battle && this.state !== gameGlobal.battle) {
+    if (gameGlobal && gameGlobal.battle && this.rawState !== gameGlobal.battle.__raw__) {
+      this.rawState = gameGlobal.battle.__raw__ || gameGlobal.battle;
       this.state = gameGlobal.battle;
     }
     return this.state;
+  }
+
+  _wrapState(target) {
+    if (!target || typeof target !== 'object') {
+      return target;
+    }
+    const service = this;
+    const cache = new WeakMap();
+
+    const isTypedArray = (value) => ArrayBuffer.isView(value) && !(value instanceof DataView);
+
+    function wrap(obj, path) {
+      if (!obj || typeof obj !== 'object' || isTypedArray(obj)) {
+        return obj;
+      }
+      if (cache.has(obj)) {
+        return cache.get(obj);
+      }
+      const proxy = new Proxy(obj, {
+        get(t, prop, receiver) {
+          if (prop === '__raw__') {
+            return obj;
+          }
+          const value = Reflect.get(t, prop, receiver);
+          if (typeof value === 'function') {
+            return value.bind(t);
+          }
+          return wrap(value, path.concat(prop));
+        },
+        set(t, prop, value, receiver) {
+          const previous = t[prop];
+          const result = Reflect.set(t, prop, value, receiver);
+          service.fire('stateMutated', {
+            path: path.concat(prop),
+            value,
+            previous,
+            state: service.state
+          });
+          return result;
+        },
+        deleteProperty(t, prop) {
+          const previous = t[prop];
+          const result = Reflect.deleteProperty(t, prop);
+          service.fire('stateMutated', {
+            path: path.concat(prop),
+            value: undefined,
+            previous,
+            state: service.state,
+            deleted: true
+          });
+          return result;
+        }
+      });
+      cache.set(obj, proxy);
+      return proxy;
+    }
+
+    this._proxyCache = cache;
+    return wrap(target, []);
   }
 
   _installGlobalAccessor() {
@@ -55,14 +117,16 @@ class BattleService extends EventBus {
       },
       set(nextState) {
         const previous = service.state || backingValue || null;
-        backingValue = nextState;
-        service.state = nextState;
-        service.fire('stateChanged', { previous, state: nextState });
+        service.rawState = nextState;
+        service.state = service._wrapState(nextState);
+        backingValue = service.state;
+        service.fire('stateChanged', { previous, state: service.state });
       }
     });
 
     this._globalAccessorInstalled = true;
     if (backingValue && !this.state) {
+      this.rawState = backingValue.__raw__ || backingValue;
       this.state = backingValue;
     }
   }
@@ -72,24 +136,41 @@ class BattleService extends EventBus {
   }
 
   getState() {
-    return this._syncStateFromGlobal();
+    if (this.state) {
+      return this.state;
+    }
+    if (this.rawState) {
+      this.state = this._wrapState(this.rawState);
+      return this.state;
+    }
+    this._syncStateFromGlobal();
+    if (this.state) {
+      return this.state;
+    }
+    return null;
   }
 
   replaceState(nextState) {
     const gameGlobal = getGameGlobal();
     const previous = this.getState();
-    this.state = nextState;
     if (gameGlobal) {
-      if (this._globalAccessorInstalled) {
-        gameGlobal.battle = nextState;
-      } else {
-        gameGlobal.battle = nextState;
-        this.state = gameGlobal.battle;
+      if (!this._globalAccessorInstalled) {
+        this._installGlobalAccessor();
       }
-    } else {
-      this.fire('stateChanged', { previous, state: nextState });
+      const descriptor = Object.getOwnPropertyDescriptor(gameGlobal, 'battle');
+      if (descriptor && typeof descriptor.set === 'function') {
+        descriptor.set.call(gameGlobal, nextState);
+        return this.state;
+      }
+      this.rawState = nextState;
+      this.state = this._wrapState(nextState);
+      gameGlobal.battle = this.state;
+      return this.state;
     }
-    return nextState;
+    this.rawState = nextState;
+    this.state = this._wrapState(nextState);
+    this.fire('stateChanged', { previous, state: this.state });
+    return this.state;
   }
 
   updateState(updater) {

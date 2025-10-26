@@ -112,4 +112,21 @@ describe('BattleService', () => {
     expect(enemyIterator.next().value).toEqual({ type: 'enemyEscapeStep' });
     enemyIterator.next();
   });
+
+  it('emits stateMutated events for deep property writes', () => {
+    battleService.replaceState({ foo: { bar: 1 } });
+    const spy = vi.fn();
+    battleService.on('stateMutated', spy);
+    const state = battleService.getState();
+    state.foo.bar = 2;
+    expect(spy).toHaveBeenCalledTimes(1);
+    const event = spy.mock.calls[0][0];
+    expect(event.type).toBe('stateMutated');
+    expect(event.data).toEqual(expect.objectContaining({
+      path: ['foo', 'bar'],
+      value: 2,
+      previous: 1
+    }));
+    battleService.off && battleService.off('stateMutated', spy);
+  });
 });
