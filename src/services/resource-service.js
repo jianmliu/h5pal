@@ -9,7 +9,10 @@ class ResourceService {
   }
 
   async loadMKF(...names) {
-    await ajax.loadMKF(names);
+    const missing = names.filter(name => !this.mkfCache.has(name) && !ajax.MKF[name]);
+    if (missing.length) {
+      await ajax.loadMKF(missing);
+    }
     const mkfObjects = names.map((name) => {
       const mkf = ajax.MKF[name];
       this.mkfCache.set(name, mkf);

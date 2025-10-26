@@ -40,13 +40,12 @@ describe('ScriptService', () => {
     scriptService.on('afterRunTriggerScript', afterSpy);
 
     const iterator = scriptService.runTriggerScript(5, 3);
+    const firstStep = iterator.next();
     expect(beforeSpy).toHaveBeenCalledTimes(1);
     expect(beforeSpy.mock.calls[0][0]).toEqual({
       type: 'beforeRunTriggerScript',
       data: { scriptEntry: 5, eventObjectID: 3 }
     });
-
-    const firstStep = iterator.next();
     expect(firstStep.value).toBe('inner-step');
     const result = iterator.next();
     expect(result.done).toBe(true);
