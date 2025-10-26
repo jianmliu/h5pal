@@ -9,6 +9,7 @@ import RLE from './rle';
 import input from './input';
 import music from './music';
 import resourceService from '../../services/resource-service.js';
+import stateService from '../../services/state-service.js';
 
 function getGlobalObject() {
   if (typeof global !== 'undefined') {

@@ -228,6 +228,273 @@ class BattleService extends EventBus {
     const state = this.getState();
     this.fire('stateChanged', { previous: state, state });
   }
+
+  withState(callback, options = {}) {
+    const state = this.getState();
+    if (!state || typeof callback !== 'function') {
+      return null;
+    }
+    const result = callback(state);
+    if (options.emit !== false) {
+      this.emitStateChanged();
+    }
+    return result;
+  }
+
+  set(path, value, options = {}) {
+    const state = this.getState();
+    if (!state) return null;
+    const segments = Array.isArray(path) ? path : [path];
+    let target = state;
+    for (let i = 0; i < segments.length - 1; i++) {
+      if (target == null) return null;
+      target = target[segments[i]];
+    }
+    if (target == null) return null;
+    const key = segments[segments.length - 1];
+    const nextValue = typeof value === 'function' ? value(target[key]) : value;
+    target[key] = nextValue;
+    if (options.emit !== false) {
+      this.emitStateChanged();
+    }
+    return target[key];
+  }
+
+  update(path, updater, options = {}) {
+    return this.set(path, updater, options);
+  }
+
+  getPlayer(index) {
+    const state = this.getState();
+    return state && state.player ? state.player[index] : null;
+  }
+
+  updatePlayer(index, updater, options) {
+    return this.update(['player', index], updater, options);
+  }
+
+  setPlayer(index, patch, options) {
+    return this.updatePlayer(index, function(player) {
+      if (!player) return player;
+      if (typeof patch === 'function') {
+        return patch(player) || player;
+      }
+      Object.assign(player, patch);
+      return player;
+    }, options);
+  }
+
+  getEnemy(index) {
+    const state = this.getState();
+    return state && state.enemy ? state.enemy[index] : null;
+  }
+
+  updateEnemy(index, updater, options) {
+    return this.update(['enemy', index], updater, options);
+  }
+
+  setEnemy(index, patch, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy) return enemy;
+      if (typeof patch === 'function') {
+        return patch(enemy) || enemy;
+      }
+      Object.assign(enemy, patch);
+      return enemy;
+    }, options);
+  }
+
+  getUI() {
+    const state = this.getState();
+    return state ? state.UI : null;
+  }
+
+  updateUI(updater, options) {
+    return this.update(['UI'], updater, options);
+  }
+
+  setUI(patch, options) {
+    return this.updateUI(function(uiState) {
+      if (!uiState) return uiState;
+      if (typeof patch === 'function') {
+        return patch(uiState) || uiState;
+      }
+      Object.assign(uiState, patch);
+      return uiState;
+    }, options);
+  }
+
+  getActionQueue() {
+    const state = this.getState();
+    return state ? state.actionQueue : null;
+  }
+
+  updateActionQueue(index, updater, options) {
+    if (typeof index === 'function' && updater === undefined) {
+      return this.update(['actionQueue'], index, options);
+    }
+    return this.update(['actionQueue', index], updater, options);
+  }
+
+  setActionQueue(index, patch, options) {
+    return this.updateActionQueue(index, function(queueItem) {
+      if (!queueItem) return queueItem;
+      if (typeof patch === 'function') {
+        return patch(queueItem) || queueItem;
+      }
+      Object.assign(queueItem, patch);
+      return queueItem;
+    }, options);
+  }
+
+  getSceneBuffer() {
+    const state = this.getState();
+    return state ? state.sceneBuf : null;
+  }
+
+  setSceneBuffer(buffer, options) {
+    return this.set(['sceneBuf'], buffer, options);
+  }
+
+  getBackground() {
+    const state = this.getState();
+    return state ? state.background : null;
+  }
+
+  setBackground(background, options) {
+    return this.set(['background'], background, options);
+  }
+
+  setEnemyHealth(index, updater, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy || !enemy.e) return enemy;
+      if (typeof updater === 'function') {
+        enemy.e.health = updater(enemy.e.health);
+      } else {
+        enemy.e.health = updater;
+      }
+      return enemy;
+    }, options);
+  }
+
+  setEnemyMagic(index, value, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy || !enemy.e) return enemy;
+      enemy.e.magic = typeof value === 'function' ? value(enemy.e.magic) : value;
+      return enemy;
+    }, options);
+  }
+
+  setEnemyMagicRate(index, value, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy || !enemy.e) return enemy;
+      enemy.e.magicRate = typeof value === 'function' ? value(enemy.e.magicRate) : value;
+      return enemy;
+    }, options);
+  }
+
+  setEnemyStatus(index, statusIndex, value, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy || !enemy.status) return enemy;
+      const idx = Number(statusIndex);
+      if (!Number.isNaN(idx)) {
+        enemy.status[idx] = typeof value === 'function' ? value(enemy.status[idx]) : value;
+      }
+      return enemy;
+    }, options);
+  }
+
+  setEnemyPoison(index, slot, patch, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy) return enemy;
+      const slotIndex = Number(slot);
+      if (Number.isNaN(slotIndex)) return enemy;
+      if (!enemy.poisons) {
+        enemy.poisons = [];
+      }
+      const poison = enemy.poisons[slotIndex] || (enemy.poisons[slotIndex] = {});
+      if (typeof patch === 'function') {
+        patch(poison);
+      } else if (patch && typeof patch === 'object') {
+        Object.assign(poison, patch);
+      }
+      return enemy;
+    }, options);
+  }
+
+  clearEnemyPoison(index, slot, options) {
+    return this.setEnemyPoison(index, slot, function(poison) {
+      poison.poisonID = 0;
+      poison.poisonScript = 0;
+      return poison;
+    }, options);
+  }
+
+  setEnemyPosition(index, pos, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy) return enemy;
+      enemy.pos = typeof pos === 'function' ? pos(enemy.pos) : pos;
+      return enemy;
+    }, options);
+  }
+
+  setEnemyColorShift(index, value, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy) return enemy;
+      enemy.colorShift = typeof value === 'function' ? value(enemy.colorShift) : value;
+      return enemy;
+    }, options);
+  }
+
+  replaceEnemy(index, enemyData, options) {
+    return this.updateEnemy(index, function() {
+      return enemyData;
+    }, options);
+  }
+
+  setEnemyObject(index, objectID, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy) return enemy;
+      enemy.objectID = typeof objectID === 'function' ? objectID(enemy.objectID) : objectID;
+      return enemy;
+    }, options);
+  }
+
+  setEnemyFrame(index, frame, options) {
+    return this.updateEnemy(index, function(enemy) {
+      if (!enemy) return enemy;
+      enemy.wCurrentFrame = typeof frame === 'function' ? frame(enemy.wCurrentFrame) : frame;
+      return enemy;
+    }, options);
+  }
+
+  setHidingTime(value, options) {
+    return this.set(['hidingTime'], value, options);
+  }
+
+  setBattleBlow(value, options) {
+    return this.set(['blow'], value, options);
+  }
+
+  setBattleResult(value, options) {
+    return this.set(['battleResult'], value, options);
+  }
+
+  setPlayerActionType(index, actionType, options) {
+    return this.updatePlayer(index, function(player) {
+      if (!player || !player.action) return player;
+      player.action.actionType = typeof actionType === 'function' ? actionType(player.action.actionType) : actionType;
+      return player;
+    }, options);
+  }
+
+  setPlayerColorShift(index, value, options) {
+    return this.updatePlayer(index, function(player) {
+      if (!player) return player;
+      player.colorShift = typeof value === 'function' ? value(player.colorShift) : value;
+      return player;
+    }, options);
+  }
 }
 
 const serviceInstance = new BattleService();

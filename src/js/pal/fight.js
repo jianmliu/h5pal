@@ -5,10 +5,22 @@ import uibattle from './uibattle';
 import sound from './sound';
 import resourceService from '../../services/resource-service.js';
 import utils from './utils';
+import battleService from '../../services/battle-service.js';
 
 log.trace('fight module load');
 
 var fight = {};
+
+function BATTLE() {
+  const state = battleService.getState();
+  if (state) return state;
+  if (typeof Global !== 'undefined' && Global && Global.battle) return Global.battle;
+  return {};
+}
+
+function withBattle(fn, options) {
+  return battleService.withState(fn, options);
+}
 
 var surface = null
 var battle = null;
@@ -27,17 +39,17 @@ fight.init = function*(surf, _battle) {
    * @return {Number}
    */
   battle.selectAutoTarget = function() {
-    var i = Global.battle.UI.prevEnemyTarget;
+    var i = BATTLE().UI.prevEnemyTarget;
 
-    if (i >= 0 && i <= Global.battle.maxEnemyIndex &&
-        Global.battle.enemy[i].objectID != 0 &&
-        Global.battle.enemy[i].e.health > 0) {
+    if (i >= 0 && i <= BATTLE().maxEnemyIndex &&
+        BATTLE().enemy[i].objectID != 0 &&
+        BATTLE().enemy[i].e.health > 0) {
       return i;
     }
 
-    for (i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-      if (Global.battle.enemy[i].objectID != 0 &&
-          Global.battle.enemy[i].e.health > 0) {
+    for (i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+      if (BATTLE().enemy[i].objectID != 0 &&
+          BATTLE().enemy[i].e.health > 0) {
         return i;
       }
     }
@@ -52,13 +64,13 @@ fight.init = function*(surf, _battle) {
    * @param {Boolean} updateGesture true if update the gesture for enemies, false if not.
    */
   battle.delay = function*(duration, objectID, updateGesture) {
-    var sceneBuf = Global.battle.sceneBuf;
+    var sceneBuf = BATTLE().sceneBuf;
     var screen = surface.byteBuffer;
     for (var i = 0; i < duration; i++) {
       if (updateGesture) {
         // Update the gesture of enemies.
-        for (var j = 0; j <= Global.battle.maxEnemyIndex; j++) {
-          var enemy = Global.battle.enemy[j];
+        for (var j = 0; j <= BATTLE().maxEnemyIndex; j++) {
+          var enemy = BATTLE().enemy[j];
           if (enemy.objectID == 0 ||
               enemy.status[PlayerStatus.Sleep] != 0 ||
               enemy.status[PlayerStatus.Paralyzed] != 0) {
@@ -102,57 +114,52 @@ fight.init = function*(surf, _battle) {
    */
   battle.updateFighters = function() {
     log.trace('[BATTLE] updateFighters');
-    // Update the gesture for all players
-    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-      var playerRole = Global.party[i].playerRole;
+    withBattle(function(state) {
+      for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+        var playerRole = Global.party[i].playerRole;
+        var player = state.player[i];
+        if (!player) continue;
 
-      Global.battle.player[i].pos = Global.battle.player[i].originalPos;
-      Global.battle.player[i].colorShift = 0;
+        player.pos = player.originalPos;
+        player.colorShift = 0;
 
-      if (GameData.playerRoles.HP[playerRole] == 0) {
-        if (Global.playerStatus[playerRole][PlayerStatus.Puppet] == 0) {
-          Global.battle.player[i].currentFrame = 2; // dead
+        if (GameData.playerRoles.HP[playerRole] == 0) {
+          player.currentFrame = (Global.playerStatus[playerRole][PlayerStatus.Puppet] == 0) ? 2 : 0;
         } else {
-          Global.battle.player[i].currentFrame = 0; // puppet
-        }
-      } else {
-        if (Global.playerStatus[playerRole][PlayerStatus.Sleep] != 0 ||
-          battle.isPlayerDying(playerRole)) {
-          Global.battle.player[i].currentFrame = 1;
-        } else if (Global.battle.player[i].defending && !Global.battle.enemyCleared) {
-          Global.battle.player[i].currentFrame = 3;
-        } else {
-          Global.battle.player[i].currentFrame = 0;
+          if (Global.playerStatus[playerRole][PlayerStatus.Sleep] != 0 || battle.isPlayerDying(playerRole)) {
+            player.currentFrame = 1;
+          } else if (player.defending && !state.enemyCleared) {
+            player.currentFrame = 3;
+          } else {
+            player.currentFrame = 0;
+          }
         }
       }
-    }
 
-    // Update the gesture for all enemies
-    for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-      if (Global.battle.enemy[i].objectID == 0) {
-        continue;
+      for (var j = 0; j <= state.maxEnemyIndex; j++) {
+        var enemy = state.enemy[j];
+        if (!enemy || enemy.objectID == 0) {
+          continue;
+        }
+
+        enemy.pos = enemy.originalPos;
+        enemy.colorShift = 0;
+
+        if (enemy.status[PlayerStatus.Sleep] > 0 || enemy.status[PlayerStatus.Paralyzed] > 0) {
+          enemy.currentFrame = 0;
+          continue;
+        }
+
+        if (--enemy.e.idleAnimSpeed == 0) {
+          enemy.currentFrame++;
+          enemy.e.idleAnimSpeed = GameData.enemy[GameData.object[enemy.objectID].enemy.enemyID].idleAnimSpeed;
+        }
+
+        if (enemy.currentFrame >= enemy.e.idleFrames) {
+          enemy.currentFrame = 0;
+        }
       }
-
-      Global.battle.enemy[i].pos = Global.battle.enemy[i].originalPos;
-      Global.battle.enemy[i].colorShift = 0;
-
-      if (Global.battle.enemy[i].status[PlayerStatus.Sleep] > 0 ||
-        Global.battle.enemy[i].status[PlayerStatus.Paralyzed] > 0) {
-        Global.battle.enemy[i].currentFrame = 0;
-        continue;
-      }
-
-      if (--Global.battle.enemy[i].e.idleAnimSpeed == 0)
-      {
-        Global.battle.enemy[i].currentFrame++;
-        Global.battle.enemy[i].e.idleAnimSpeed =
-          GameData.enemy[GameData.object[Global.battle.enemy[i].objectID].enemy.enemyID].idleAnimSpeed;
-      }
-
-      if (Global.battle.enemy[i].currentFrame >= Global.battle.enemy[i].e.idleFrames) {
-        Global.battle.enemy[i].currentFrame = 0;
-      }
-    }
+    });
   };
 
   /**
@@ -163,37 +170,43 @@ fight.init = function*(surf, _battle) {
     var flMax = 0;
     var iMax = 0;
 
-    // Start the UI for the fastest and ready player
-    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-      if (Global.battle.player[i].state == FighterState.Com ||
-        (Global.battle.player[i].state == FighterState.Act && Global.battle.player[i].action.actionType == BattleActionType.CoopMagic)) {
-        flMax = 0;
-        break;
-      } else if (Global.battle.player[i].state == FighterState.Wait) {
-        if (Global.battle.player[i].timeMeter > flMax) {
-          iMax = i;
-          flMax = Global.battle.player[i].timeMeter;
+    withBattle(function(state) {
+      for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+        var player = state.player[i];
+        if (!player) continue;
+        if (player.state == FighterState.Com ||
+          (player.state == FighterState.Act && player.action.actionType == BattleActionType.CoopMagic)) {
+          flMax = 0;
+          break;
+        } else if (player.state == FighterState.Wait) {
+          if (player.timeMeter > flMax) {
+            iMax = i;
+            flMax = player.timeMeter;
+          }
         }
       }
-    }
 
-    if (flMax >= 100.0) {
-      Global.battle.player[iMax].state = FighterState.Com;
-      Global.battle.player[iMax].defending = false;
-    }
+      if (flMax >= 100.0) {
+        var fastest = state.player[iMax];
+        if (fastest) {
+          fastest.state = FighterState.Com;
+          fastest.defending = false;
+        }
+      }
+    });
   };
 
   /**
    * Called once per video frame in battle.
    */
   battle.startFrame = function*() {
-    //Global.battle.battleResult = BattleResult.Won;
+    //BATTLE().battleResult = BattleResult.Won;
 
     var onlyPuppet = true;
-    var sceneBuf = Global.battle.sceneBuf;
+    var sceneBuf = BATTLE().sceneBuf;
     var screen = surface.byteBuffer;
 
-    if (!Global.battle.enemyCleared) {
+    if (!BATTLE().enemyCleared) {
       battle.updateFighters();
     }
 
@@ -202,9 +215,9 @@ fight.init = function*(surf, _battle) {
     surface.blitSurface(sceneBuf, null, screen, null);
 
     // Check if the battle is over
-    if (Global.battle.enemyCleared) {
+    if (BATTLE().enemyCleared) {
       // All enemies are cleared. Won the battle.
-      Global.battle.battleResult = BattleResult.Won;
+      BATTLE().battleResult = BattleResult.Won;
       sound.play(-1);
       return;
     } else {
@@ -224,13 +237,13 @@ fight.init = function*(surf, _battle) {
 
       if (ended) {
         // All players are dead. Lost the battle.
-        Global.battle.battleResult = BattleResult.Lost;
+        BATTLE().battleResult = BattleResult.Lost;
         return;
       }
     }
 
-    if (Global.battle.phase == BattlePhase.SelectAction) {
-      if (Global.battle.UI.state == BattleUIState.Wait) {
+    if (BATTLE().phase == BattlePhase.SelectAction) {
+      if (BATTLE().UI.state == BattleUIState.Wait) {
         for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
           var playerRole = Global.party[i].playerRole;
 
@@ -245,12 +258,12 @@ fight.init = function*(surf, _battle) {
 
           // Start the menu for the first player whose action is not
           // yet selected
-          if (Global.battle.player[i].state == FighterState.Wait) {
-            Global.battle.movingPlayerIndex = i;
-            Global.battle.player[i].state = FighterState.Com;
+          if (BATTLE().player[i].state == FighterState.Wait) {
+            BATTLE().movingPlayerIndex = i;
+            BATTLE().player[i].state = FighterState.Com;
             uibattle.playerReady(i);
             break;
-          } else if (Global.battle.player[i].action.actionType == BattleActionType.CoopMagic) {
+          } else if (BATTLE().player[i].action.actionType == BattleActionType.CoopMagic) {
             // Skip other players if someone selected coopmagic
             i = Global.maxPartyMemberIndex + 1;
             break;
@@ -259,37 +272,37 @@ fight.init = function*(surf, _battle) {
 
         if (i > Global.maxPartyMemberIndex) {
           // actions for all players are decided. fill in the action queue.
-          Global.battle.repeat = false;
-          Global.battle.force = false;
-          Global.battle.flee = false;
+          BATTLE().repeat = false;
+          BATTLE().force = false;
+          BATTLE().flee = false;
 
-          Global.battle.curAction = 0;
+          BATTLE().curAction = 0;
 
           for (var i = 0; i < Const.MAX_ACTIONQUEUE_ITEMS; i++) {
-            Global.battle.actionQueue[i].index = 0xFFFF;
-            Global.battle.actionQueue[i].dexterity = 0xFFFF;
+            BATTLE().actionQueue[i].index = 0xFFFF;
+            BATTLE().actionQueue[i].dexterity = 0xFFFF;
           }
 
           var j = 0;
 
           // Put all enemies into action queue
-          for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-            if (Global.battle.enemy[i].objectID == 0) {
+          for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+            if (BATTLE().enemy[i].objectID == 0) {
               continue;
             }
 
-            Global.battle.actionQueue[j].isEnemy = true;
-            Global.battle.actionQueue[j].index = i;
-            Global.battle.actionQueue[j].dexterity = battle.getEnemyDexterity(i);
-            Global.battle.actionQueue[j].dexterity *= randomFloat(0.9, 1.1);
+            BATTLE().actionQueue[j].isEnemy = true;
+            BATTLE().actionQueue[j].index = i;
+            BATTLE().actionQueue[j].dexterity = battle.getEnemyDexterity(i);
+            BATTLE().actionQueue[j].dexterity *= randomFloat(0.9, 1.1);
 
             j++;
 
-            if (Global.battle.enemy[i].e.dualMove * 50 + randomLong(0, 100) > 100) {
-              Global.battle.actionQueue[j].isEnemy = true;
-              Global.battle.actionQueue[j].index = i;
-              Global.battle.actionQueue[j].dexterity = battle.getEnemyDexterity(i);
-              Global.battle.actionQueue[j].dexterity *= randomFloat(0.9, 1.1);
+            if (BATTLE().enemy[i].e.dualMove * 50 + randomLong(0, 100) > 100) {
+              BATTLE().actionQueue[j].isEnemy = true;
+              BATTLE().actionQueue[j].index = i;
+              BATTLE().actionQueue[j].dexterity = battle.getEnemyDexterity(i);
+              BATTLE().actionQueue[j].dexterity *= randomFloat(0.9, 1.1);
 
               j++;
             }
@@ -298,17 +311,17 @@ fight.init = function*(surf, _battle) {
           // Put all players into action queue
           for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
             var playerRole = Global.party[i].playerRole;
-            var player = Global.battle.player[i];
+            var player = BATTLE().player[i];
 
-            Global.battle.actionQueue[j].isEnemy = false;
-            Global.battle.actionQueue[j].index = i;
+            BATTLE().actionQueue[j].isEnemy = false;
+            BATTLE().actionQueue[j].index = i;
 
             if (GameData.playerRoles.HP[playerRole] == 0 ||
                 Global.playerStatus[playerRole][PlayerStatus.Sleep] > 0 ||
                 Global.playerStatus[playerRole][PlayerStatus.Paralyzed] > 0) {
               // players who are unable to move should attack physically if recovered
               // in the same turn
-              Global.battle.actionQueue[j].dexterity = 0;
+              BATTLE().actionQueue[j].dexterity = 0;
               player.action.actionType = BattleActionType.Attack;
               player.state = FighterState.Act;
             } else {
@@ -352,29 +365,29 @@ fight.init = function*(surf, _battle) {
 
               dexterity *= randomFloat(0.9, 1.1);
 
-              Global.battle.actionQueue[j].dexterity = dexterity;
+              BATTLE().actionQueue[j].dexterity = dexterity;
             }
 
             j++;
           }
 
           // Sort the action queue by dexterity value
-          Global.battle.actionQueue.sort(function(a, b) {
+          BATTLE().actionQueue.sort(function(a, b) {
             if (a.dexterity === 0xFFFF) return 1;
             if (b.dexterity === 0xFFFF) return -1;
             return -(a.dexterity - b.dexterity);
           });
 
           // Perform the actions
-          Global.battle.phase = BattlePhase.PerformAction;
+          BATTLE().phase = BattlePhase.PerformAction;
         }
       }
     } else {
       // Are all actions finished?
-      if (Global.battle.curAction >= Const.MAX_ACTIONQUEUE_ITEMS ||
-          Global.battle.actionQueue[Global.battle.curAction].dexterity == 0xFFFF) {
+      if (BATTLE().curAction >= Const.MAX_ACTIONQUEUE_ITEMS ||
+          BATTLE().actionQueue[BATTLE().curAction].dexterity == 0xFFFF) {
         for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          Global.battle.player[i].defending = false;
+          BATTLE().player[i].defending = false;
         }
 
         // Run poison scripts
@@ -400,11 +413,11 @@ fight.init = function*(surf, _battle) {
           }
         }
 
-        for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
+        for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
           for (var j = 0; j < Const.MAX_POISONS; j++) {
-            if (Global.battle.enemy[i].poisons[j].poisonID != 0) {
-              Global.battle.enemy[i].poisons[j].poisonScript = yield script.runTriggerScript(
-                Global.battle.enemy[i].poisons[j].poisonScript,
+            if (BATTLE().enemy[i].poisons[j].poisonID != 0) {
+              BATTLE().enemy[i].poisons[j].poisonScript = yield script.runTriggerScript(
+                BATTLE().enemy[i].poisons[j].poisonScript,
                 WORD(i)
               );
             }
@@ -412,8 +425,8 @@ fight.init = function*(surf, _battle) {
 
           // Update statuses
           for (var j = 0; j < PlayerStatus.All; j++) {
-            if (Global.battle.enemy[i].status[j] > 0) {
-              Global.battle.enemy[i].status[j]--;
+            if (BATTLE().enemy[i].status[j] > 0) {
+              BATTLE().enemy[i].status[j]--;
             }
           }
         }
@@ -423,22 +436,22 @@ fight.init = function*(surf, _battle) {
           yield battle.delay(8, 0, true);
         }
 
-        if (Global.battle.hidingTime > 0) {
-          if (--Global.battle.hidingTime == 0) {
+        if (BATTLE().hidingTime > 0) {
+          if (--BATTLE().hidingTime == 0) {
             battle.backupScene();
             battle.makeScene();
             yield battle.fadeScene();
           }
         }
 
-        if (Global.battle.hidingTime == 0) {
-          for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-            if (Global.battle.enemy[i].objectID == 0) {
+        if (BATTLE().hidingTime == 0) {
+          for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+            if (BATTLE().enemy[i].objectID == 0) {
               continue;
             }
 
-            Global.battle.enemy[i].scriptOnTurnStart = yield script.runTriggerScript(
-              Global.battle.enemy[i].scriptOnTurnStart,
+            BATTLE().enemy[i].scriptOnTurnStart = yield script.runTriggerScript(
+              BATTLE().enemy[i].scriptOnTurnStart,
               i
             );
           }
@@ -450,61 +463,61 @@ fight.init = function*(surf, _battle) {
         }
 
         // Proceed to next turn...
-        Global.battle.phase = BattlePhase.SelectAction;
+        BATTLE().phase = BattlePhase.SelectAction;
       } else {
-        var i = Global.battle.actionQueue[Global.battle.curAction].index;
+        var i = BATTLE().actionQueue[BATTLE().curAction].index;
 
-        if (Global.battle.actionQueue[Global.battle.curAction].isEnemy) {
-          if (Global.battle.hidingTime == 0 &&
+        if (BATTLE().actionQueue[BATTLE().curAction].isEnemy) {
+          if (BATTLE().hidingTime == 0 &&
               !onlyPuppet &&
-              Global.battle.enemy[i].objectID != 0) {
-            Global.battle.enemy[i].scriptOnReady = yield script.runTriggerScript(
-              Global.battle.enemy[i].scriptOnReady,
+              BATTLE().enemy[i].objectID != 0) {
+            BATTLE().enemy[i].scriptOnReady = yield script.runTriggerScript(
+              BATTLE().enemy[i].scriptOnReady,
               i
             );
 
-            Global.battle.enemyMoving = true;
+            BATTLE().enemyMoving = true;
             yield battle.enemyPerformAction(i);
-            Global.battle.enemyMoving = false;
+            BATTLE().enemyMoving = false;
           }
-        } else if (Global.battle.player[i].state == FighterState.Act) {
+        } else if (BATTLE().player[i].state == FighterState.Act) {
           var playerRole = Global.party[i].playerRole;
 
           if (GameData.playerRoles.HP[playerRole] == 0) {
             if (Global.playerStatus[playerRole][PlayerStatus.Puppet] == 0) {
-              Global.battle.player[i].action.actionType = BattleActionType.Pass;
+              BATTLE().player[i].action.actionType = BattleActionType.Pass;
             }
           } else if (Global.playerStatus[playerRole][PlayerStatus.Sleep] > 0 ||
                      Global.playerStatus[playerRole][PlayerStatus.Paralyzed] > 0) {
-             Global.battle.player[i].action.actionType = BattleActionType.Pass;
+             BATTLE().player[i].action.actionType = BattleActionType.Pass;
           } else if (Global.playerStatus[playerRole][PlayerStatus.Confused] > 0) {
-             Global.battle.player[i].action.actionType = BattleActionType.AttackMate;
+             BATTLE().player[i].action.actionType = BattleActionType.AttackMate;
           }
 
           // Perform the action for this player.
-          Global.battle.movingPlayerIndex = i;
+          BATTLE().movingPlayerIndex = i;
           yield battle.playerPerformAction(i);
         }
 
-        Global.battle.curAction++;
+        BATTLE().curAction++;
       }
     }
 
     // The R and F keys and Fleeing should affect all players
-    if (Global.battle.UI.menuState == BattleMenuState.Main &&
-        Global.battle.UI.state == BattleUIState.SelectMove) {
+    if (BATTLE().UI.menuState == BattleMenuState.Main &&
+        BATTLE().UI.state == BattleUIState.SelectMove) {
       if (input.isKeyPressed(Key.ForceRepeat)) {
-        Global.battle.repeat = true;
+        BATTLE().repeat = true;
       } else if (input.isKeyPressed(Key.Force)) {
-         Global.battle.force = true;
+         BATTLE().force = true;
       }
     }
 
-    if (Global.battle.repeat) {
+    if (BATTLE().repeat) {
       input.keyPress = Key.Repeat;
-    } else if (Global.battle.force) {
+    } else if (BATTLE().force) {
       input.keyPress = Key.Force;
-    } else if (Global.battle.flee) {
+    } else if (BATTLE().flee) {
       input.keyPress = Key.Flee;
     }
 
@@ -518,11 +531,11 @@ fight.init = function*(surf, _battle) {
    */
   battle.commitAction = function(repeat) {
     log.debug(['[BATTLE] commitAction', repeat].join(' '));
-    var curPlayer = Global.battle.player[Global.battle.UI.curPlayerIndex];
+    var curPlayer = BATTLE().player[BATTLE().UI.curPlayerIndex];
     if (!repeat) {
-      curPlayer.action.actionType = Global.battle.UI.actionType;
-      curPlayer.action.target = SHORT(Global.battle.UI.selectedIndex);
-      curPlayer.action.actionID = Global.battle.UI.objectID;
+      curPlayer.action.actionType = BATTLE().UI.actionType;
+      curPlayer.action.target = SHORT(BATTLE().UI.selectedIndex);
+      curPlayer.action.actionID = BATTLE().UI.objectID;
     } else if (curPlayer.action.actionType == BattleActionType.Pass) {
       curPlayer.action.actionType = BattleActionType.Attack;
       curPlayer.action.target = -1;
@@ -534,7 +547,7 @@ fight.init = function*(surf, _battle) {
         var w = curPlayer.action.actionID;
         w = GameData.magic[GameData.object[w].magic.magicNumber].costMP;
 
-        if (GameData.playerRoles.MP[Global.party[Global.battle.UI.curPlayerIndex].playerRole] < w) {
+        if (GameData.playerRoles.MP[Global.party[BATTLE().UI.curPlayerIndex].playerRole] < w) {
           w = curPlayer.action.actionID;
           w = GameData.magic[GameData.object[w].magic.magicNumber].type;
           if (w == MagicType.ApplyToPlayer || w == MagicType.ApplyToParty ||
@@ -567,12 +580,12 @@ fight.init = function*(surf, _battle) {
         break;
     }
 
-    if (Global.battle.UI.actionType == BattleActionType.Flee) {
-      Global.battle.flee = true;
+    if (BATTLE().UI.actionType == BattleActionType.Flee) {
+      BATTLE().flee = true;
     }
 
     curPlayer.state = FighterState.Act;
-    Global.battle.UI.state = BattleUIState.Wait;
+    BATTLE().UI.state = BattleUIState.Wait;
   };
 
   /**
@@ -583,7 +596,7 @@ fight.init = function*(surf, _battle) {
   battle.showPlayerPreMagicAnim = function*(playerIndex, summon) {
     log.debug(['[BATTLE] showPlayerPreMagicAnim', playerIndex, summon].join(' '));
     var playerRole = Global.party[playerIndex].playerRole;
-    var currentPlayer = Global.battle.player[playerIndex];
+    var currentPlayer = BATTLE().player[playerIndex];
 
     for (var i = 0; i < 4; i++) {
       currentPlayer.pos = PAL_XY(
@@ -608,11 +621,11 @@ fight.init = function*(surf, _battle) {
       index += 15;
 
       for (var i = 0; i < 10; i++) {
-        var frame = Global.battle.effectSprite.getFrame(index++);
+        var frame = BATTLE().effectSprite.getFrame(index++);
 
         // Update the gesture of enemies.
-        for (var j = 0; j <= Global.battle.maxEnemyIndex; j++) {
-          var enemy = Global.battle.enemy[j];
+        for (var j = 0; j <= BATTLE().maxEnemyIndex; j++) {
+          var enemy = BATTLE().enemy[j];
           if (enemy.objectID == 0 ||
               enemy.status[PlayerStatus.Sleep] != 0 ||
               enemy.status[PlayerStatus.Paralyzed] != 0) {
@@ -631,7 +644,7 @@ fight.init = function*(surf, _battle) {
         }
 
         battle.makeScene();
-        surface.blitSurface(Global.battle.sceneBuf, null, surface.byteBuffer, null);
+        surface.blitSurface(BATTLE().sceneBuf, null, surface.byteBuffer, null);
 
         surface.blitRLE(
           frame,
@@ -741,7 +754,7 @@ fight.init = function*(surf, _battle) {
    * @return {Number}            The dexterity value of the enemy.
    */
   battle.getEnemyDexterity = function(enemyIndex) {
-    var enemy = Global.battle.enemy[enemyIndex];
+    var enemy = BATTLE().enemy[enemyIndex];
     var s = 0;
     s = (enemy.e.level + 6) * 3;
     s += SHORT(enemy.e.dexterity);
@@ -778,18 +791,18 @@ fight.init = function*(surf, _battle) {
    */
   battle.backupStat = function() {
     var playerRole;
-    for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-      if (Global.battle.enemy[i].objectID == 0) {
+    for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+      if (BATTLE().enemy[i].objectID == 0) {
         continue;
       }
-      Global.battle.enemy[i].prevHP = Global.battle.enemy[i].e.health;
+      BATTLE().enemy[i].prevHP = BATTLE().enemy[i].e.health;
     }
 
     for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
       playerRole = Global.party[i].playerRole;
 
-      Global.battle.player[i].prevHP = GameData.playerRoles.HP[playerRole];
-      Global.battle.player[i].prevMP = GameData.playerRoles.MP[playerRole];
+      BATTLE().player[i].prevHP = GameData.playerRoles.HP[playerRole];
+      BATTLE().player[i].prevMP = GameData.playerRoles.MP[playerRole];
     }
   };
 
@@ -801,17 +814,17 @@ fight.init = function*(surf, _battle) {
     log.debug(['[BATTLE] displayStatChange'].join(' '));
     var changed = false;
 
-    for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-      if (Global.battle.enemy[i].objectID == 0) {
+    for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+      if (BATTLE().enemy[i].objectID == 0) {
         continue;
       }
 
-      if (Global.battle.enemy[i].prevHP != Global.battle.enemy[i].e.health) {
+      if (BATTLE().enemy[i].prevHP != BATTLE().enemy[i].e.health) {
         // Show the number of damage
-        var damage = Global.battle.enemy[i].e.health - Global.battle.enemy[i].prevHP;
+        var damage = BATTLE().enemy[i].e.health - BATTLE().enemy[i].prevHP;
 
-        var x = PAL_X(Global.battle.enemy[i].pos) - 9;
-        var y = PAL_Y(Global.battle.enemy[i].pos) - 115;
+        var x = PAL_X(BATTLE().enemy[i].pos) - 9;
+        var y = PAL_Y(BATTLE().enemy[i].pos) - 115;
 
         if (y < 10) {
           y = 10;
@@ -830,11 +843,11 @@ fight.init = function*(surf, _battle) {
     for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
       var playerRole = Global.party[i].playerRole;
 
-      if (Global.battle.player[i].prevHP != GameData.playerRoles.HP[playerRole]) {
-        var damage = GameData.playerRoles.HP[playerRole] - Global.battle.player[i].prevHP;
+      if (BATTLE().player[i].prevHP != GameData.playerRoles.HP[playerRole]) {
+        var damage = GameData.playerRoles.HP[playerRole] - BATTLE().player[i].prevHP;
 
-        var x = PAL_X(Global.battle.player[i].pos) - 9;
-        var y = PAL_Y(Global.battle.player[i].pos) - 75;
+        var x = PAL_X(BATTLE().player[i].pos) - 9;
+        var y = PAL_Y(BATTLE().player[i].pos) - 75;
 
         if (y < 10) {
           y = 10;
@@ -849,11 +862,11 @@ fight.init = function*(surf, _battle) {
         changed = true;
       }
 
-      if (Global.battle.player[i].prevMP != GameData.playerRoles.MP[playerRole]) {
-        var damage = GameData.playerRoles.MP[playerRole] - Global.battle.player[i].prevMP;
+      if (BATTLE().player[i].prevMP != GameData.playerRoles.MP[playerRole]) {
+        var damage = GameData.playerRoles.MP[playerRole] - BATTLE().player[i].prevMP;
 
-        var x = PAL_X(Global.battle.player[i].pos) - 9;
-        var y = PAL_Y(Global.battle.player[i].pos) - 67;
+        var x = PAL_X(BATTLE().player[i].pos) - 9;
+        var y = PAL_Y(BATTLE().player[i].pos) - 67;
 
         if (y < 10) {
           y = 10;
@@ -877,22 +890,22 @@ fight.init = function*(surf, _battle) {
    */
   battle.postActionCheck = function*(checkPlayers) {
     log.debug(['[BATTLE] postActionCheck', checkPlayers].join(' '));
-    var sceneBuf = Global.battle.sceneBuf;
+    var sceneBuf = BATTLE().sceneBuf;
     var screen = surface.byteBuffer;
     var fade = false;
     var enemyRemaining = false;
-    for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-      if (Global.battle.enemy[i].objectID == 0) {
+    for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+      if (BATTLE().enemy[i].objectID == 0) {
         continue;
       }
 
-      if (SHORT(Global.battle.enemy[i].e.health) <= 0) {
+      if (SHORT(BATTLE().enemy[i].e.health) <= 0) {
         // This enemy is KO'ed
-        Global.battle.expGained += Global.battle.enemy[i].e.exp;
-        Global.battle.cashGained += Global.battle.enemy[i].e.cash;
+        BATTLE().expGained += BATTLE().enemy[i].e.exp;
+        BATTLE().cashGained += BATTLE().enemy[i].e.cash;
 
-        sound.play(Global.battle.enemy[i].e.deathSound);
-        Global.battle.enemy[i].objectID = 0;
+        sound.play(BATTLE().enemy[i].e.deathSound);
+        BATTLE().enemy[i].objectID = 0;
         fade = true;
 
         continue;
@@ -902,8 +915,8 @@ fight.init = function*(surf, _battle) {
     }
 
     if (!enemyRemaining) {
-      Global.battle.enemyCleared = true;
-      Global.battle.UI.state = BattleUIState.Wait;
+      BATTLE().enemyCleared = true;
+      BATTLE().UI.state = BattleUIState.Wait;
     }
 
     if (checkPlayers && !Global.autoBattle) {
@@ -911,7 +924,7 @@ fight.init = function*(surf, _battle) {
         var w = Global.party[i].playerRole;
         var name;
 
-        if (GameData.playerRoles.HP[w] < Global.battle.player[i].prevHP &&
+        if (GameData.playerRoles.HP[w] < BATTLE().player[i].prevHP &&
             GameData.playerRoles.HP[w] == 0) {
           w = GameData.playerRoles.coveredBy[w];
 
@@ -935,14 +948,14 @@ fight.init = function*(surf, _battle) {
               surface.blitSurface(sceneBuf, null, screen, null);
               surface.updateScreen(null);
 
-              Global.battle.battleResult = BattleResult.Pause;
+              BATTLE().battleResult = BattleResult.Pause;
 
               GameData.object[name].player.scriptOnFriendDeath = yield script.runTriggerScript(
                 GameData.object[name].player.scriptOnFriendDeath,
                 w
               );
 
-              Global.battle.battleResult = BattleResult.OnGoing;
+              BATTLE().battleResult = BattleResult.OnGoing;
 
               input.clear();
               return yield end();
@@ -960,9 +973,9 @@ fight.init = function*(surf, _battle) {
           continue;
         }
 
-        if (GameData.playerRoles.HP[w] < Global.battle.player[i].prevHP) {
+        if (GameData.playerRoles.HP[w] < BATTLE().player[i].prevHP) {
           if (GameData.playerRoles.HP[w] > 0 && battle.isPlayerDying(w) &&
-            Global.battle.player[i].prevHP >= GameData.playerRoles.maxHP[w] / 5) {
+            BATTLE().player[i].prevHP >= GameData.playerRoles.maxHP[w] / 5) {
             var cover = GameData.playerRoles.coveredBy[w];
 
             if (Global.playerStatus[cover][PlayerStatus.Sleep] != 0 ||
@@ -992,14 +1005,14 @@ fight.init = function*(surf, _battle) {
               surface.blitSurface(sceneBuf, null, screen, null);
               surface.updateScreen(null);
 
-              Global.battle.battleResult = BattleResult.Pause;
+              BATTLE().battleResult = BattleResult.Pause;
 
               GameData.object[name].player.scriptOnDying = yield script.runTriggerScript(
                 GameData.object[name].player.scriptOnDying,
                 w
               );
 
-              Global.battle.battleResult = BattleResult.OnGoing;
+              BATTLE().battleResult = BattleResult.OnGoing;
               input.clear();
             }
 
@@ -1016,12 +1029,12 @@ fight.init = function*(surf, _battle) {
         yield battle.fadeScene();
       }
       // Fade out the summoned god
-      if (Global.battle.summonSprite != null) {
+      if (BATTLE().summonSprite != null) {
         battle.updateFighters();
         yield battle.delay(1, 0, false);
 
-        Global.battle.summonSprite = null;
-        Global.battle.backgroundColorShift = 0;
+        BATTLE().summonSprite = null;
+        BATTLE().backgroundColorShift = 0;
 
         battle.backupScene();
         battle.makeScene();
@@ -1037,10 +1050,10 @@ fight.init = function*(surf, _battle) {
    */
   battle.showPlayerAttackAnim = function*(playerIndex, critical) {
     log.debug(['[BATTLE] showPlayerAttackAnim', playerIndex, critical].join(' '));
-    var sceneBuf = Global.battle.sceneBuf;
+    var sceneBuf = BATTLE().sceneBuf;
     var screen = surface.byteBuffer;
     var playerRole = Global.party[playerIndex].playerRole;
-    var target = Global.battle.player[playerIndex].action.target;
+    var target = BATTLE().player[playerIndex].action.target;
 
     var enemy_x = 0;
     var enemy_y = 0;
@@ -1048,7 +1061,7 @@ fight.init = function*(surf, _battle) {
     var dist = 0;
 
     if (target != -1) {
-      var enemy = Global.battle.enemy[target];
+      var enemy = BATTLE().enemy[target];
       enemy_x = PAL_X(enemy.pos);
       enemy_y = PAL_Y(enemy.pos);
 
@@ -1077,18 +1090,18 @@ fight.init = function*(surf, _battle) {
     var x = enemy_x - dist + 64;
     var y = enemy_y + dist + 20;
 
-    Global.battle.player[playerIndex].currentFrame = 8;
-    Global.battle.player[playerIndex].pos = PAL_XY(x, y);
+    BATTLE().player[playerIndex].currentFrame = 8;
+    BATTLE().player[playerIndex].pos = PAL_XY(x, y);
 
     yield battle.delay(2, 0, true);
 
     x -= 10;
     y -= 2;
-    Global.battle.player[playerIndex].pos = PAL_XY(x, y);
+    BATTLE().player[playerIndex].pos = PAL_XY(x, y);
 
     yield battle.delay(1, 0, true);
 
-    Global.battle.player[playerIndex].currentFrame = 9;
+    BATTLE().player[playerIndex].currentFrame = 9;
     x -= 16;
     y -= 4;
 
@@ -1099,11 +1112,11 @@ fight.init = function*(surf, _battle) {
 
     var index = 0;
     for (var i = 0; i < 3; i++) {
-      var frame = Global.battle.effectSprite.getFrame(index++);
+      var frame = BATTLE().effectSprite.getFrame(index++);
 
       // Update the gesture of enemies.
-      for (var j = 0; j <= Global.battle.maxEnemyIndex; j++) {
-        var enemy = Global.battle.enemy[j];
+      for (var j = 0; j <= BATTLE().maxEnemyIndex; j++) {
+        var enemy = BATTLE().enemy[j];
         if (enemy.objectID == 0 ||
             enemy.status[PlayerStatus.Sleep] > 0 ||
             enemy.status[PlayerStatus.Paralyzed] > 0) {
@@ -1131,11 +1144,11 @@ fight.init = function*(surf, _battle) {
 
       if (i == 0) {
         if (target == -1) {
-          for (var j = 0; j <= Global.battle.maxEnemyIndex; j++) {
-             Global.battle.enemy[j].colorShift = 6;
+          for (var j = 0; j <= BATTLE().maxEnemyIndex; j++) {
+             BATTLE().enemy[j].colorShift = 6;
           }
         } else {
-          Global.battle.enemy[target].colorShift = 6;
+          BATTLE().enemy[target].colorShift = 6;
         }
 
         battle.displayStatChange();
@@ -1145,9 +1158,9 @@ fight.init = function*(surf, _battle) {
       surface.updateScreen(null);
 
       if (i == 1) {
-        Global.battle.player[playerIndex].pos =
-          PAL_XY(PAL_X(Global.battle.player[playerIndex].pos) + 2,
-                 PAL_Y(Global.battle.player[playerIndex].pos) + 1);
+        BATTLE().player[playerIndex].pos =
+          PAL_XY(PAL_X(BATTLE().player[playerIndex].pos) + 2,
+                 PAL_Y(BATTLE().player[playerIndex].pos) + 1);
       }
 
       yield sleepByFrame(1);
@@ -1155,33 +1168,33 @@ fight.init = function*(surf, _battle) {
 
     dist = 8;
 
-    for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-      Global.battle.enemy[i].colorShift = 0;
+    for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+      BATTLE().enemy[i].colorShift = 0;
     }
 
     if (target == -1) {
       for (var i = 0; i < 3; i++) {
-        for (var j = 0; j <= Global.battle.maxEnemyIndex; j++) {
-          x = PAL_X(Global.battle.enemy[j].pos);
-          y = PAL_Y(Global.battle.enemy[j].pos);
+        for (var j = 0; j <= BATTLE().maxEnemyIndex; j++) {
+          x = PAL_X(BATTLE().enemy[j].pos);
+          y = PAL_Y(BATTLE().enemy[j].pos);
 
           x -= dist;
           y -= ~~(dist / 2);
-          Global.battle.enemy[j].pos = PAL_XY(x, y);
+          BATTLE().enemy[j].pos = PAL_XY(x, y);
         }
 
         yield battle.delay(1, 0, true);
         dist = ~~(dist / -2);
       }
     } else{
-      x = PAL_X(Global.battle.enemy[target].pos);
-      y = PAL_Y(Global.battle.enemy[target].pos);
+      x = PAL_X(BATTLE().enemy[target].pos);
+      y = PAL_Y(BATTLE().enemy[target].pos);
 
       for (var i = 0; i < 3; i++) {
         x -= dist;
         dist = ~~(dist / -2);
         y += dist;
-        Global.battle.enemy[target].pos = PAL_XY(x, y);
+        BATTLE().enemy[target].pos = PAL_XY(x, y);
 
         yield battle.delay(1, 0, true);
       }
@@ -1198,7 +1211,7 @@ fight.init = function*(surf, _battle) {
     log.debug(['[BATTLE] showPlayerUseItemAnim', playerIndex, objectID, target].join(' '));
     yield battle.delay(4, 0, true);
 
-    var currentPlayer = Global.battle.player[playerIndex];
+    var currentPlayer = BATTLE().player[playerIndex];
 
     currentPlayer.pos = PAL_XY(PAL_X(currentPlayer.pos) - 15, PAL_Y(currentPlayer.pos) - 7);
 
@@ -1209,10 +1222,10 @@ fight.init = function*(surf, _battle) {
     for (var i = 0; i <= 6; i++) {
       if (target == -1) {
         for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
-          Global.battle.player[j].colorShift = i;
+          BATTLE().player[j].colorShift = i;
         }
       } else {
-         Global.battle.player[target].colorShift = i;
+         BATTLE().player[target].colorShift = i;
       }
 
       yield battle.delay(1, objectID, true);
@@ -1221,10 +1234,10 @@ fight.init = function*(surf, _battle) {
     for (var i = 5; i >= 0; i--) {
       if (target == -1) {
         for (j = 0; j <= Global.maxPartyMemberIndex; j++) {
-          Global.battle.player[j].colorShift = i;
+          BATTLE().player[j].colorShift = i;
         }
       } else {
-         Global.battle.player[target].colorShift = i;
+         BATTLE().player[target].colorShift = i;
       }
 
       yield battle.delay(1, objectID, true);
@@ -1245,12 +1258,12 @@ fight.init = function*(surf, _battle) {
     var effectSprite = new Sprite(Files.FIRE.decompressChunk(effectNum));
     var n = effectSprite.frameCount;
 
-    var sceneBuf = Global.battle.sceneBuf;
+    var sceneBuf = BATTLE().sceneBuf;
     var screen = surface.byteBuffer;
 
     var i, l, x, y;
 
-    Global.battle.player[playerIndex].currentFrame = 6;
+    BATTLE().player[playerIndex].currentFrame = 6;
     yield battle.delay(1, 0, true);
 
     for (i = 0; i < n; i++) {
@@ -1268,8 +1281,8 @@ fight.init = function*(surf, _battle) {
           throw 'should not be here';
         }
         for (l = 0; l <= Global.maxPartyMemberIndex; l++) {
-          x = PAL_X(Global.battle.player[l].pos);
-          y = PAL_Y(Global.battle.player[l].pos);
+          x = PAL_X(BATTLE().player[l].pos);
+          y = PAL_Y(BATTLE().player[l].pos);
 
           x += SHORT(GameData.magic[magicNum].offsetX);
           y += SHORT(GameData.magic[magicNum].offsetY);
@@ -1283,8 +1296,8 @@ fight.init = function*(surf, _battle) {
                  GameData.magic[magicNum].type == MagicType.Trance) {
         var effectTarget = (target === -1 ? playerIndex : target);
 
-        x = PAL_X(Global.battle.player[effectTarget].pos);
-        y = PAL_Y(Global.battle.player[effectTarget].pos);
+        x = PAL_X(BATTLE().player[effectTarget].pos);
+        y = PAL_Y(BATTLE().player[effectTarget].pos);
 
         x += SHORT(GameData.magic[magicNum].offsetX);
         y += SHORT(GameData.magic[magicNum].offsetY);
@@ -1295,9 +1308,9 @@ fight.init = function*(surf, _battle) {
         );
 
         // Repaint the previous player
-        if (effectTarget > 0 && Global.battle.hidingTime == 0) {
+        if (effectTarget > 0 && BATTLE().hidingTime == 0) {
           if (Global.playerStatus[Global.party[effectTarget - 1].playerRole][PlayerStatus.Confused] == 0) {
-            var targetPlayer = Global.battle.player[effectTarget - 1];
+            var targetPlayer = BATTLE().player[effectTarget - 1];
             var p = targetPlayer.sprite.getFrame(targetPlayer.currentFrame)
             x = PAL_X(targetPlayer.pos);
             y = PAL_Y(targetPlayer.pos);
@@ -1321,13 +1334,13 @@ fight.init = function*(surf, _battle) {
     for (i = 0; i < 6; i++) {
       if (GameData.magic[magicNum].type == MagicType.ApplyToParty) {
         for (j = 0; j <= Global.maxPartyMemberIndex; j++) {
-          Global.battle.player[j].colorShift = i;
+          BATTLE().player[j].colorShift = i;
         }
       } else {
         var effectTarget = (GameData.magic[magicNum].type == MagicType.Trance && target === -1)
           ? playerIndex
           : target;
-        Global.battle.player[effectTarget].colorShift = i;
+        BATTLE().player[effectTarget].colorShift = i;
       }
 
       yield battle.delay(1, 0, true);
@@ -1336,13 +1349,13 @@ fight.init = function*(surf, _battle) {
     for (i = 6; i >= 0; i--) {
       if (GameData.magic[magicNum].type == MagicType.ApplyToParty) {
         for (j = 0; j <= Global.maxPartyMemberIndex; j++) {
-          Global.battle.player[j].colorShift = i;
+          BATTLE().player[j].colorShift = i;
         }
       } else {
         var effectTarget = (GameData.magic[magicNum].type == MagicType.Trance && target === -1)
           ? playerIndex
           : target;
-        Global.battle.player[effectTarget].colorShift = i;
+        BATTLE().player[effectTarget].colorShift = i;
       }
 
       yield battle.delay(1, 0, true);
@@ -1380,13 +1393,13 @@ fight.init = function*(surf, _battle) {
       var frame;
 
       if (i == GameData.magic[magicNum].soundDelay && playerIndex != -1) {
-        Global.battle.player[playerIndex].currentFrame = 6;
+        BATTLE().player[playerIndex].currentFrame = 6;
       }
 
-      var blow = ((Global.battle.blow > 0) ? randomLong(0, Global.battle.blow) : randomLong(Global.battle.blow, 0));
+      var blow = ((BATTLE().blow > 0) ? randomLong(0, BATTLE().blow) : randomLong(BATTLE().blow, 0));
 
-      for (k = 0; k <= Global.battle.maxEnemyIndex; k++) {
-        var enemy = Global.battle.enemy[k];
+      for (k = 0; k <= BATTLE().maxEnemyIndex; k++) {
+        var enemy = BATTLE().enemy[k];
         if (enemy.objectID == 0) {
           continue;
         }
@@ -1417,7 +1430,7 @@ fight.init = function*(surf, _battle) {
       }
 
       battle.makeScene();
-      surface.blitSurface(Global.battle.sceneBuf, null, surface.byteBuffer, null);
+      surface.blitSurface(BATTLE().sceneBuf, null, surface.byteBuffer, null);
 
       yield sleepByFrame(1);
 
@@ -1425,7 +1438,7 @@ fight.init = function*(surf, _battle) {
         if (target == -1) {
           throw 'should not be here';
         }
-        var targetEnemy = Global.battle.enemy[target];
+        var targetEnemy = BATTLE().enemy[target];
         x = PAL_X(targetEnemy.pos);
         y = PAL_Y(targetEnemy.pos);
 
@@ -1441,7 +1454,7 @@ fight.init = function*(surf, _battle) {
           surface.blitRLE(
             frame,
             PAL_XY(x - ~~(frame.width / 2), y - frame.height),
-            Global.battle.background
+            BATTLE().background
           );
         }
       } else if (GameData.magic[magicNum].type == MagicType.AttackAll) {
@@ -1466,7 +1479,7 @@ fight.init = function*(surf, _battle) {
             surface.blitRLE(
               frame,
               PAL_XY(x - ~~(frame.width / 2), y - frame.height),
-              Global.battle.background
+              BATTLE().background
             );
           }
         }
@@ -1496,7 +1509,7 @@ fight.init = function*(surf, _battle) {
           surface.blitRLE(
             frame,
             PAL_XY(x - ~~(frame.width / 2), y - frame.height),
-            Global.battle.background
+            BATTLE().background
           );
         }
       } else {
@@ -1510,8 +1523,8 @@ fight.init = function*(surf, _battle) {
     Global.screenWave = wave;
     yield surface.shakeScreen(0, 0);
 
-    for (i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-      Global.battle.enemy[i].pos = Global.battle.enemy[i].originalPos;
+    for (i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+      BATTLE().enemy[i].pos = BATTLE().enemy[i].originalPos;
     }
   };
 
@@ -1541,13 +1554,13 @@ fight.init = function*(surf, _battle) {
     for (var i = 0; i < l; i++) {
       var rle;
 
-      var blow = ((Global.battle.blow > 0) ? randomLong(0, Global.battle.blow) : randomLong(Global.battle.blow, 0));
+      var blow = ((BATTLE().blow > 0) ? randomLong(0, BATTLE().blow) : randomLong(BATTLE().blow, 0));
 
       for (var k = 0; k <= Global.maxPartyMemberIndex; k++) {
-        x = PAL_X(Global.battle.player[k].pos) + blow;
-        y = PAL_Y(Global.battle.player[k].pos) + ~~(blow / 2);
+        x = PAL_X(BATTLE().player[k].pos) + blow;
+        y = PAL_Y(BATTLE().player[k].pos) + ~~(blow / 2);
 
-        Global.battle.player[k].pos = PAL_XY(x, y);
+        BATTLE().player[k].pos = PAL_XY(x, y);
       }
 
       if (l - i > GameData.magic[magicNum].shake) {
@@ -1570,15 +1583,15 @@ fight.init = function*(surf, _battle) {
       }
 
       battle.makeScene();
-      surface.blitSurface(Global.battle.sceneBuf, null, surface.byteBuffer, null);
+      surface.blitSurface(BATTLE().sceneBuf, null, surface.byteBuffer, null);
 
       if (GameData.magic[magicNum].type == MagicType.Normal) {
         if (target == -1) {
           throw 'should not be here';
         }
 
-        x = PAL_X(Global.battle.player[target].pos);
-        y = PAL_Y(Global.battle.player[target].pos);
+        x = PAL_X(BATTLE().player[target].pos);
+        y = PAL_Y(BATTLE().player[target].pos);
 
         x += SHORT(GameData.magic[magicNum].offsetX);
         y += SHORT(GameData.magic[magicNum].offsetY);
@@ -1592,7 +1605,7 @@ fight.init = function*(surf, _battle) {
           surface.blitRLE(
             rle,
             PAL_XY(x - ~~(rle.width / 2), y - rle.height),
-            Global.battle.background
+            BATTLE().background
           );
         }
       }
@@ -1619,7 +1632,7 @@ fight.init = function*(surf, _battle) {
             surface.blitRLE(
               rle,
               PAL_XY(x - ~~(rle.width / 2), y - rle.height),
-              Global.battle.background
+              BATTLE().background
             );
           }
         }
@@ -1650,7 +1663,7 @@ fight.init = function*(surf, _battle) {
           surface.blitRLE(
             rle,
             PAL_XY(x - ~~(rle.width / 2), y - rle.height),
-            Global.battle.background
+            BATTLE().background
           );
         }
       } else {
@@ -1668,7 +1681,7 @@ fight.init = function*(surf, _battle) {
     yield surface.shakeScreen(0, 0);
 
     for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-      Global.battle.player[i].pos = Global.battle.player[i].originalPos;
+      BATTLE().player[i].pos = BATTLE().player[i].originalPos;
     }
   };
 
@@ -1695,7 +1708,7 @@ fight.init = function*(surf, _battle) {
     // Brighten the players
     for (var i = 1; i <= 10; i++) {
       for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
-        Global.battle.player[j].colofShift = i;
+        BATTLE().player[j].colofShift = i;
       }
 
       yield battle.delay(1, objectID, true);
@@ -1706,14 +1719,14 @@ fight.init = function*(surf, _battle) {
     // Load the sprite of the summoned god
     var effectSpriteNum = GameData.magic[magicNum].summonEffect + 10;
 
-    Global.battle.summonSprite = new Sprite(Files.F.decompressChunk(effectSpriteNum));
+    BATTLE().summonSprite = new Sprite(Files.F.decompressChunk(effectSpriteNum));
 
-    Global.battle.summonFrame = 0;
-    Global.battle.summonPos = PAL_XY(
+    BATTLE().summonFrame = 0;
+    BATTLE().summonPos = PAL_XY(
       230 + SHORT(GameData.magic[magicNum].offsetX),
       155 + SHORT(GameData.magic[magicNum].offsetY)
     );
-    Global.battle.backgroundColorShift = SHORT(GameData.magic[magicNum].effectTimes);
+    BATTLE().backgroundColorShift = SHORT(GameData.magic[magicNum].effectTimes);
 
     // Fade in the summoned god
     battle.makeScene();
@@ -1721,9 +1734,9 @@ fight.init = function*(surf, _battle) {
 
     // Show the animation of the summoned god
     // TODO: There is still something missing here compared to the original game.
-    while (Global.battle.summonFrame < Global.battle.summonSprite.frameCount - 1) {
+    while (BATTLE().summonFrame < BATTLE().summonSprite.frameCount - 1) {
       battle.makeScene();
-      surface.blitSurface(Global.battle.sceneBuf, null, surface.byteBuffer, null);
+      surface.blitSurface(BATTLE().sceneBuf, null, surface.byteBuffer, null);
 
       yield uibattle.update();
 
@@ -1731,7 +1744,7 @@ fight.init = function*(surf, _battle) {
 
       yield sleepByFrame(1);
 
-      Global.battle.summonFrame++;
+      BATTLE().summonFrame++;
     }
 
     // Show the actual magic effect
@@ -1747,12 +1760,12 @@ fight.init = function*(surf, _battle) {
     var enemyPosBak = new Array(Const.MAX_ENEMIES_IN_TEAM);
 
     for (var i = 0; i < Const.MAX_ENEMIES_IN_TEAM; i++) {
-      enemyPosBak[i] = Global.battle.enemy[i].pos;
+      enemyPosBak[i] = BATTLE().enemy[i].pos;
     }
 
     for (var i = 0; i < 3; i++) {
-      for (var j = 0; j <= Global.battle.maxEnemyIndex; j++) {
-        var enemy = Global.battle.enemy[j];
+      for (var j = 0; j <= BATTLE().maxEnemyIndex; j++) {
+        var enemy = BATTLE().enemy[j];
         if (enemy.e.health == enemy.prevHP) {
           continue;
         }
@@ -1773,7 +1786,7 @@ fight.init = function*(surf, _battle) {
     }
 
     for (var i = 0; i < Const.MAX_ENEMIES_IN_TEAM; i++) {
-      Global.battle.enemy[i].pos = enemyPosBak[i];
+      BATTLE().enemy[i].pos = enemyPosBak[i];
     }
 
     yield battle.delay(1, 0, true);
@@ -1786,12 +1799,12 @@ fight.init = function*(surf, _battle) {
   battle.playerValidateAction = function(playerIndex) {
     log.debug(['[BATTLE] playerValidateAction', playerIndex].join(' '));
     var playerRole = Global.party[playerIndex].playerRole;
-    var objectID = Global.battle.player[playerIndex].action.actionID;
-    var target = Global.battle.player[playerIndex].action.target;
+    var objectID = BATTLE().player[playerIndex].action.actionID;
+    var target = BATTLE().player[playerIndex].action.target;
     var valid = true;
     var toEnemy = false;
 
-    switch (Global.battle.player[playerIndex].action.actionType) {
+    switch (BATTLE().player[playerIndex].action.actionType) {
     case BattleActionType.Attack:
       toEnemy = true;
       break;
@@ -1832,22 +1845,22 @@ fight.init = function*(surf, _battle) {
       if (GameData.object[objectID].magic.flags & MagicFlag.UsableToEnemy) {
         if (!valid)
         {
-          Global.battle.player[playerIndex].action.actionType = BattleActionType.Attack;
+          BATTLE().player[playerIndex].action.actionType = BattleActionType.Attack;
         }
         else if (GameData.object[objectID].magic.flags & MagicFlag.ApplyToAll) {
-          Global.battle.player[playerIndex].action.target = -1;
+          BATTLE().player[playerIndex].action.target = -1;
         } else if (target == -1) {
-          Global.battle.player[playerIndex].action.target = battle.selectAutoTarget();
+          BATTLE().player[playerIndex].action.target = battle.selectAutoTarget();
         }
 
         toEnemy = true;
       } else {
         if (!valid) {
-          Global.battle.player[playerIndex].action.actionType = BattleActionType.Defend;
+          BATTLE().player[playerIndex].action.actionType = BattleActionType.Defend;
         } else if (GameData.object[objectID].magic.flags & MagicFlag.ApplyToAll) {
-          Global.battle.player[playerIndex].action.target = -1;
-        } else if (Global.battle.player[playerIndex].action.target == -1) {
-          Global.battle.player[playerIndex].action.target = playerIndex;
+          BATTLE().player[playerIndex].action.target = -1;
+        } else if (BATTLE().player[playerIndex].action.target == -1) {
+          BATTLE().player[playerIndex].action.target = playerIndex;
         }
       }
       break;
@@ -1863,16 +1876,16 @@ fight.init = function*(surf, _battle) {
             Global.playerStatus[w][PlayerStatus.Sleep] > 0 ||
             Global.playerStatus[w][PlayerStatus.Paralyzed] > 0 ||
             Global.playerStatus[w][PlayerStatus.Confused] > 0) {
-          Global.battle.player[playerIndex].action.actionType = BattleActionType.Attack;
+          BATTLE().player[playerIndex].action.actionType = BattleActionType.Attack;
           break;
         }
       }
 
-      if (Global.battle.player[playerIndex].action.actionType == BattleActionType.CoopMagic) {
+      if (BATTLE().player[playerIndex].action.actionType == BattleActionType.CoopMagic) {
         if (GameData.object[objectID].magic.flags & MagicFlag.ApplyToAll) {
-          Global.battle.player[playerIndex].action.target = -1;
+          BATTLE().player[playerIndex].action.target = -1;
         } else if (target == -1) {
-          Global.battle.player[playerIndex].action.target = battle.selectAutoTarget();
+          BATTLE().player[playerIndex].action.target = battle.selectAutoTarget();
         }
       }
       break;
@@ -1884,21 +1897,21 @@ fight.init = function*(surf, _battle) {
       toEnemy = true;
 
       if (script.getItemAmount(objectID) == 0) {
-        Global.battle.player[playerIndex].action.actionType = BattleActionType.Attack;
+        BATTLE().player[playerIndex].action.actionType = BattleActionType.Attack;
       } else if (GameData.object[objectID].item.flags & ItemFlag.ApplyToAll) {
-        Global.battle.player[playerIndex].action.target = -1;
-      } else if (Global.battle.player[playerIndex].action.target == -1) {
-        Global.battle.player[playerIndex].action.target = battle.selectAutoTarget();
+        BATTLE().player[playerIndex].action.target = -1;
+      } else if (BATTLE().player[playerIndex].action.target == -1) {
+        BATTLE().player[playerIndex].action.target = battle.selectAutoTarget();
       }
       break;
 
     case BattleActionType.UseItem:
       if (script.getItemAmount(objectID) == 0) {
-        Global.battle.player[playerIndex].action.actionType = BattleActionType.Defend;
+        BATTLE().player[playerIndex].action.actionType = BattleActionType.Defend;
       } else if (GameData.object[objectID].item.flags & ItemFlag.ApplyToAll) {
-        Global.battle.player[playerIndex].action.target = -1;
-      } else if (Global.battle.player[playerIndex].action.target == -1) {
-        Global.battle.player[playerIndex].action.target = playerIndex;
+        BATTLE().player[playerIndex].action.target = -1;
+      } else if (BATTLE().player[playerIndex].action.target == -1) {
+        BATTLE().player[playerIndex].action.target = playerIndex;
       }
       break;
 
@@ -1906,7 +1919,7 @@ fight.init = function*(surf, _battle) {
       if (Global.playerStatus[playerRole][PlayerStatus.Confused] == 0) {
         // Attack enemies instead if player is not confused
         toEnemy = true;
-        Global.battle.player[playerIndex].action.actionType = BattleActionType.Attack;
+        BATTLE().player[playerIndex].action.actionType = BattleActionType.Attack;
       } else {
         for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
           if (i != playerIndex && GameData.playerRoles.HP[Global.party[i].playerRole] != 0) {
@@ -1917,30 +1930,30 @@ fight.init = function*(surf, _battle) {
         if (i > Global.maxPartyMemberIndex) {
           // Attack enemies if no one else is alive
           toEnemy = true;
-          Global.battle.player[playerIndex].action.actionType = BattleActionType.Attack;
+          BATTLE().player[playerIndex].action.actionType = BattleActionType.Attack;
         }
       }
       break;
     }
 
     // Check if player can attack all enemies at once, or attack one enemy
-    if (Global.battle.player[playerIndex].action.actionType == BattleActionType.Attack) {
+    if (BATTLE().player[playerIndex].action.actionType == BattleActionType.Attack) {
       if (target == -1) {
         if (!script.playerCanAttackAll(playerRole)) {
-          Global.battle.player[playerIndex].action.target = battle.selectAutoTarget();
+          BATTLE().player[playerIndex].action.target = battle.selectAutoTarget();
         }
       } else if (script.playerCanAttackAll(playerRole)) {
-         Global.battle.player[playerIndex].action.target = -1;
+         BATTLE().player[playerIndex].action.target = -1;
       }
     }
 
-    if (toEnemy && Global.battle.player[playerIndex].action.target >= 0) {
-      if (Global.battle.enemy[Global.battle.player[playerIndex].action.target].objectID == 0) {
-        Global.battle.player[playerIndex].action.target = battle.selectAutoTarget();
-        if (Global.battle.player[playerIndex].action.target < 0) {
+    if (toEnemy && BATTLE().player[playerIndex].action.target >= 0) {
+      if (BATTLE().enemy[BATTLE().player[playerIndex].action.target].objectID == 0) {
+        BATTLE().player[playerIndex].action.target = battle.selectAutoTarget();
+        if (BATTLE().player[playerIndex].action.target < 0) {
           throw 'should not be here';
         }
-        //assert(Global.battle.player[playerIndex].action.target >= 0);
+        //assert(BATTLE().player[playerIndex].action.target >= 0);
       }
     }
   };
@@ -1954,25 +1967,25 @@ fight.init = function*(surf, _battle) {
     var playerRole = Global.party[playerIndex].playerRole;
     var coopPos = [ [208, 157], [234, 170], [260, 183] ];
 
-    Global.battle.movingPlayerIndex = playerIndex;
-    Global.battle.blow = 0;
+    BATTLE().movingPlayerIndex = playerIndex;
+    BATTLE().blow = 0;
 
     battle.playerValidateAction(playerIndex);
     battle.backupStat();
 
-    var target = Global.battle.player[playerIndex].action.target;
+    var target = BATTLE().player[playerIndex].action.target;
     var str, def, res, damage;
     var x, y;
 
-    switch (Global.battle.player[playerIndex].action.actionType) {
+    switch (BATTLE().player[playerIndex].action.actionType) {
       case BattleActionType.Attack:
         if (target != -1) {
           // Attack one enemy
           for (var t = 0; t < (Global.playerStatus[playerRole][PlayerStatus.DualAttack] ? 2 : 1); t++) {
             str = script.getPlayerAttackStrength(playerRole);
-            def = Global.battle.enemy[target].e.defense;
-            def += (Global.battle.enemy[target].e.level + 6) * 4;
-            res = Global.battle.enemy[target].e.physicalResistance;
+            def = BATTLE().enemy[target].e.defense;
+            def += (BATTLE().enemy[target].e.level + 6) * 4;
+            res = BATTLE().enemy[target].e.physicalResistance;
             var critical = false;
 
             //str = 999; // TODO
@@ -2001,10 +2014,10 @@ fight.init = function*(surf, _battle) {
               damage = 6666;
             }
 
-            Global.battle.enemy[target].e.health -= damage;
+            BATTLE().enemy[target].e.health -= damage;
 
             if (t == 0) {
-               Global.battle.player[playerIndex].currentFrame = 7;
+               BATTLE().player[playerIndex].currentFrame = 7;
                yield battle.delay(4, 0, true);
             }
 
@@ -2019,14 +2032,14 @@ fight.init = function*(surf, _battle) {
             var critical = (randomLong(0, 5) == 0 || Global.playerStatus[playerRole][PlayerStatus.Bravery] > 0);
 
             if (t == 0) {
-              Global.battle.player[playerIndex].currentFrame = 7;
+              BATTLE().player[playerIndex].currentFrame = 7;
               yield battle.delay(4, 0, true);
             }
 
             for (var i = 0; i < Const.MAX_ENEMIES_IN_TEAM; i++) {
-              var enemy = Global.battle.enemy[indices[i]];
+              var enemy = BATTLE().enemy[indices[i]];
               if (enemy.objectID == 0 ||
-                 indices[i] > Global.battle.maxEnemyIndex) {
+                 indices[i] > BATTLE().maxEnemyIndex) {
                 continue;
               }
 
@@ -2095,28 +2108,28 @@ fight.init = function*(surf, _battle) {
           } while (target == playerIndex || GameData.playerRoles.HP[Global.party[target].playerRole] == 0);
 
           for (var j = 0; j < 2; j++) {
-            Global.battle.player[playerIndex].currentFrame = 8;
+            BATTLE().player[playerIndex].currentFrame = 8;
             yield battle.delay(1, 0, true);
 
-            Global.battle.player[playerIndex].currentFrame = 0;
+            BATTLE().player[playerIndex].currentFrame = 0;
             yield battle.delay(1, 0, true);
           }
 
           yield battle.delay(2, 0, true);
 
-          x = PAL_X(Global.battle.player[target].pos) + 30;
-          y = PAL_Y(Global.battle.player[target].pos) + 12;
+          x = PAL_X(BATTLE().player[target].pos) + 30;
+          y = PAL_Y(BATTLE().player[target].pos) + 12;
 
-          Global.battle.player[playerIndex].pos = PAL_XY(x, y);
-          Global.battle.player[playerIndex].currentFrame = 8;
+          BATTLE().player[playerIndex].pos = PAL_XY(x, y);
+          BATTLE().player[playerIndex].currentFrame = 8;
           yield battle.delay(5, 0, true);
 
-          Global.battle.player[playerIndex].currentFrame = 9;
+          BATTLE().player[playerIndex].currentFrame = 9;
           sound.play(GameData.playerRoles.weaponSound[playerRole]);
 
           str = script.getPlayerAttackStrength(playerRole);
           def = script.getPlayerDefense(Global.party[target].playerRole);
-          if (Global.battle.player[target].defending) {
+          if (BATTLE().player[target].defending) {
             def *= 2;
           }
 
@@ -2139,17 +2152,17 @@ fight.init = function*(surf, _battle) {
 
           GameData.playerRoles.HP[Global.party[target].playerRole] -= damage;
 
-          Global.battle.player[target].pos =
-            PAL_XY(PAL_X(Global.battle.player[target].pos) - 12,
-                   PAL_Y(Global.battle.player[target].pos) - 6);
+          BATTLE().player[target].pos =
+            PAL_XY(PAL_X(BATTLE().player[target].pos) - 12,
+                   PAL_Y(BATTLE().player[target].pos) - 6);
           yield battle.delay(1, 0, true);
 
-          Global.battle.player[target].colorShift = 6;
+          BATTLE().player[target].colorShift = 6;
           yield battle.delay(1, 0, true);
 
           battle.displayStatChange();
 
-          Global.battle.player[target].colorShift = 0;
+          BATTLE().player[target].colorShift = 0;
           yield battle.delay(4, 0, true);
 
           battle.updateFighters();
@@ -2168,8 +2181,8 @@ fight.init = function*(surf, _battle) {
         } else {
           for (var i = 1; i <= 6; i++) {
             // Update the position for the player who invoked the action
-            x = PAL_X(Global.battle.player[playerIndex].originalPos) * (6 - i);
-            y = PAL_Y(Global.battle.player[playerIndex].originalPos) * (6 - i);
+            x = PAL_X(BATTLE().player[playerIndex].originalPos) * (6 - i);
+            y = PAL_Y(BATTLE().player[playerIndex].originalPos) * (6 - i);
 
             x += coopPos[0][0] * i;
             y += coopPos[0][1] * i;
@@ -2177,7 +2190,7 @@ fight.init = function*(surf, _battle) {
             x /= 6;
             y /= 6;
 
-            Global.battle.player[playerIndex].pos = PAL_XY(x, y);
+            BATTLE().player[playerIndex].pos = PAL_XY(x, y);
 
             // Update the position for other players
             var t = 0;
@@ -2189,8 +2202,8 @@ fight.init = function*(surf, _battle) {
 
               t++;
 
-              x = PAL_X(Global.battle.player[j].originalPos) * (6 - i);
-              y = PAL_Y(Global.battle.player[j].originalPos) * (6 - i);
+              x = PAL_X(BATTLE().player[j].originalPos) * (6 - i);
+              y = PAL_Y(BATTLE().player[j].originalPos) * (6 - i);
 
               x += coopPos[t][0] * i;
               y += coopPos[t][1] * i;
@@ -2198,7 +2211,7 @@ fight.init = function*(surf, _battle) {
               x /= 6;
               y /= 6;
 
-              Global.battle.player[j].pos = PAL_XY(x, y);
+              BATTLE().player[j].pos = PAL_XY(x, y);
             }
 
             yield battle.delay(1, 0, true);
@@ -2209,18 +2222,18 @@ fight.init = function*(surf, _battle) {
               continue;
             }
 
-            Global.battle.player[i].currentFrame = 5;
+            BATTLE().player[i].currentFrame = 5;
 
             yield battle.delay(3, 0, true);
           }
 
-          Global.battle.player[playerIndex].colorShift = 6;
-          Global.battle.player[playerIndex].currentFrame = 5;
+          BATTLE().player[playerIndex].colorShift = 6;
+          BATTLE().player[playerIndex].currentFrame = 5;
           sound.play(157);
           yield battle.delay(5, 0, true);
 
-          Global.battle.player[playerIndex].currentFrame = 6;
-          Global.battle.player[playerIndex].colorShift = 0;
+          BATTLE().player[playerIndex].currentFrame = 6;
+          BATTLE().player[playerIndex].colorShift = 0;
           yield battle.delay(3, 0, true);
 
           yield battle.showPlayerOffMagicAnim(-1, object, target);
@@ -2234,7 +2247,7 @@ fight.init = function*(surf, _battle) {
           }
 
           // Reset the time meter for everyone when using coopmagic
-          Global.battle.player[i].state = FighterState.Wait;
+          BATTLE().player[i].state = FighterState.Wait;
         }
 
         battle.backupStat(); // so that "damages" to players won't be shown
@@ -2248,11 +2261,13 @@ fight.init = function*(surf, _battle) {
 
         str = ~~(str / 4);
 
+        var damage = 0;
+
         // Inflict damage to enemies
         if (target == -1) {
           // Attack all enemies
-          for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-            var enemy = Global.battle.enemy[i];
+          for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+            var enemy = BATTLE().enemy[i];
             if (enemy.objectID == 0) {
               continue;
             }
@@ -2274,10 +2289,10 @@ fight.init = function*(surf, _battle) {
           }
         } else {
           // Attack one enemy
-          def = Global.battle.enemy[target].e.defense;
-          def += (Global.battle.enemy[target].e.level + 6) * 4;
+          def = BATTLE().enemy[target].e.defense;
+          def += (BATTLE().enemy[target].e.level + 6) * 4;
 
-          damage = battle.calcMagicDamage(str, def, Global.battle.enemy[target].e.elemResistance, Global.battle.enemy[target].e.poisonResistance, object);
+          damage = battle.calcMagicDamage(str, def, BATTLE().enemy[target].e.elemResistance, BATTLE().enemy[target].e.poisonResistance, object);
 
           if (damage <= 0) {
             damage = 1;
@@ -2287,7 +2302,7 @@ fight.init = function*(surf, _battle) {
             damage = 6666;
           }
 
-          Global.battle.enemy[target].e.health -= damage;
+          BATTLE().enemy[target].e.health -= damage;
         }
 
         battle.displayStatChange();
@@ -2300,8 +2315,8 @@ fight.init = function*(surf, _battle) {
           // Move all players back to the original position
           for (var i = 1; i <= 6; i++) {
             // Update the position for the player who invoked the action
-            x = PAL_X(Global.battle.player[playerIndex].originalPos) * i;
-            y = PAL_Y(Global.battle.player[playerIndex].originalPos) * i;
+            x = PAL_X(BATTLE().player[playerIndex].originalPos) * i;
+            y = PAL_Y(BATTLE().player[playerIndex].originalPos) * i;
 
             x += coopPos[0][0] * (6 - i);
             y += coopPos[0][1] * (6 - i);
@@ -2309,13 +2324,13 @@ fight.init = function*(surf, _battle) {
             x /= 6;
             y /= 6;
 
-            Global.battle.player[playerIndex].pos = PAL_XY(x, y);
+            BATTLE().player[playerIndex].pos = PAL_XY(x, y);
 
             // Update the position for other players
             var t = 0;
 
             for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
-              Global.battle.player[j].currentFrame = 0;
+              BATTLE().player[j].currentFrame = 0;
 
               if (j == playerIndex) {
                 continue;
@@ -2323,8 +2338,8 @@ fight.init = function*(surf, _battle) {
 
               t++;
 
-              x = PAL_X(Global.battle.player[j].originalPos) * i;
-              y = PAL_Y(Global.battle.player[j].originalPos) * i;
+              x = PAL_X(BATTLE().player[j].originalPos) * i;
+              y = PAL_Y(BATTLE().player[j].originalPos) * i;
 
               x += coopPos[t][0] * (6 - i);
               y += coopPos[t][1] * (6 - i);
@@ -2332,7 +2347,7 @@ fight.init = function*(surf, _battle) {
               x = ~~(x / 6);
               y = ~~(y / 6);
 
-              Global.battle.player[j].pos = PAL_XY(x, y);
+              BATTLE().player[j].pos = PAL_XY(x, y);
             }
 
             yield battle.delay(1, 0, true);
@@ -2341,7 +2356,7 @@ fight.init = function*(surf, _battle) {
         break;
 
       case BattleActionType.Defend:
-        Global.battle.player[playerIndex].defending = true;
+        BATTLE().player[playerIndex].defending = true;
         Global.exp.defenseExp[playerRole].count += 2;
         break;
 
@@ -2349,36 +2364,36 @@ fight.init = function*(surf, _battle) {
         str = script.getPlayerFleeRate(playerRole);
         def = 0;
 
-        for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-          if (Global.battle.enemy[i].objectID == 0) {
+        for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+          if (BATTLE().enemy[i].objectID == 0) {
             continue;
           }
 
-          def += SHORT(Global.battle.enemy[i].e.fleeRate);
-          def += (Global.battle.enemy[i].e.level + 6) * 2;
+          def += SHORT(BATTLE().enemy[i].e.fleeRate);
+          def += (BATTLE().enemy[i].e.level + 6) * 2;
         }
 
         if (SHORT(def) < 0) {
           def = 0;
         }
 
-        if (randomLong(0, str) >= randomLong(0, def) && !Global.battle.isBoss) {
+        if (randomLong(0, str) >= randomLong(0, def) && !BATTLE().isBoss) {
           // Successful escape
           yield battle.playerEscape();
         } else {
           // Failed escape
-          Global.battle.player[playerIndex].currentFrame = 0;
+          BATTLE().player[playerIndex].currentFrame = 0;
 
           for (var i = 0; i < 3; i++) {
-            x = PAL_X(Global.battle.player[playerIndex].pos) + 4;
-            y = PAL_Y(Global.battle.player[playerIndex].pos) + 2;
+            x = PAL_X(BATTLE().player[playerIndex].pos) + 4;
+            y = PAL_Y(BATTLE().player[playerIndex].pos) + 2;
 
-            Global.battle.player[playerIndex].pos = PAL_XY(x, y);
+            BATTLE().player[playerIndex].pos = PAL_XY(x, y);
 
             yield battle.delay(1, 0, true);
           }
 
-          Global.battle.player[playerIndex].currentFrame = 1;
+          BATTLE().player[playerIndex].currentFrame = 1;
           yield battle.delay(8, ui.BATTLE_LABEL_ESCAPEFAIL, true);
 
           Global.exp.fleeExp[playerRole].count += 2;
@@ -2386,7 +2401,7 @@ fight.init = function*(surf, _battle) {
         break;
 
       case BattleActionType.Magic:
-        var object = Global.battle.player[playerIndex].action.actionID;
+        var object = BATTLE().player[playerIndex].action.actionID;
         var magicNum = GameData.object[object].magic.magicNumber;
 
         yield battle.showPlayerPreMagicAnim(playerIndex, (GameData.magic[magicNum].type == MagicType.Summon));
@@ -2404,8 +2419,8 @@ fight.init = function*(surf, _battle) {
           // Using a defensive magic
           var w = 0;
 
-          if (Global.battle.player[playerIndex].action.target != -1) {
-            w = Global.party[Global.battle.player[playerIndex].action.target].playerRole;
+          if (BATTLE().player[playerIndex].action.target != -1) {
+            w = Global.party[BATTLE().player[playerIndex].action.target].playerRole;
           }
           else if (GameData.magic[magicNum].type == MagicType.Trance) {
             w = playerRole;
@@ -2421,14 +2436,14 @@ fight.init = function*(surf, _battle) {
             if (script.scriptSuccess) {
               if (GameData.magic[magicNum].type == MagicType.Trance) {
                 for (var i = 0; i < 6; i++) {
-                  Global.battle.player[playerIndex].colorShift = i * 2;
+                  BATTLE().player[playerIndex].colorShift = i * 2;
                   yield battle.delay(1, 0, true);
                 }
 
                 battle.backupScene();
                 battle.loadBattleSprites();
 
-                Global.battle.player[playerIndex].colorShift = 0;
+                BATTLE().player[playerIndex].colorShift = 0;
 
                 battle.makeScene();
                 yield battle.fadeScene();
@@ -2452,8 +2467,8 @@ fight.init = function*(surf, _battle) {
             if (SHORT(GameData.magic[magicNum].baseDamage) > 0) {
               if (target == -1) {
                 // Attack all enemies
-                for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-                  var enemy = Global.battle.enemy[i];
+                for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+                  var enemy = BATTLE().enemy[i];
                   if (enemy.objectID == 0) {
                     continue;
                   }
@@ -2476,7 +2491,7 @@ fight.init = function*(surf, _battle) {
                 }
               } else {
                 // Attack one enemy
-                var targetEnemy = Global.battle.enemy[target];
+                var targetEnemy = BATTLE().enemy[target];
                 str = script.getPlayerMagicStrength(playerRole);
                 def = targetEnemy.e.defense;
                 def += (targetEnemy.e.level + 6) * 4;
@@ -2507,7 +2522,7 @@ fight.init = function*(surf, _battle) {
         break;
 
       case BattleActionType.ThrowItem:
-        var player = Global.battle.player[playerIndex];
+        var player = BATTLE().player[playerIndex];
         var object = player.action.actionID;
 
         for (var i = 0; i < 4; i++) {
@@ -2541,7 +2556,7 @@ fight.init = function*(surf, _battle) {
         break;
 
       case BattleActionType.UseItem:
-        var object = Global.battle.player[playerIndex].action.actionID;
+        var object = BATTLE().player[playerIndex].action.actionID;
         var item = GameData.object[object].item;
 
         yield battle.showPlayerUseItemAnim(playerIndex, object, target);
@@ -2553,8 +2568,8 @@ fight.init = function*(surf, _battle) {
           script.addItemToInventory(object, -1);
         }
 
-        if (Global.battle.hidingTime < 0) {
-          Global.battle.hidingTime = -Global.battle.hidingTime;
+        if (BATTLE().hidingTime < 0) {
+          BATTLE().hidingTime = -BATTLE().hidingTime;
           battle.backupScene();
           battle.makeScene();
           yield battle.fadeScene();
@@ -2570,8 +2585,8 @@ fight.init = function*(surf, _battle) {
     }
 
     // Revert this player back to waiting state.
-    Global.battle.player[playerIndex].state = FighterState.Wait;
-    Global.battle.player[playerIndex].timeMeter = 0;
+    BATTLE().player[playerIndex].state = FighterState.Wait;
+    BATTLE().player[playerIndex].timeMeter = 0;
 
     yield battle.postActionCheck(false);
   };
@@ -2599,9 +2614,9 @@ fight.init = function*(surf, _battle) {
     var autoDefend = false;
     var magAutoDefend = utils.initArray(false, Const.MAX_PLAYERS_IN_PARTY);
     battle.backupStat();
-    Global.battle.blow = 0;
+    BATTLE().blow = 0;
 
-    var enemy = Global.battle.enemy[enemyIndex];
+    var enemy = BATTLE().enemy[enemyIndex];
     var target = battle.enemySelectTargetIndex();
     var playerRole = Global.party[target].playerRole;
     var magic = enemy.e.magic;
@@ -2612,7 +2627,7 @@ fight.init = function*(surf, _battle) {
 
     if (enemy.status[PlayerStatus.Sleep] > 0 ||
         enemy.status[PlayerStatus.Paralyzed] > 0 ||
-        Global.battle.hidingTime > 0) {
+        BATTLE().hidingTime > 0) {
       // Do nothing
       return end();
     } else if (enemy.status[PlayerStatus.Confused] > 0) {
@@ -2678,7 +2693,7 @@ fight.init = function*(surf, _battle) {
               randomLong(0, 2) == 0 &&
               GameData.playerRoles.HP[w] != 0) {
             magAutoDefend[i] = true;
-            Global.battle.player[i].currentFrame = 3;
+            BATTLE().player[i].currentFrame = 3;
           } else {
             magAutoDefend[i] = false;
           }
@@ -2688,7 +2703,7 @@ fight.init = function*(surf, _battle) {
                  Global.playerStatus[playerRole][PlayerStatus.Confused] == 0 &&
                  randomLong(0, 2) == 0) {
         autoDefend = true;
-        Global.battle.player[target].currentFrame = 3;
+        BATTLE().player[target].currentFrame = 3;
       }
 
       // yield battle.delay(12, (WORD)(-((SHORT)magic)), false);
@@ -2723,7 +2738,7 @@ fight.init = function*(surf, _battle) {
               magic
             );
 
-            damage /= ((Global.battle.player[i].defending ? 2 : 1) *
+            damage /= ((BATTLE().player[i].defending ? 2 : 1) *
                       ((Global.playerStatus[w][PlayerStatus.Protect] > 0) ? 2 : 1)) +
                       (magAutoDefend[i] ? 1 : 0);
             damage = ~~damage;
@@ -2759,7 +2774,7 @@ fight.init = function*(surf, _battle) {
             magic
           );
 
-          damage /= ((Global.battle.player[target].defending ? 2 : 1) *
+          damage /= ((BATTLE().player[target].defending ? 2 : 1) *
                     ((Global.playerStatus[playerRole][PlayerStatus.Protect] > 0) ? 2 : 1)) +
                     (autoDefend ? 1 : 0);
           damage = ~~damage;
@@ -2790,7 +2805,7 @@ fight.init = function*(surf, _battle) {
       for (var i = 0; i < 5; i++) {
         if (target == -1) {
           for (x = 0; x <= Global.maxPartyMemberIndex; x++) {
-            var targetPlayer = Global.battle.player[x];
+            var targetPlayer = BATTLE().player[x];
             if (targetPlayer.prevHP ==
                 GameData.playerRoles.HP[Global.party[x].playerRole]) {
               // Skip unaffected players
@@ -2807,7 +2822,7 @@ fight.init = function*(surf, _battle) {
             targetPlayer.colorShift = ((i < 3) ? 6 : 0);
           }
         } else {
-          var targetPlayer = Global.battle.player[target];
+          var targetPlayer = BATTLE().player[target];
           targetPlayer.currentFrame = 4;
           if (i > 0) {
             targetPlayer.pos = PAL_XY(
@@ -2831,7 +2846,7 @@ fight.init = function*(surf, _battle) {
       yield battle.delay(8, 0, true);
     } else {
       // Physical attack
-      var targetPlayer = Global.battle.player[target];
+      var targetPlayer = BATTLE().player[target];
       var frameBak = targetPlayer.currentFrame;
 
       str = SHORT(enemy.e.attackStrength);
@@ -3036,9 +3051,9 @@ fight.init = function*(surf, _battle) {
 
   battle.stealFromEnemy = function*(target, stealRate) {
     log.debug(['[BATTLE] stealFromEnemy', target, stealRate].join(' '));
-    var playerIndex = Global.battle.movingPlayerIndex;
-    var currentPlayer = Global.battle.player[playerIndex];
-    var targetEnemy = Global.battle.enemy[target];
+    var playerIndex = BATTLE().movingPlayerIndex;
+    var currentPlayer = BATTLE().player[playerIndex];
+    var targetEnemy = BATTLE().enemy[target];
 
     currentPlayer.currentFrame = 10;
     var offset = (target - playerIndex) * 8;
@@ -3128,8 +3143,8 @@ fight.init = function*(surf, _battle) {
     if (GameData.magic[GameData.object[magicObjectID].magic.magicNumber].baseDamage > 0 || baseDamage > 0) {
       if (target == -1) {
         // Apply to all enemies
-        for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-          var enemy = Global.battle.enemy[i];
+        for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
+          var enemy = BATTLE().enemy[i];
           if (enemy.objectID == 0) {
             continue;
           }
@@ -3161,7 +3176,7 @@ fight.init = function*(surf, _battle) {
         }
       } else {
         // Apply to one enemy
-        var targetEnemy = Global.battle.enemy[target];
+        var targetEnemy = BATTLE().enemy[target];
         def = SHORT(targetEnemy.e.defense);
         def += (targetEnemy.e.level + 6) * 4;
 
