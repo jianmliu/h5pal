@@ -2,7 +2,7 @@ import utils from './utils';
 import scene from './scene';
 import Sprite from './sprite';
 import input from './input';
-import script from './script';
+import script from '../../services/script-service.js';
 import music from './music';
 import sound from './sound';
 import stateService from '../../services/state-service.js';

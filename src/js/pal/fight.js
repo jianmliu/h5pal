@@ -1,5 +1,5 @@
 import input from './input';
-import script from './script';
+import script from '../../services/script-service.js';
 import Sprite from './sprite';
 import uibattle from './uibattle';
 import sound from './sound';

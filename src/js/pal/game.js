@@ -3,7 +3,7 @@ import ui from './ui';
 import uigame from './uigame';
 import input from './input';
 import play from './play';
-import script from './script';
+import script from '../../services/script-service.js';
 import res from './res';
 import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';

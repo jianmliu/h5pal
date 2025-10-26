@@ -33,6 +33,7 @@ ui.init = function*(surf, services) {
   ui.services = services || null;
   const resource = (ui.services && ui.services.resource) || resourceService;
   surface = surf;
+  ui.surface = surf;
   yield resource.loadMKF('DATA', 'FBP');
   var data = ui.data = resource.getMKF('DATA');
   ui.sprite = new Sprite(data.readChunk(ui.CHUNKNUM_SPRITEUI));

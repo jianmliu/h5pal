@@ -49,10 +49,12 @@ function compareSprite(a, b) {
 }
 
 var surface = null;
+scene.surface = null;
 
 scene.init = function*(surf) {
   log.debug('[SCENE] init');
   surface = surf;
+  scene.surface = surf;
   global.scene = scene;
   var list = ['MAP', 'GOP', 'MGO'];
   yield resourceService.loadMKF(...list);
@@ -579,6 +581,15 @@ utils.extend(Scene.prototype, {
     }
   },
   render: function*() {
+    var surf = scene.surface || surface;
+    if (!surf && global.ui && global.ui.surface) {
+      surf = global.ui.surface;
+    }
+    if (!surf) {
+      console.warn('[SCENE] render called before surface initialized');
+      return;
+    }
+    scene.surface = surface = surf;
     surface.clear(); // 因为后面会renderMap所以似乎不需要clear了
     // Step 1: Draw the complete map, for both of the layers.
     this.renderMap();

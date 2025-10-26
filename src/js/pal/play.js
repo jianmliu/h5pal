@@ -1,6 +1,6 @@
 import scene from './scene';
 import input from './input';
-import script from './script';
+import script from '../../services/script-service.js';
 import battle from './battle';
 import ending from './ending';
 import stateService from '../../services/state-service.js';
