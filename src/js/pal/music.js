@@ -1,4 +1,5 @@
 import config from './config';
+import stateService from '../../services/state-service.js';
 
 console.trace('music module load');
 
@@ -11,7 +12,7 @@ function pad(num, size) {
 }
 
 music.play = function() {
-  Global.numMusic = arguments[0];
+  stateService.setGlobal('numMusic', arguments[0]);
   var args = toArray(arguments);
   log.debug(['[MUSIC] play'].concat(args).join(' '));
   if (!config.enableAudio || !config.audioBaseUrl) {

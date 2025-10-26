@@ -186,7 +186,14 @@ play.useItem = function*() {
           break;
         }
         // Run the script
-        GameData.object[object].item.scriptOnUse = yield script.runTriggerScript(GameData.object[object].item.scriptOnUse, player);
+        var currentScript = GameData.object[object].item.scriptOnUse;
+        var nextScript = yield script.runTriggerScript(currentScript, player);
+        stateService.mutateGameData('object', (objects) => {
+          if (objects && objects[object] && objects[object].item) {
+            objects[object].item.scriptOnUse = nextScript;
+          }
+          return objects;
+        });
         // Remove the item if the item is consuming and the script succeeded
         if ((GameData.object[object].item.flags & ItemFlag.Consuming) && script.scriptSuccess) {
           script.addItemToInventory(object, -1);
@@ -194,7 +201,14 @@ play.useItem = function*() {
       }
     } else {
       // Run the script
-      GameData.object[object].item.scriptOnUse = yield script.runTriggerScript(GameData.object[object].item.scriptOnUse, 0xFFFF);
+      var currentScriptAll = GameData.object[object].item.scriptOnUse;
+      var nextScriptAll = yield script.runTriggerScript(currentScriptAll, 0xFFFF);
+      stateService.mutateGameData('object', (objects) => {
+        if (objects && objects[object] && objects[object].item) {
+          objects[object].item.scriptOnUse = nextScriptAll;
+        }
+        return objects;
+      });
 
       // Remove the item if the item is consuming and the script succeeded
       if ((GameData.object[object].item.flags & ItemFlag.Consuming) && script.scriptSuccess) {

@@ -256,7 +256,7 @@ uigame.showCash = function(cash) {
 };
 
 uigame.systemMenu_onItemChange = function(currentItem) {
-  Global.curSystemMenuItem = currentItem - 1;
+  stateService.setGlobal('curSystemMenuItem', currentItem - 1);
 };
 
 /**
@@ -345,7 +345,8 @@ uigame.systemMenu = function*() {
       break;
     case 3:
       // Music
-      Global.noMusic = !(yield uigame.switchMenu(!Global.noMusic));
+      const noMusic = !(yield uigame.switchMenu(!Global.noMusic));
+      stateService.setGlobal('noMusic', noMusic);
       /*
       g_fNoMusic = !PAL_SwitchMenu(!g_fNoMusic);
       #ifdef PAL_HAS_NATIVEMIDI
@@ -365,7 +366,8 @@ uigame.systemMenu = function*() {
       break;
     case 4:
       // Sound
-      Global.noSound = !(yield uigame.switchMenu(!Global.noSound));
+      const noSound = !(yield uigame.switchMenu(!Global.noSound));
+      stateService.setGlobal('noSound', noSound);
       break;
     case 5:
       if (!PAL_CLASSIC) {
@@ -445,16 +447,26 @@ uigame.inGameMagicMenu = function*() {
     }
     var magicObj = GameData.object[magic].magic;
     if (magicObj.flags & MagicFlag.ApplyToAll) {
-      magicObj.scriptOnUse = yield script.runTriggerScript(magicObj.scriptOnUse, 0);
-
+      var applyScriptResult = yield script.runTriggerScript(magicObj.scriptOnUse, 0);
+      stateService.mutateGameData('object', (objects) => {
+        if (objects && objects[magic] && objects[magic].magic) {
+          objects[magic].magic.scriptOnUse = applyScriptResult;
+        }
+        return objects;
+      });
       if (script.scriptSuccess) {
         magicObj.scriptOnSuccess = yield script.runTriggerScript(magicObj.scriptOnSuccess, 0);
-        GameData.playerRoles.MP[Global.party[w].playerRole] -= GameData.magic[magicObj.magicNumber].costMP;
+        stateService.mutateGameData('playerRoles', (playerRoles) => {
+          if (playerRoles && playerRoles.MP) {
+            playerRoles.MP[Global.party[w].playerRole] -= GameData.magic[magicObj.magicNumber].costMP;
+          }
+          return playerRoles;
+        });
       }
 
       if (Global.needToFadeIn) {
         yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
-        Global.needToFadeIn = false;
+        stateService.setGlobal('needToFadeIn', false);
       }
     } else {
       // Need to select which player to use the magic on.
@@ -488,11 +500,22 @@ uigame.inGameMagicMenu = function*() {
             player = ui.MENUITEM_VALUE_CANCELLED;
             break;
           } else if (input.isKeyPressed(Key.Search)) {
-            magicObj.scriptOnUse = yield script.runTriggerScript(magicObj.scriptOnUse, Global.party[player].playerRole);
+            var targetedScript = yield script.runTriggerScript(magicObj.scriptOnUse, Global.party[player].playerRole);
+            stateService.mutateGameData('object', (objects) => {
+              if (objects && objects[magic] && objects[magic].magic) {
+                objects[magic].magic.scriptOnUse = targetedScript;
+              }
+              return objects;
+            });
             if (script.scriptSuccess) {
               magicObj.scriptOnSuccess = yield script.runTriggerScript(magicObj.scriptOnSuccess, Global.party[player].playerRole);
               if (script.scriptSuccess){
-                GameData.playerRoles.MP[Global.party[w].playerRole] -= GameData.magic[magicObj.magicNumber].costMP;
+                stateService.mutateGameData('playerRoles', (playerRoles) => {
+                  if (playerRoles && playerRoles.MP) {
+                    playerRoles.MP[Global.party[w].playerRole] -= GameData.magic[magicObj.magicNumber].costMP;
+                  }
+                  return playerRoles;
+                });
                 // Check if we have run out of MP
                 if (GameData.playerRoles.MP[Global.party[w].playerRole] < GameData.magic[magicObj.magicNumber].costMP) {
                   // Don't go further if run out of MP
@@ -558,7 +581,7 @@ uigame.inventoryMenu = function*() {
 };
 
 uigame.inGameMenu_onItemChange = function(currentItem) {
-  Global.curMainMenuItem = currentItem - 1;
+  stateService.setGlobal('curMainMenuItem', currentItem - 1);
 };
 
 uigame.inGameMenu = function*() {
@@ -891,7 +914,10 @@ uigame.buyMenu = function*(storeNum){
     if (GameData.object[result].item.price <= Global.cash) {
       if (yield uigame.confirmMenu()) {
         // Player bought an item
-        Global.cash -= GameData.object[result].item.price;
+        stateService.mutateGlobal('cash', (cash) => {
+          var currentCash = Number(cash) || 0;
+          return currentCash - GameData.object[result].item.price;
+        });
         script.addItemToInventory(result, 1);
       }
     }
@@ -930,14 +956,17 @@ uigame.sellMenu = function*(){
 
     if (yield uigame.confirmMenu()) {
       if (script.addItemToInventory(w, -1)) {
-        Global.cash += GameData.object[w].item.price / 2;
+        stateService.mutateGlobal('cash', (cash) => {
+          var currentCash = Number(cash) || 0;
+          return currentCash + GameData.object[w].item.price / 2;
+        });
       }
     }
   }
 };
 
 uigame.equipItemMenu = function*(item) {
-  Global.lastUnequippedItem = item;
+  stateService.setGlobal('lastUnequippedItem', item);
   var bufBackground = Files.FBP.decompressChunk(ui.EQUIPMENU_BACKGROUND_FBPNUM);
   var currentPlayer = 0;
   var selectedColor = ui.MENUITEM_COLOR_SELECTED_FIRST;
@@ -1041,7 +1070,13 @@ uigame.equipItemMenu = function*(item) {
        role = Global.party[currentPlayer].playerRole;
        if (GameData.object[item].item.flags & (ItemFlag.EquipableByPlayerRole_First << role)) {
           // Run the equip script
-          GameData.object[item].item.scriptOnEquip = yield script.runTriggerScript(GameData.object[item].item.scriptOnEquip, Global.party[currentPlayer].playerRole);
+          const nextEquipScript = yield script.runTriggerScript(GameData.object[item].item.scriptOnEquip, Global.party[currentPlayer].playerRole);
+          stateService.mutateGameData('object', (objects) => {
+            if (objects && objects[item] && objects[item].item) {
+              objects[item].item.scriptOnEquip = nextEquipScript;
+            }
+            return objects;
+          });
        }
     }
   }

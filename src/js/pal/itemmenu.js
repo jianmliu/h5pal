@@ -1,6 +1,7 @@
 import utils from './utils';
 import input from './input';
 import scene from './scene';
+import stateService from '../../services/state-service.js';
 
 log.trace('itemmenu module load');
 
@@ -13,6 +14,21 @@ var itemmenu = {
 var surface = null;
 var ui = null;
 
+function setCurrentInventoryIndex(value) {
+  stateService.setGlobal('curInvMenuItem', value);
+}
+
+function adjustCurrentInventoryIndex(delta) {
+  setCurrentInventoryIndex(Global.curInvMenuItem + delta);
+}
+
+function ensureInventorySlot(inventory, index) {
+  if (!inventory[index]) {
+    inventory[index] = { item: 0, amount: 0, amountInUse: 0 };
+  }
+  return inventory[index];
+}
+
 itemmenu.init = function*(surf, _ui) {
   log.debug('[UI] init itemmenu');
   ui = _ui;
@@ -24,27 +40,27 @@ itemmenu.itemSelectMenuUpdate = function() {
   var prevImageIndex = 0xFFFF;
   // Process input
   if (input.isKeyPressed(Key.Up)) {
-    Global.curInvMenuItem -= 3;
+    adjustCurrentInventoryIndex(-3);
   } else if (input.isKeyPressed(Key.Down)) {
-    Global.curInvMenuItem += 3;
+    adjustCurrentInventoryIndex(3);
   } else if (input.isKeyPressed(Key.Left)) {
-    Global.curInvMenuItem--;
+    adjustCurrentInventoryIndex(-1);
   } else if (input.isKeyPressed(Key.Right)) {
-    Global.curInvMenuItem++;
+    adjustCurrentInventoryIndex(1);
   } else if (input.isKeyPressed(Key.PageUp)) {
-    Global.curInvMenuItem -= 3 * 7;
+    adjustCurrentInventoryIndex(-3 * 7);
   } else if (input.isKeyPressed(Key.PageDown)) {
-    Global.curInvMenuItem += 3 * 7;
+    adjustCurrentInventoryIndex(3 * 7);
   } else if (input.isKeyPressed(Key.Menu)) {
     return 0;
   }
 
   // Make sure the current menu item index is in bound
   if (Global.curInvMenuItem >= itemmenu.numInventory) {
-    Global.curInvMenuItem = itemmenu.numInventory - 1;
+    setCurrentInventoryIndex(itemmenu.numInventory - 1);
   }
   if (Global.curInvMenuItem < 0) {
-    Global.curInvMenuItem = 0;
+    setCurrentInventoryIndex(0);
   }
 
   // Redraw the box
@@ -180,19 +196,26 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
   }
   // Also add usable equipped items to the list
   if ((itemFlags & ItemFlag.Usable) && !Global.inBattle) {
-    for (var i = 0; i <= Global.wMaxPartyMemberIndex; i++) {
-      var w = Global.party[i].playerRole;
-      for (var j = 0; j < Const.MAX_PLAYER_EQUIPMENTS; j++) {
-        if (GameData.object[GameData.playerRoles.equipment[j][w]].item.flags & ItemFlag.Usable) {
-          if (itemmenu.numInventory < Const.MAX_INVENTORY) {
-            Global.inventory[itemmenu.numInventory].item = GameData.playerRoles.equipment[j][w];
-            Global.inventory[itemmenu.numInventory].amount = 0;
-            Global.inventory[itemmenu.numInventory].amountInUse = -1;
-            itemmenu.numInventory++;
+    stateService.mutateGlobal('inventory', (inventory) => {
+      if (!inventory) {
+        return inventory;
+      }
+      for (var i = 0; i <= Global.wMaxPartyMemberIndex; i++) {
+        var w = Global.party[i].playerRole;
+        for (var j = 0; j < Const.MAX_PLAYER_EQUIPMENTS; j++) {
+          if (GameData.object[GameData.playerRoles.equipment[j][w]].item.flags & ItemFlag.Usable) {
+            if (itemmenu.numInventory < Const.MAX_INVENTORY) {
+              var slot = ensureInventorySlot(inventory, itemmenu.numInventory);
+              slot.item = GameData.playerRoles.equipment[j][w];
+              slot.amount = 0;
+              slot.amountInUse = -1;
+              itemmenu.numInventory++;
+            }
           }
         }
       }
-    }
+      return inventory;
+    });
   }
 };
 

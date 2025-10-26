@@ -9,6 +9,7 @@ import game from './game';
 import rng from './rng';
 import co from './co';
 import services from '../../services/index.js';
+import stateService from '../../services/state-service.js';
 
 console.trace('main module load');
 
@@ -73,7 +74,7 @@ main.initGlobals = function*() {
     //#ifndef PAL_CLASSIC
     //   BYTE             bBattleSpeed;        // Battle Speed (1 = Fastest, 5 = Slowest)
     //#endif
-    Global.battleSpeed = 2;
+    stateService.setGlobal('battleSpeed', 2);
   }
 
   // Open files
@@ -83,9 +84,10 @@ main.initGlobals = function*() {
     Files[name] = services.resource.getMKF(name);
   });
 
-  Global.objectDesc = yield services.resource.loadObjectDesc('desc.dat');
+  const objectDesc = yield services.resource.loadObjectDesc('desc.dat');
+  stateService.setGlobal('objectDesc', objectDesc);
 
-  Global.currentSaveSlot = 1;
+  stateService.setGlobal('currentSaveSlot', 1);
 };
 
 main.start = function() {

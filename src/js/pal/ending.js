@@ -1,4 +1,5 @@
 import resourceService from '../../services/resource-service.js';
+import stateService from '../../services/state-service.js';
 import Sprite from './sprite';
 import scene from './scene';
 
@@ -179,7 +180,7 @@ ending.scrollFBP = function*(chunkNum, scrollSpeed, scrollDown) {
 
     if (Global.needToFadeIn) {
       yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
-      Global.needToFadeIn = false;
+      stateService.setGlobal('needToFadeIn', false);
     }
 
     yield sleep(400 / scrollSpeed); // sleep(800 / scrollSpeed);
@@ -211,7 +212,7 @@ ending.endingAnimation = function*() {
   srcrect.w = 320;
   dstrect.w = 320;
 
-  Global.screenWave = 2;
+  stateService.setGlobal('screenWave', 2);
 
   for (var i = 0; i < 400; i++) {
     // Draw the background
@@ -251,13 +252,13 @@ ending.endingAnimation = function*() {
 
     if (Global.needToFadeIn) {
       yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
-      Global.needToFadeIn = false;
+      stateService.setGlobal('needToFadeIn', false);
     }
 
     yield sleep(25); // sleep(50);
   }
 
-  Global.screenWave = 0;
+  stateService.setGlobal('screenWave', 0);
 };
 
 function getSprite(n) {

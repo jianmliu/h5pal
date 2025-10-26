@@ -18,6 +18,16 @@ class StateService extends EventBus {
     });
   }
 
+  mutateGlobal(key, mutator) {
+    const current = Global[key];
+    const result = mutator ? mutator(current) : current;
+    if (typeof result !== 'undefined' && result !== current) {
+      return this.setGlobal(key, result);
+    }
+    this.fire('globalChanged', { key, previous: current, value: current });
+    return current;
+  }
+
   getGameData(key) {
     return key ? GameData[key] : GameData;
   }
@@ -33,6 +43,16 @@ class StateService extends EventBus {
     Object.keys(patch).forEach((key) => {
       this.setGameData(key, patch[key]);
     });
+  }
+
+  mutateGameData(key, mutator) {
+    const current = GameData[key];
+    const result = mutator ? mutator(current) : current;
+    if (typeof result !== 'undefined' && result !== current) {
+      return this.setGameData(key, result);
+    }
+    this.fire('gameDataChanged', { key, previous: current, value: current });
+    return current;
   }
 }
 
