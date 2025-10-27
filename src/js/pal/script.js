@@ -7,6 +7,7 @@ import music from './music';
 import sound from './sound';
 import battleService from '../../services/battle-service.js';
 import stateService from '../../services/state-service.js';
+import worldService from '../../services/world-service.js';
 
 log.trace('script module load');
 
@@ -50,6 +51,58 @@ function adjustGlobalNumber(key, delta) {
     var next = (value || 0) + delta;
     return next;
   });
+}
+
+function getViewportValue() {
+  return worldService.getViewport();
+}
+
+function setViewportValue(value) {
+  return worldService.setViewport(value);
+}
+
+function getPartyOffsetValue() {
+  return worldService.getPartyOffset();
+}
+
+function setPartyOffsetValue(value) {
+  return worldService.setPartyOffset(value);
+}
+
+function mutateTrailValue(mutator) {
+  return worldService.mutateTrail(mutator);
+}
+
+function getTrailValue() {
+  return worldService.getTrail();
+}
+
+function getPartyState() {
+  return worldService.getParty();
+}
+
+function getPartyMember(index) {
+  return worldService.getPartyMember(index);
+}
+
+function getMaxPartyMemberIndex() {
+  return worldService.getMaxPartyMemberIndex();
+}
+
+function getViewportX() {
+  return PAL_X(getViewportValue());
+}
+
+function getViewportY() {
+  return PAL_Y(getViewportValue());
+}
+
+function getPartyOffsetX() {
+  return PAL_X(getPartyOffsetValue());
+}
+
+function getPartyOffsetY() {
+  return PAL_Y(getPartyOffsetValue());
 }
 
 function setGameDataValue(key, value) {
@@ -230,26 +283,39 @@ script.NPCWalkTo = function(eventObjectID, x, y, h, speed) {
  */
 script.partyWalkTo = function*(x, y, h, speed) {
   log.trace('[SCRIPT] partyWalkTo(%d, %d, %d)', x, y, speed);
-  var trail = Global.trail;
-  var offsetX = (x * 32 + h * 16) - PAL_X(Global.viewport) - PAL_X(Global.partyOffset),
-      offsetY = (y * 16 + h * 8) - PAL_Y(Global.viewport) - PAL_Y(Global.partyOffset);
-  while (offsetX !== 0 || offsetY !== 0) {
-    // 走一帧
-    // Store trail
-    for (var i=3; i>=0; i--) {
-      trail[i + 1] = trail[i];
-    }
-    trail[0].direction = Global.partyDirection;
-    trail[0].x = PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
-    trail[0].y = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
+  var trail = getTrailValue();
+  if (!Array.isArray(trail) || trail.length === 0) {
+    return;
+  }
+  var viewport = getViewportValue();
+  var partyOffset = getPartyOffsetValue();
+  var offsetX = (x * 32 + h * 16) - PAL_X(viewport) - PAL_X(partyOffset);
+  var offsetY = (y * 16 + h * 8) - PAL_Y(viewport) - PAL_Y(partyOffset);
 
+  while (offsetX !== 0 || offsetY !== 0) {
+    var currentDirection = stateService.getGlobal('partyDirection');
+    mutateTrailValue(function(trailState) {
+      if (!Array.isArray(trailState) || trailState.length === 0) {
+        return trailState;
+      }
+      for (var i = 3; i >= 0; i--) {
+        trailState[i + 1] = trailState[i];
+      }
+      trailState[0] = trailState[0] || {};
+      trailState[0].direction = currentDirection;
+      trailState[0].x = PAL_X(viewport) + PAL_X(partyOffset);
+      trailState[0].y = PAL_Y(viewport) + PAL_Y(partyOffset);
+      return trailState;
+    });
+
+    var previousDirection = stateService.getGlobal('partyDirection');
     var nextDirection = (offsetY < 0)
       ? (offsetX < 0 ? Direction.West : Direction.North)
       : (offsetX < 0 ? Direction.South : Direction.East);
     setGlobalValue('partyDirection', nextDirection);
 
-    var dx = PAL_X(Global.viewport),
-        dy = PAL_Y(Global.viewport);
+    var dx = PAL_X(viewport);
+    var dy = PAL_Y(viewport);
     if (abs(offsetX) <= speed * 2) {
       dx += offsetX;
     } else {
@@ -262,14 +328,15 @@ script.partyWalkTo = function*(x, y, h, speed) {
     }
 
     log.trace('[SCRIPT] Move the Global.viewport');
-    setGlobalValue('viewport', PAL_XY(dx, dy));
+    viewport = setViewportValue(PAL_XY(dx, dy));
 
     scene.updatePartyGestures(true);
     yield play.update(false);
     yield scene.makeScene();
     surface.updateScreen(null);
-    offsetX = x * 32 + h * 16 - PAL_X(Global.viewport) - PAL_X(Global.partyOffset);
-    offsetY = y * 16 + h * 8 - PAL_Y(Global.viewport) - PAL_Y(Global.partyOffset);
+
+    offsetX = (x * 32 + h * 16) - PAL_X(viewport) - PAL_X(partyOffset);
+    offsetY = (y * 16 + h * 8) - PAL_Y(viewport) - PAL_Y(partyOffset);
 
     yield sleepByFrame(1);
   }
@@ -288,10 +355,15 @@ script.partyWalkTo = function*(x, y, h, speed) {
  */
 script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
   log.trace('[SCRIPT] partyRideEventObject(%d, %d, %d, %d)', eventObjectID, x, y, speed);
-  var trail = Global.trail;
+  var trail = getTrailValue();
+  if (!Array.isArray(trail) || trail.length === 0) {
+    return;
+  }
   var evtObj = GameData.eventObject[eventObjectID - 1],
       offsetX = (x * 32 + h * 16) - evtObj.x,
       offsetY = (y * 16 + h * 8) - evtObj.y;
+  var viewport = getViewportValue();
+  var partyOffset = getPartyOffsetValue();
   while (offsetX !== 0 || offsetY !== 0) {
     var nextDirection = (offsetY < 0)
       ? (offsetX < 0 ? Direction.West : Direction.North)
@@ -312,17 +384,24 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
     }
 
     // Store trail
-    for (var i=3; i>=0; i--) {
-       trail[i + 1] = trail[i];
-    }
-    trail[0].direction = Global.partyDirection;
-    trail[0].x = PAL_X(Global.viewport) + dx + PAL_X(Global.partyOffset);
-    trail[0].y = PAL_Y(Global.viewport) + dy + PAL_Y(Global.partyOffset);
+    mutateTrailValue(function(trailState) {
+      if (!Array.isArray(trailState) || trailState.length === 0) {
+        return trailState;
+      }
+      for (var i = 3; i >= 0; i--) {
+        trailState[i + 1] = trailState[i];
+      }
+      trailState[0] = trailState[0] || {};
+      trailState[0].direction = previousDirection;
+      trailState[0].x = PAL_X(viewport) + dx + PAL_X(partyOffset);
+      trailState[0].y = PAL_Y(viewport) + dy + PAL_Y(partyOffset);
+      return trailState;
+    });
 
     // Move the Global.viewport
-    setGlobalValue('viewport', PAL_XY(
-      PAL_X(Global.viewport) + dx,
-      PAL_Y(Global.viewport) + dy
+    viewport = setViewportValue(PAL_XY(
+      PAL_X(viewport) + dx,
+      PAL_Y(viewport) + dy
     ));
 
     evtObj.x += dx;
@@ -331,8 +410,8 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
     yield play.update(false);
     yield scene.makeScene();
     surface.updateScreen(null);
-    offsetX = x * 32 + h * 16 - PAL_X(Global.viewport) - PAL_X(Global.partyOffset);
-    offsetY = y * 16 + h * 8 - PAL_Y(Global.viewport) - PAL_Y(Global.partyOffset);
+    offsetX = x * 32 + h * 16 - PAL_X(viewport) - PAL_X(partyOffset);
+    offsetY = y * 16 + h * 8 - PAL_Y(viewport) - PAL_Y(partyOffset);
 
     yield sleepByFrame(1);
   }
@@ -352,8 +431,10 @@ script.monsterChasePlayer = function(eventObjectID, speed, chaseRange, floating)
   var monsterSpeed = 0;
   var prevx, prevy;
   if (Global.chaseRange !== 0) {
-    var x = PAL_X(Global.viewport) + PAL_X(Global.partyOffset) - evtObj.x,
-        y = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset) - evtObj.y;
+    var viewport = getViewportValue();
+    var partyOffset = getPartyOffsetValue();
+    var x = PAL_X(viewport) + PAL_X(partyOffset) - evtObj.x,
+        y = PAL_Y(viewport) + PAL_Y(partyOffset) - evtObj.y;
 
     if (x == 0) {
        x = randomLong(0, 1) ? -1 : 1;
@@ -479,7 +560,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     current = GameData.eventObject[i];
     curEventObjectID = sc.operand[0];
   }
-  var party = Array.isArray(Global.party) ? Global.party : [];
+  var party = getPartyState();
   var partyIndex = sc.operand[0];
   var partyMember = null;
   if (party.length) {
@@ -538,8 +619,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0012:
       script.debug('[SCRIPT] Set the position of the event object, relative to the party');
-      current.x = sc.operand[1] + PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
-      current.y = sc.operand[2] + PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
+      current.x = sc.operand[1] + getViewportX() + getPartyOffsetX();
+      current.y = sc.operand[2] + getViewportY() + getPartyOffsetY();
       break;
     case 0x0013:
       script.debug('[SCRIPT] Set the position of the event object');
@@ -1195,17 +1276,17 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       offsetY = ((Global.partyDirection === Direction.West || Global.partyDirection === Direction.North) ? 8 : -8);
       x = sc.operand[0] * 32 + sc.operand[2] * 16;
       y = sc.operand[1] * 16 + sc.operand[2] * 8;
-      x -= PAL_X(Global.partyOffset);
-      y -= PAL_Y(Global.partyOffset);
+      x -= getPartyOffsetX();
+      y -= getPartyOffsetY();
       var viewportPos = PAL_XY(x, y);
-      setGlobalValue('viewport', viewportPos);
-      var partyStartX = PAL_X(Global.partyOffset);
-      var partyStartY = PAL_Y(Global.partyOffset);
+      setViewportValue(viewportPos);
+      var partyStartX = getPartyOffsetX();
+      var partyStartY = getPartyOffsetY();
       var viewportX = PAL_X(viewportPos);
       var viewportY = PAL_Y(viewportPos);
       var direction = Global.partyDirection;
       mutateGlobalValue('party', function(party) {
-        mutateGlobalValue('trail', function(trail) {
+        mutateTrailValue(function(trail) {
           var currentX = partyStartX;
           var currentY = partyStartY;
           for (var idx = 0; idx < Const.MAX_PLAYABLE_PLAYER_ROLES; idx++) {
@@ -1494,25 +1575,27 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x006E:
       script.debug('[SCRIPT] Move the player to the specified position in one step');
-      mutateGlobalValue('trail', function(trail) {
-        if (!trail) {
+      var currentViewport = getViewportValue();
+      var partyOffset = getPartyOffsetValue();
+      var currentDirection = stateService.getGlobal('partyDirection');
+      mutateTrailValue(function(trail) {
+        if (!Array.isArray(trail) || trail.length === 0) {
           return trail;
         }
         for (var idx = 3; idx >= 0; idx--) {
           trail[idx + 1] = trail[idx];
         }
-        if (trail[0]) {
-          trail[0].direction = Global.partyDirection;
-          trail[0].x = PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
-          trail[0].y = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
-        }
+        trail[0] = trail[0] || {};
+        trail[0].direction = currentDirection;
+        trail[0].x = PAL_X(currentViewport) + PAL_X(partyOffset);
+        trail[0].y = PAL_Y(currentViewport) + PAL_Y(partyOffset);
         return trail;
       });
       var newViewport = PAL_XY(
-        PAL_X(Global.viewport) + SHORT(sc.operand[0]),
-        PAL_Y(Global.viewport) + SHORT(sc.operand[1])
+        PAL_X(currentViewport) + SHORT(sc.operand[0]),
+        PAL_Y(currentViewport) + SHORT(sc.operand[1])
       );
-      setGlobalValue('viewport', newViewport);
+      setViewportValue(newViewport);
       setGlobalValue('layer', sc.operand[2] * 8);
       if (sc.operand[0] !== 0 || sc.operand[1] !== 0){
         scene.updatePartyGestures(true);
@@ -1646,16 +1729,21 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Move the viewport');
       if (sc.operand[0] === 0 && sc.operand[1] === 0) {
         // Move the viewport back to normal state
-        var deltaX = Global.party[0].x - 160;
-        var deltaY = Global.party[0].y - 112;
-        var normalizedViewport = PAL_XY(PAL_X(Global.viewport) + deltaX, PAL_Y(Global.viewport) + deltaY);
-        setGlobalValue('viewport', normalizedViewport);
-        setGlobalValue('partyOffset', PAL_XY(160, 112));
+        var leader = getPartyMember(0);
+        var maxPartyIndex = getMaxPartyMemberIndex();
+        if (!leader) {
+          break;
+        }
+        var deltaX = leader.x - 160;
+        var deltaY = leader.y - 112;
+        var normalizedViewport = PAL_XY(getViewportX() + deltaX, getViewportY() + deltaY);
+        setViewportValue(normalizedViewport);
+        setPartyOffsetValue(PAL_XY(160, 112));
         mutateGlobalValue('party', function(party) {
           if (!party) {
             return party;
           }
-          for (var partyIdx = 0; partyIdx <= Global.maxPartyMemberIndex; partyIdx++) {
+          for (var partyIdx = 0; partyIdx <= maxPartyIndex; partyIdx++) {
             var member = party[partyIdx];
             if (member) {
               member.x -= deltaX;
@@ -1673,18 +1761,19 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         var stepX = SHORT(sc.operand[0]);
         var stepY = SHORT(sc.operand[1]);
         do {
+          var maxPartyIndex = getMaxPartyMemberIndex();
           if (sc.operand[2] === 0xFFFF) {
-            var previousViewportX = PAL_X(Global.viewport);
-            var previousViewportY = PAL_Y(Global.viewport);
+            var previousViewportX = getViewportX();
+            var previousViewportY = getViewportY();
             var targetViewport = PAL_XY(sc.operand[0] * 32 - 160, sc.operand[1] * 16 - 112);
-            setGlobalValue('viewport', targetViewport);
+            setViewportValue(targetViewport);
             var deltaViewportX = previousViewportX - PAL_X(targetViewport);
             var deltaViewportY = previousViewportY - PAL_Y(targetViewport);
             mutateGlobalValue('party', function(party) {
               if (!party) {
                 return party;
               }
-              for (var partyIdx = 0; partyIdx <= Global.maxPartyMemberIndex; partyIdx++) {
+              for (var partyIdx = 0; partyIdx <= maxPartyIndex; partyIdx++) {
                 var member = party[partyIdx];
                 if (member) {
                   member.x += deltaViewportX;
@@ -1696,15 +1785,16 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
             // WARNING 这里sdlpal里没有跳出，那岂不是死循环了？
             //break;
           } else {
-            var incrementalViewport = PAL_XY(PAL_X(Global.viewport) + stepX, PAL_Y(Global.viewport) + stepY);
-            setGlobalValue('viewport', incrementalViewport);
-            var updatedPartyOffset = PAL_XY(PAL_X(Global.partyOffset) - stepX, PAL_Y(Global.partyOffset) - stepY);
-            setGlobalValue('partyOffset', updatedPartyOffset);
+            var incrementalViewport = PAL_XY(getViewportX() + stepX, getViewportY() + stepY);
+            setViewportValue(incrementalViewport);
+            var currentPartyOffset = getPartyOffsetValue();
+            var updatedPartyOffset = PAL_XY(PAL_X(currentPartyOffset) - stepX, PAL_Y(currentPartyOffset) - stepY);
+            setPartyOffsetValue(updatedPartyOffset);
             mutateGlobalValue('party', function(party) {
               if (!party) {
                 return party;
               }
-              for (var partyIdx = 0; partyIdx <= Global.maxPartyMemberIndex; partyIdx++) {
+              for (var partyIdx = 0; partyIdx <= maxPartyIndex; partyIdx++) {
                 var member = party[partyIdx];
                 if (member) {
                   member.x -= stepX;
@@ -1745,8 +1835,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       y = current.y;
       x += ((Global.partyDirection == Direction.West || Global.partyDirection == Direction.South) ? 16 : -16);
       y += ((Global.partyDirection == Direction.West || Global.partyDirection == Direction.North) ? 8 : -8);
-      x -= PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
-      y -= PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
+      x -= getViewportX() + getPartyOffsetX();
+      y -= getViewportY() + getPartyOffsetY();
       if (abs(x) + abs(y * 2) < sc.operand[1] * 32 + 16) {
         if (sc.operand[1] > 0) {
           // Change the trigger mode so that the object can be triggered in next frame
@@ -1787,8 +1877,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         script.scriptSuccess = false;
         break;
       }
-      x = PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
-      y = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
+      x = getViewportX() + getPartyOffsetX();
+      y = getViewportY() + getPartyOffsetY();
       x += ((Global.partyDirection == Direction.West || Global.partyDirection == Direction.South) ? -16 : 16);
       y += ((Global.partyDirection == Direction.West || Global.partyDirection == Direction.North) ? -8 : 8);
       if (scene.checkObstacle(PAL_XY(x, y), false, 0)) {
@@ -1957,9 +2047,14 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
           if (!member) {
             return;
           }
-          member.x = Global.trail[3].x - PAL_X(Global.viewport);
-          member.y = Global.trail[3].y - PAL_Y(Global.viewport);
-          member.frame = Global.trail[3].direction * 3;
+          var trailState = getTrailValue();
+          var followerTrail = trailState && trailState.length > 3 ? trailState[3] : (trailState && trailState[trailState.length - 1]);
+          if (!followerTrail) {
+            return;
+          }
+          member.x = followerTrail.x - getViewportX();
+          member.y = followerTrail.y - getViewportY();
+          member.frame = followerTrail.direction * 3;
         });
       } else {
         setGlobalValue('numFollower', 0);
@@ -2167,35 +2262,43 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x00A1:
       script.debug('[SCRIPT] Set the positions of all party members to the same as the first one');
-      mutateGlobalValue('trail', function(trailState) {
-        if (!trailState) {
+      var leader = getPartyMember(0);
+      if (leader) {
+        var partyDirection = stateService.getGlobal('partyDirection');
+        var viewport = getViewportValue();
+        var viewportX = PAL_X(viewport);
+        var viewportY = PAL_Y(viewport);
+        var leaderWorldX = leader.x + viewportX;
+        var leaderWorldY = leader.y + viewportY;
+        mutateTrailValue(function(trailState) {
+          if (!trailState) {
+            return trailState;
+          }
+          for (var trailIndex = 0; trailIndex < Const.MAX_PLAYABLE_PLAYER_ROLES; trailIndex++) {
+            var trailEntry = trailState[trailIndex];
+            if (!trailEntry) {
+              continue;
+            }
+            trailEntry.direction = partyDirection;
+            trailEntry.x = leaderWorldX;
+            trailEntry.y = leaderWorldY;
+          }
           return trailState;
+        });
+        var leaderX = leader.x;
+        var leaderY = leader.y;
+        var maxPartyIndex = getMaxPartyMemberIndex();
+        for (var partyIndex = 1; partyIndex <= maxPartyIndex; partyIndex++) {
+          worldService.mutatePartyMember(partyIndex, function(member) {
+            if (!member) {
+              return member;
+            }
+            member.x = leaderX;
+            member.y = leaderY - 1;
+            return member;
+          });
         }
-        for (var trailIndex = 0; trailIndex < Const.MAX_PLAYABLE_PLAYER_ROLES; trailIndex++) {
-          var trailEntry = trailState[trailIndex];
-          if (!trailEntry) {
-            continue;
-          }
-          trailEntry.direction = Global.partyDirection;
-          trailEntry.x = Global.party[0].x + PAL_X(Global.viewport);
-          trailEntry.y = Global.party[0].y + PAL_Y(Global.viewport);
-        }
-        return trailState;
-      });
-      mutateGlobalValue('party', function(partyState) {
-        if (!partyState) {
-          return partyState;
-        }
-        for (var partyIndex = 1; partyIndex <= Global.maxPartyMemberIndex; partyIndex++) {
-          var partyMember = partyState[partyIndex];
-          if (!partyMember) {
-            continue;
-          }
-          partyMember.x = Global.party[0].x;
-          partyMember.y = Global.party[0].y - 1;
-        }
-        return partyState;
-      });
+      }
       scene.updatePartyGestures(false);
       break;
     case 0x00A2:

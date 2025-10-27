@@ -67,6 +67,7 @@ class WorldService extends EventBus {
     this.entityMaps.viewport = null;
     this.entityMaps.party.clear();
     this.entityMaps.trail = null;
+    this.entityMaps.scene = null;
     this.entityMaps.eventObject.clear();
   }
 
@@ -354,6 +355,19 @@ class WorldService extends EventBus {
       return typeof next === 'undefined' ? current : next;
     });
     this.syncViewport();
+    return result;
+  }
+
+  mutateTrail(mutator) {
+    this._ensureInitialised();
+    const result = stateService.mutateGlobal('trail', (current) => {
+      if (!current || typeof mutator !== 'function') {
+        return current;
+      }
+      mutator(current);
+      return current;
+    });
+    this.syncTrail();
     return result;
   }
 

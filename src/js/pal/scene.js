@@ -4,6 +4,7 @@ import Sprite from './sprite';
 import Map from './map';
 import stateService from '../../services/state-service.js';
 import resourceService from '../../services/resource-service.js';
+import worldService from '../../services/world-service.js';
 
 log.trace('scene module load');
 
@@ -64,16 +65,26 @@ scene.init = function*(surf) {
 };
 
 scene.makeScene = function*() {
-  var scene = GameData.scene[Global.numScene - 1];
-  if (!scene) return;
-  yield scene.render();
+  var sceneId = worldService.getSceneId() || stateService.getGlobal('numScene');
+  var activeScene = null;
+  if (sceneId && sceneId > 0 && GameData.scene) {
+    activeScene = GameData.scene[sceneId - 1];
+  }
+  if (!activeScene) return;
+  yield activeScene.render();
 };
 
 scene.getPlayerSprite = function(i) {
-  var player = Global.party[i];
+  var party = worldService.getParty();
+  var player = party[i];
+  if (!player) {
+    return null;
+  }
   var playerID = player.playerRole;
   var spriteNum;
-  if (i > Global.maxPartyMemberIndex && Global.numFollower > 0) {
+  var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+  var followerCount = stateService.getGlobal('numFollower') || 0;
+  if (i > maxPartyMemberIndex && followerCount > 0) {
     // 如果是跟随者，那么spriteNum就是它的ID
     spriteNum = playerID;
   } else {
@@ -97,10 +108,9 @@ scene.getPlayerSprite = function(i) {
  */
 scene.updateParty = function() {
   //log.trace('[Scene] updateParty');
-  var trail = Global.trail;
-  var viewport = Global.viewport;
-  var partyOffset = Global.partyOffset;
-  // Has user pressed one of the arrow keys?
+  var viewport = worldService.getViewport();
+  var partyOffset = worldService.getPartyOffset();
+
   if (input.dir !== Direction.Unknown) {
     var xOffset = ((input.dir === Direction.West || input.dir === Direction.South) ? -16 : 16);
     var yOffset = ((input.dir === Direction.West || input.dir === Direction.North) ? -8 : 8);
@@ -113,24 +123,25 @@ scene.updateParty = function() {
 
     stateService.setGlobal('partyDirection', input.dir);
 
-    // Check for obstacles on the destination location
     if (!scene.checkObstacle(PAL_XY(xTarget, yTarget), true, 0)) {
-      // Player will actually be moved. Store trail.
-      for (var i = 3; i >= 0; i--) {
-         trail[i + 1] = trail[i];
-      }
+      worldService.mutateTrail(function(trailState) {
+        if (!Array.isArray(trailState) || trailState.length === 0) {
+          return trailState;
+        }
+        for (var i = 3; i >= 0; i--) {
+          trailState[i + 1] = trailState[i];
+        }
+        trailState[0] = trailState[0] || {};
+        trailState[0].direction = input.dir;
+        trailState[0].x = xSource;
+        trailState[0].y = ySource;
+        return trailState;
+      });
 
-      trail[0].direction = input.dir;
-      trail[0].x = xSource;
-      trail[0].y = ySource;
+      viewport = worldService.setViewport(PAL_XY(PAL_X(viewport) + xOffset, PAL_Y(viewport) + yOffset));
 
-      // Move the viewport
-      stateService.setGlobal('viewport', PAL_XY(PAL_X(viewport) + xOffset, PAL_Y(viewport) + yOffset));
-
-      // Update gestures
       scene.updatePartyGestures(true);
-
-      return; // don't go further
+      return;
     }
   }
 
@@ -144,15 +155,22 @@ scene.updateParty = function() {
  */
 scene.updatePartyGestures = function(walking) {
   //log.trace('[Scene] updatePartyGestures ' + walking);
+  var party = worldService.getParty();
+  var trail = worldService.getTrail();
+  var playerRoles = GameData.playerRoles;
+  var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+  var viewport = worldService.getViewport();
+  var partyOffset = worldService.getPartyOffset();
+  var partyDirection = stateService.getGlobal('partyDirection') || Direction.South;
+  var followerCount = stateService.getGlobal('numFollower') || 0;
+
+  if (!party.length || !trail.length) {
+    return;
+  }
+
   var stepFrameFollower = 0;
   var stepFrameLeader = 0;
-  var party = Global.party;
-  var trail = Global.trail;
-  var playerRoles = GameData.playerRoles;
-  var maxPartyMemberIndex = Global.maxPartyMemberIndex;
-  var viewport = Global.viewport;
-  var partyOffset = Global.partyOffset;
-  var partyDirection = Global.partyDirection;
+  var leadTrail = trail[0] || { x: PAL_X(partyOffset), y: PAL_Y(partyOffset), direction: partyDirection };
 
   if (walking) {
     // Update the gesture for party leader
@@ -169,22 +187,24 @@ scene.updatePartyGestures = function(walking) {
     party[0].y = PAL_Y(partyOffset);
 
     if (playerRoles.walkFrames[party[0].playerRole] === 4) {
-       party[0].frame = partyDirection * 4 + scene.thisStepFrame;
+      party[0].frame = partyDirection * 4 + scene.thisStepFrame;
     } else {
        party[0].frame = partyDirection * 3 + stepFrameLeader;
     }
 
     // Update the gestures and positions for other party members
-    for (var i = 1; i <= maxPartyMemberIndex; i++) {
-      party[i].x = trail[1].x - PAL_X(viewport);
-      party[i].y = trail[1].y - PAL_Y(viewport);
+    var firstTrail = trail[1] || leadTrail;
+    for (var i = 1; i <= maxPartyMemberIndex && i < party.length; i++) {
+      var baseTrail = i === 1 ? firstTrail : (trail[1] || leadTrail);
+      party[i].x = baseTrail.x - PAL_X(viewport);
+      party[i].y = baseTrail.y - PAL_Y(viewport);
 
       if (i === 2) {
-        party[i].x += (trail[1].direction === Direction.East || trail[1].direction === Direction.West) ? -16 : 16;
+        party[i].x += (baseTrail.direction === Direction.East || baseTrail.direction === Direction.West) ? -16 : 16;
         party[i].y += 8;
       } else {
-        party[i].x += ((trail[1].direction === Direction.West || trail[1].direction === Direction.South) ? 16 : -16);
-        party[i].y += ((trail[1].direction === Direction.West || trail[1].direction === Direction.North) ? 8 : -8);
+        party[i].x += ((baseTrail.direction === Direction.West || baseTrail.direction === Direction.South) ? 16 : -16);
+        party[i].y += ((baseTrail.direction === Direction.West || baseTrail.direction === Direction.North) ? 8 : -8);
       }
 
       // Adjust the position if there is obstacle
@@ -198,17 +218,19 @@ scene.updatePartyGestures = function(walking) {
       }
 
       // Update gesture for this party member
+      var gestureTrail = trail[2] || baseTrail;
       if (playerRoles.walkFrames[party[i].playerRole] === 4) {
-        party[i].frame = trail[2].direction * 4 + scene.thisStepFrame;
+        party[i].frame = gestureTrail.direction * 4 + scene.thisStepFrame;
       } else {
-        party[i].frame = trail[2].direction * 3 + stepFrameLeader;
+        party[i].frame = gestureTrail.direction * 3 + stepFrameLeader;
       }
     }
 
-    if (Global.numFollower > 0){
-      party[maxPartyMemberIndex + 1].x = trail[3].x - PAL_X(viewport);
-      party[maxPartyMemberIndex + 1].y = trail[3].y - PAL_Y(viewport);
-      party[maxPartyMemberIndex + 1].frame = trail[3].direction * 3 + stepFrameFollower;
+    var followerTrail = trail[3] || firstTrail;
+    if (followerCount > 0 && party.length > maxPartyMemberIndex + 1){
+      party[maxPartyMemberIndex + 1].x = followerTrail.x - PAL_X(viewport);
+      party[maxPartyMemberIndex + 1].y = followerTrail.y - PAL_Y(viewport);
+      party[maxPartyMemberIndex + 1].frame = followerTrail.direction * 3 + stepFrameFollower;
     }
   } else {
     // Player is not moved. Use the "standing" gesture instead of "walking" one.
@@ -218,16 +240,18 @@ scene.updatePartyGestures = function(walking) {
     }
     party[0].frame = partyDirection * i;
 
-    for (i = 1; i <= maxPartyMemberIndex; i++) {
+    var idleTrail = trail[2] || leadTrail;
+    for (i = 1; i <= maxPartyMemberIndex && i < party.length; i++) {
       var f = playerRoles.walkFrames[party[i].playerRole];
       if (f === 0) {
         f = 3;
       }
-      party[i].frame = trail[2].direction * f;
+      party[i].frame = idleTrail.direction * f;
     }
 
-    if (Global.numFollower > 0) {
-       party[maxPartyMemberIndex + 1].frame = trail[3].direction * 3;
+    var idleFollowerTrail = trail[3] || idleTrail;
+    if (followerCount > 0 && party.length > maxPartyMemberIndex + 1) {
+       party[maxPartyMemberIndex + 1].frame = idleFollowerTrail.direction * 3;
     }
 
     scene.thisStepFrame &= 2;
@@ -281,8 +305,11 @@ scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
   //}
 
   var scenes = GameData.scene;
-  var numScene = Global.numScene;
-  var sc = scenes[numScene - 1];
+  var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
+  var sc = scenes && numScene ? scenes[numScene - 1] : null;
+  if (!sc) {
+    return true;
+  }
 
   var map = sc.getMap();
   if (map.isTileBlocked(x, y, h)) {
@@ -291,8 +318,13 @@ scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
 
   var eventObjects = GameData.eventObject;
   if (checkEventObjects) {
+    var nextScene = scenes ? scenes[numScene] : null;
+    var startIndex = sc && typeof sc.eventObjectIndex === 'number' ? sc.eventObjectIndex : 0;
+    var endIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
+      ? nextScene.eventObjectIndex
+      : eventObjects.length;
     // Loop through all event objects in the current scene
-    for (var i = scenes[numScene - 1].eventObjectIndex; i < scenes[numScene].eventObjectIndex; i++) {
+    for (var i = startIndex; i < endIndex; i++) {
       if (i == selfObject - 1) {
         // Skip myself
         continue;
@@ -359,10 +391,21 @@ scene.applyWave = function(buffer) {
 utils.extend(Scene.prototype, {
   loadEventObjectSpites: function() {
     var scenes = GameData.scene;
-    var numScene = Global.numScene;
+    var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
     var eventObjects = GameData.eventObject;
-    var index = scenes[numScene - 1].eventObjectIndex;
-    var num = scenes[numScene].eventObjectIndex - index;
+    if (!numScene || !scenes || !scenes.length) {
+      return;
+    }
+    var currentScene = scenes[numScene - 1];
+    var nextScene = scenes[numScene];
+    if (!currentScene) {
+      return;
+    }
+    var index = currentScene.eventObjectIndex;
+    var nextEventIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
+      ? nextScene.eventObjectIndex
+      : eventObjects.length;
+    var num = nextEventIndex - index;
     var MGO = Files.MGO;
     var array = this.eventObjectSprite = new Array(num);
 
@@ -376,18 +419,25 @@ utils.extend(Scene.prototype, {
       var sprite = array[i] = new Sprite(MGO.decompressChunk(n));
       eventObjects[index].spriteFramesAuto = sprite.frameCount;
     }
-    stateService.setGlobal('partyOffset', PAL_XY(160, 112));
+    worldService.setPartyOffset(PAL_XY(160, 112));
   },
   getEventObjectSprite: function(eventObjectID) {
     if (!this.eventObjectSprite) this.loadEventObjectSpites();
 
     var scenes = GameData.scene;
-    var numScene = Global.numScene;
+    var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
     var eventObjects = GameData.eventObject;
-    eventObjectID -= scenes[numScene - 1].eventObjectIndex;
+    var currentScene = scenes && numScene ? scenes[numScene - 1] : null;
+    if (!currentScene) {
+      return null;
+    }
+    eventObjectID -= currentScene.eventObjectIndex;
     eventObjectID--;
+    if (eventObjectID < 0) {
+      return null;
+    }
 
-    if (eventObjectID >= eventObjects.length) {
+    if (eventObjectID >= this.eventObjectSprite.length) {
       return null;
     }
 
@@ -403,8 +453,11 @@ utils.extend(Scene.prototype, {
     return obj;
   },
   calcCoverTiles: function(spriteToDraw){
-    var sx = PAL_X(Global.viewport) + PAL_X(spriteToDraw.pos),
-        sy = PAL_Y(Global.viewport) + PAL_Y(spriteToDraw.pos),
+    var viewport = worldService.getViewport();
+    var viewportX = PAL_X(viewport);
+    var viewportY = PAL_Y(viewport);
+    var sx = viewportX + PAL_X(spriteToDraw.pos),
+        sy = viewportY + PAL_Y(spriteToDraw.pos),
         sh = ((sx % 32) ? 1 : 0);
 
     var width = spriteToDraw.frame.width,
@@ -455,8 +508,8 @@ utils.extend(Scene.prototype, {
               // This tile may cover the sprite
               this.addToDrawList(
                 tile,
-                dx * 32 + dh * 16 - 16 - PAL_X(Global.viewport),
-                dy * 16 + dh * 8 + 7 + l + tileHeight * 8 - PAL_Y(Global.viewport),
+                dx * 32 + dh * 16 - 16 - viewportX,
+                dy * 16 + dh * 8 + 7 + l + tileHeight * 8 - viewportY,
                 tileHeight * 8 + l
               );
             }
@@ -480,8 +533,11 @@ utils.extend(Scene.prototype, {
     return (mapCache[mapNum] = map);
   },
   renderMap: function() {
+    var viewport = worldService.getViewport();
+    var viewportX = PAL_X(viewport);
+    var viewportY = PAL_Y(viewport);
     var rect = new RECT(
-      PAL_X(Global.viewport), PAL_Y(Global.viewport),
+      viewportX, viewportY,
       320, 200
     );
     var map = this.getMap();
@@ -489,18 +545,30 @@ utils.extend(Scene.prototype, {
     surface.blitMap(map, rect, 1);
   },
   renderSprites: function() {
-    var party = Global.party;
+    var viewport = worldService.getViewport();
+    var viewportX = PAL_X(viewport);
+    var viewportY = PAL_Y(viewport);
+    var party = worldService.getParty();
     var playerRoles = GameData.playerRoles;
-    var numScene = Global.numScene;
+    var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
     var scenes = GameData.scene;
     var eventObjects = GameData.eventObject;
     var drawList = this.drawList || (this.drawList = []);
-    var maxPartyMemberIndex = Global.maxPartyMemberIndex;
+    var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+    var followerCount = stateService.getGlobal('numFollower') || 0;
+    var currentScene = scenes && numScene ? scenes[numScene - 1] : null;
+    var nextScene = scenes ? scenes[numScene] : null;
 
     // Players
-    for (var i = 0; i <= Global.maxPartyMemberIndex + Global.numFollower; ++i) {
+    for (var i = 0; i <= maxPartyMemberIndex + followerCount; ++i) {
       var player = party[i];
+      if (!player) {
+        continue;
+      }
       var sprite = scene.getPlayerSprite(i);
+      if (!sprite) {
+        continue;
+      }
       var bitmap = sprite.getFrame(player.frame);
 
       if (!bitmap) continue;
@@ -516,10 +584,14 @@ utils.extend(Scene.prototype, {
       this.calcCoverTiles(obj);
     }
     // Event Objects (Monsters/NPCs/others)
-    for (var i = scenes[numScene - 1].eventObjectIndex; i < scenes[numScene].eventObjectIndex; ++i) {
+    var startIndex = currentScene ? currentScene.eventObjectIndex : 0;
+    var endIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
+      ? nextScene.eventObjectIndex
+      : eventObjects.length;
+    for (var i = startIndex; i < endIndex; ++i) {
       var eventObj = eventObjects[i];
 
-      surface.__debugStr('['+i+']', eventObj.x - PAL_X(Global.viewport), eventObj.y - PAL_Y(Global.viewport), '#f00', 'middle', 'center', 24);
+      surface.__debugStr('['+i+']', eventObj.x - viewportX, eventObj.y - viewportY, '#f00', 'middle', 'center', 24);
 
       if (eventObj.state == ObjectState.Hidden || eventObj.vanishTime > 0 || eventObj.state < 0) {
         continue;
@@ -548,13 +620,13 @@ utils.extend(Scene.prototype, {
       }
 
       // Calculate the coordinate and check if outside the screen
-      var x = SHORT(eventObj.x) - PAL_X(Global.viewport);
+      var x = SHORT(eventObj.x) - viewportX;
       x -= ~~(frame.width / 2);
       if (x >= 320 || x < -frame.width) {
         // outside the screen; skip it
         continue;
       }
-      var y = SHORT(eventObj.y) - PAL_Y(Global.viewport);
+      var y = SHORT(eventObj.y) - viewportY;
       y += eventObj.layer * 8 + 9;
       var vy = y - frame.height - eventObj.layer * 8 + 2;
       if (vy >= 200 || vy < -frame.height) {
