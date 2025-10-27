@@ -1,3 +1,5 @@
+import stateService from '../../services/state-service.js';
+
 console.trace('script_extras module load');
 
 var surface = null
@@ -6,6 +8,30 @@ var floor = Math.floor;
 
 var script_extras = {};
 var script = null;
+
+function mutateGlobalValue(key, mutator) {
+  return stateService.mutateGlobal(key, function(current) {
+    if (typeof mutator !== 'function') {
+      return current;
+    }
+    const result = mutator(current);
+    return typeof result === 'undefined' ? current : result;
+  });
+}
+
+function mutateGlobalEntry(key, index, mutator) {
+  return mutateGlobalValue(key, function(collection) {
+    if (!collection || typeof mutator !== 'function') {
+      return collection;
+    }
+    const numericIndex = Number(index);
+    if (Number.isNaN(numericIndex) || collection[numericIndex] == null) {
+      return collection;
+    }
+    mutator(collection[numericIndex], collection, numericIndex);
+    return collection;
+  });
+}
 
 script_extras.init = function*(surf, _script) {
   log.debug('[SCRIPT] init extras');
@@ -36,42 +62,60 @@ script_extras.init = function*(surf, _script) {
     // Reset some parameters to default when appropriate
     if (part == BodyPart.Hand) {
       // reset the dual attack status
-      Global.playerStatus[role][PlayerStatus.DualAttack] = 0;
+      mutateGlobalEntry('playerStatus', role, function(statusRow) {
+        if (statusRow) {
+          statusRow[PlayerStatus.DualAttack] = 0;
+        }
+      });
     } else if (part == BodyPart.Wear) {
       // Remove all poisons leveled 99
+      var partyIndex = role;
       for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
         if (Global.party[i].playerRole == role){
-          role = i;
+          partyIndex = i;
           break;
         }
       }
 
       if (i <= Global.maxPartyMemberIndex) {
-        var j = 0;
-
-        for (i = 0; i < Const.MAX_POISONS; i++) {
-          var w = Global.poisonStatus[i][role].poisonID;
-
-          if (w == 0) {
-             break;
+        mutateGlobalValue('poisonStatus', function(poisonStatus) {
+          if (!poisonStatus) {
+            return poisonStatus;
           }
-
-          if (GameData.object[w].poison.poisonLevel < 99) {
-            Global.poisonStatus[j][role] = Global.poisonStatus[i][role];
+          var j = 0;
+          for (var poisonIndex = 0; poisonIndex < Const.MAX_POISONS; poisonIndex++) {
+            var entry = poisonStatus[poisonIndex] && poisonStatus[poisonIndex][partyIndex];
+            var poisonId = entry ? entry.poisonID : 0;
+            if (poisonId === 0) {
+              break;
+            }
+            if (GameData.object[poisonId].poison.poisonLevel < 99) {
+              poisonStatus[j][partyIndex] = poisonStatus[poisonIndex][partyIndex];
+              j++;
+            }
+          }
+          while (j < Const.MAX_POISONS) {
+            var target = poisonStatus[j] && poisonStatus[j][partyIndex];
+            if (target) {
+              target.poisonID = 0;
+              target.poisonScript = 0;
+            }
             j++;
           }
-        }
-
-        while (j < Const.MAX_POISONS) {
-          Global.poisonStatus[j][role].poisonID = 0;
-          Global.poisonStatus[j][role].poisonScript = 0;
-          j++;
-        }
+          return poisonStatus;
+        });
       }
     }
   };
 
   script.setPlayerStatus = function(role, statusID, numRound) {
+    function setStatusValue(targetRole, index, value) {
+      mutateGlobalEntry('playerStatus', targetRole, function(statusRow) {
+        if (statusRow) {
+          statusRow[index] = value;
+        }
+      });
+    }
     if (PAL_CLASSIC) {
       if (statusID == PlayerStatus.Slow &&
           Global.playerStatus[role][PlayerStatus.Haste] > 0) {
@@ -98,14 +142,14 @@ script_extras.init = function*(surf, _script) {
         // for "bad" statuses, don't set the status when we already have it
         if (GameData.playerRoles.HP[role] != 0 &&
             Global.playerStatus[role][statusID] == 0) {
-          Global.playerStatus[role][statusID] = numRound;
+          setStatusValue(role, statusID, numRound);
         }
         break;
       case PlayerStatus.Puppet:
         // only allow dead players for "puppet" status
         if (GameData.playerRoles.HP[role] == 0 &&
             Global.playerStatus[role][statusID] < numRound) {
-          Global.playerStatus[role][statusID] = numRound;
+          setStatusValue(role, statusID, numRound);
         }
         break;
       case PlayerStatus.Bravery:
@@ -115,7 +159,7 @@ script_extras.init = function*(surf, _script) {
         // for "good" statuses, reset the status if the status to be set lasts longer
         if (GameData.playerRoles.HP[role] != 0 &&
             Global.playerStatus[role][statusID] < numRound) {
-           Global.playerStatus[role][statusID] = numRound;
+           setStatusValue(role, statusID, numRound);
         }
         break;
       default:
@@ -127,19 +171,33 @@ script_extras.init = function*(surf, _script) {
   script.removePlayerStatus = function(role, statusID) {
     // Don't remove effects of equipments
     if (Global.playerStatus[role][statusID] <= 999) {
-      Global.playerStatus[role][statusID] = 0;
+      mutateGlobalEntry('playerStatus', role, function(statusRow) {
+        if (statusRow) {
+          statusRow[statusID] = 0;
+        }
+      });
     }
   };
 
   script.clearAllPlayerStatus = function() {
-    for (var i = 0; i < Const.MAX_PLAYER_ROLES; ++i) {
-      for (var j = 0; j < PlayerStatus.All; ++j) {
-        // Don't remove effects of equipments
-        if (Global.playerStatus[i][j] <= 999) {
-          Global.playerStatus[i][j] = 0;
+    mutateGlobalValue('playerStatus', function(statusMatrix) {
+      if (!statusMatrix) {
+        return statusMatrix;
+      }
+      for (var i = 0; i < Const.MAX_PLAYER_ROLES; ++i) {
+        var statusRow = statusMatrix[i];
+        if (!statusRow) {
+          continue;
+        }
+        for (var j = 0; j < PlayerStatus.All; ++j) {
+          // Don't remove effects of equipments
+          if (statusRow[j] <= 999) {
+            statusRow[j] = 0;
+          }
         }
       }
-    }
+      return statusMatrix;
+    });
   };
 
   script.addItemToInventory = function(objectID, num) {
@@ -455,7 +513,12 @@ script_extras.init = function*(surf, _script) {
       return false;
     }
 
-    GameData.playerRoles.magic[i][role] = magic;
+    mutateGameDataValue('playerRoles', function(playerRoles) {
+      if (playerRoles && playerRoles.magic && playerRoles.magic[i]) {
+        playerRoles.magic[i][role] = magic;
+      }
+      return playerRoles;
+    });
 
     return true;
   };
@@ -503,8 +566,13 @@ script_extras.init = function*(surf, _script) {
     playerRoles.fleeRate[role]       = stat_limit(playerRoles.fleeRate[role]);
 
     // Reset experience points to zero
-    Global.exp.primaryExp[role].exp = 0;
-    Global.exp.primaryExp[role].level = playerRoles.level[role];
+    mutateGlobalValue('exp', function(expState) {
+      if (expState && expState.primaryExp && expState.primaryExp[role]) {
+        expState.primaryExp[role].exp = 0;
+        expState.primaryExp[role].level = playerRoles.level[role];
+      }
+      return expState;
+    });
   };
 
   function findIndexByPlayerRole(role) {

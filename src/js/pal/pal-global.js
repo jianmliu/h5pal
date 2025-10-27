@@ -1,3 +1,5 @@
+import stateService from '../../services/state-service.js';
+
 // Pal的全局变量对象
 /**
  * 全局常数
@@ -1026,7 +1028,35 @@ Object.defineProperties(GlobalVars.prototype, {
 
 var Global = global.Global = new GlobalVars();
 //var Global = global.Global = {};
-Global.MAX_SPRITE_TO_DRAW = 2048;
+
+var DEFAULT_MAX_SPRITE_TO_DRAW = 2048;
+var MAX_SPRITE_STATE_KEY = 'MAX_SPRITE_TO_DRAW';
+
+if (typeof stateService.getGlobal === 'function') {
+  var existingMax = stateService.getGlobal(MAX_SPRITE_STATE_KEY);
+  if (typeof existingMax === 'undefined' || existingMax === null) {
+    stateService.setGlobal(MAX_SPRITE_STATE_KEY, DEFAULT_MAX_SPRITE_TO_DRAW);
+  }
+
+  Object.defineProperty(Global, 'MAX_SPRITE_TO_DRAW', {
+    configurable: true,
+    enumerable: true,
+    get: function() {
+      var value = stateService.getGlobal(MAX_SPRITE_STATE_KEY);
+      return (typeof value === 'number') ? value : DEFAULT_MAX_SPRITE_TO_DRAW;
+    },
+    set: function(nextValue) {
+      stateService.setGlobal(MAX_SPRITE_STATE_KEY, nextValue);
+    }
+  });
+} else {
+  Object.defineProperty(Global, 'MAX_SPRITE_TO_DRAW', {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: DEFAULT_MAX_SPRITE_TO_DRAW
+  });
+}
 
 // game data which is available in data files.
 global.GameData = {};

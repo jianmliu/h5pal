@@ -6,6 +6,7 @@ import rng from './rng';
 import music from './music';
 import sound from './sound';
 import battleService from '../../services/battle-service.js';
+import stateService from '../../services/state-service.js';
 
 log.trace('script module load');
 
@@ -14,6 +15,115 @@ function BATTLE() {
   if (state) return state;
   if (typeof Global !== 'undefined' && Global && Global.battle) return Global.battle;
   return {};
+}
+
+function setGlobalValue(key, value) {
+  return stateService.setGlobal(key, value);
+}
+
+function mutateGlobalValue(key, mutator) {
+  return stateService.mutateGlobal(key, function(current) {
+    if (typeof mutator !== 'function') {
+      return current;
+    }
+    const result = mutator(current);
+    return typeof result === 'undefined' ? current : result;
+  });
+}
+
+function mutateGlobalEntry(key, index, mutator) {
+  return mutateGlobalValue(key, function(collection) {
+    if (!collection || typeof mutator !== 'function') {
+      return collection;
+    }
+    const numericIndex = Number(index);
+    if (Number.isNaN(numericIndex) || collection[numericIndex] == null) {
+      return collection;
+    }
+    mutator(collection[numericIndex], collection, numericIndex);
+    return collection;
+  });
+}
+
+function adjustGlobalNumber(key, delta) {
+  return mutateGlobalValue(key, function(value) {
+    var next = (value || 0) + delta;
+    return next;
+  });
+}
+
+function setGameDataValue(key, value) {
+  return stateService.setGameData(key, value);
+}
+
+function mutateGameDataValue(key, mutator) {
+  return stateService.mutateGameData(key, function(current) {
+    if (typeof mutator !== 'function') {
+      return current;
+    }
+    const result = mutator(current);
+    return typeof result === 'undefined' ? current : result;
+  });
+}
+
+function mutateGameDataEntry(key, index, mutator) {
+  return mutateGameDataValue(key, function(collection) {
+    if (!collection || typeof mutator !== 'function') {
+      return collection;
+    }
+    const numericIndex = Number(index);
+    const target = Number.isNaN(numericIndex) ? collection[index] : collection[numericIndex];
+    if (target == null) {
+      return collection;
+    }
+    mutator(target, collection, Number.isNaN(numericIndex) ? index : numericIndex);
+    return collection;
+  });
+}
+
+function mutatePlayerRoles(mutator) {
+  return mutateGameDataValue('playerRoles', function(playerRoles) {
+    if (playerRoles && typeof mutator === 'function') {
+      mutator(playerRoles);
+    }
+    return playerRoles;
+  });
+}
+
+function mutateMagic(mutator) {
+  return mutateGameDataValue('magic', function(magicData) {
+    if (magicData && typeof mutator === 'function') {
+      mutator(magicData);
+    }
+    return magicData;
+  });
+}
+
+function mutateObjects(mutator) {
+  return mutateGameDataValue('object', function(objects) {
+    if (objects && typeof mutator === 'function') {
+      mutator(objects);
+    }
+    return objects;
+  });
+}
+
+function mutateScenes(mutator) {
+  return mutateGameDataValue('scene', function(scenes) {
+    if (scenes && typeof mutator === 'function') {
+      mutator(scenes);
+    }
+    return scenes;
+  });
+}
+
+function mutateEventObjects(mutator) {
+  return mutateGameDataValue('eventObject', function(eventObjects) {
+    if (eventObjects && typeof mutator === 'function') {
+      mutator(eventObjects);
+    }
+    return eventObjects;
+  });
 }
 
 var script = {
@@ -133,11 +243,10 @@ script.partyWalkTo = function*(x, y, h, speed) {
     trail[0].x = PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
     trail[0].y = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
 
-    if (offsetY < 0) {
-      Global.partyDirection = (offsetX < 0 ? Direction.West : Direction.North);
-    } else {
-      Global.partyDirection = (offsetX < 0 ? Direction.South : Direction.East);
-    }
+    var nextDirection = (offsetY < 0)
+      ? (offsetX < 0 ? Direction.West : Direction.North)
+      : (offsetX < 0 ? Direction.South : Direction.East);
+    setGlobalValue('partyDirection', nextDirection);
 
     var dx = PAL_X(Global.viewport),
         dy = PAL_Y(Global.viewport);
@@ -153,7 +262,7 @@ script.partyWalkTo = function*(x, y, h, speed) {
     }
 
     log.trace('[SCRIPT] Move the Global.viewport');
-    Global.viewport = PAL_XY(dx, dy);
+    setGlobalValue('viewport', PAL_XY(dx, dy));
 
     scene.updatePartyGestures(true);
     yield play.update(false);
@@ -184,11 +293,10 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
       offsetX = (x * 32 + h * 16) - evtObj.x,
       offsetY = (y * 16 + h * 8) - evtObj.y;
   while (offsetX !== 0 || offsetY !== 0) {
-    if (offsetY < 0) {
-       Global.partyDirection = (offsetX < 0 ? Direction.West : Direction.North);
-    } else {
-       Global.partyDirection = (offsetX < 0 ? Direction.South : Direction.East);
-    }
+    var nextDirection = (offsetY < 0)
+      ? (offsetX < 0 ? Direction.West : Direction.North)
+      : (offsetX < 0 ? Direction.South : Direction.East);
+    setGlobalValue('partyDirection', nextDirection);
 
     var dx;
     var dy;
@@ -212,10 +320,10 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
     trail[0].y = PAL_Y(Global.viewport) + dy + PAL_Y(Global.partyOffset);
 
     // Move the Global.viewport
-    Global.viewport = PAL_XY(
+    setGlobalValue('viewport', PAL_XY(
       PAL_X(Global.viewport) + dx,
       PAL_Y(Global.viewport) + dy
-    );
+    ));
 
     evtObj.x += dx;
     evtObj.y += dy;
@@ -445,8 +553,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0015:
       script.debug('[SCRIPT] Set the direction and gesture for a party member');
-      Global.partyDirection = sc.operand[0];
-      Global.party[sc.operand[2]].frame = Global.partyDirection * 3 + sc.operand[1];
+      var partyDirection = sc.operand[0];
+      setGlobalValue('partyDirection', partyDirection);
+      mutateGlobalEntry('party', sc.operand[2], function(member) {
+        member.frame = partyDirection * 3 + sc.operand[1];
+      });
       break;
     case 0x0016:
       script.debug('[SCRIPT] Set the direction and gesture for an event object');
@@ -481,12 +592,14 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.removeEquipmentEffect(eventObjectID, i);
       if (GameData.playerRoles.equipment[i][eventObjectID] !== sc.operand[1]) {
         w = GameData.playerRoles.equipment[i][eventObjectID];
-        GameData.playerRoles.equipment[i][eventObjectID] = sc.operand[1];
+        mutatePlayerRoles(function(playerRoles) {
+          playerRoles.equipment[i][eventObjectID] = sc.operand[1];
+        });
         script.addItemToInventory(sc.operand[1], -1);
         if (w !== 0) {
           script.addItemToInventory(w, 1);
         }
-        Global.lastUnequippedItem = w;
+        setGlobalValue('lastUnequippedItem', w);
       }
       break;
     case 0x0019:
@@ -608,7 +721,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         // not enough cash
         scriptEntry = sc.operand[1] - 1;
       } else {
-        Global.cash += SHORT(sc.operand[0]);
+        adjustGlobalNumber('cash', SHORT(sc.operand[0]));
       }
       break;
     case 0x001F:
@@ -628,7 +741,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
           for (j = 0; j < Const.MAX_PLAYER_EQUIPMENTS; j++) {
             if (GameData.playerRoles.equipment[j][w] === sc.operand[0]) {
               script.removeEquipmentEffect(w, j);
-              GameData.playerRoles.equipment[j][w] = 0;
+              (function(equipIndex, roleIndex) {
+                mutatePlayerRoles(function(playerRoles) {
+                  playerRoles.equipment[equipIndex][roleIndex] = 0;
+                });
+              })(j, w);
               x--;
               if (x === 0) {
                 i = 9999;
@@ -669,7 +786,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
           w = Global.party[i].playerRole;
           if (GameData.playerRoles.HP[w] === 0) {
-            GameData.playerRoles.HP[w] = ~~(GameData.playerRoles.maxHP[w] * sc.operand[1] / 10);
+            (function(roleIndex) {
+              mutatePlayerRoles(function(playerRoles) {
+                playerRoles.HP[roleIndex] = ~~(playerRoles.maxHP[roleIndex] * sc.operand[1] / 10);
+              });
+            })(w);
             script.curePoisonByLevel(w, 3);
             for (x = 0; x < PlayerStatus.All; x++) {
               script.removePlayerStatus(w, x);
@@ -680,7 +801,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       } else {
         // Apply to one player
         if (GameData.playerRoles.HP[eventObjectID] === 0) {
-          GameData.playerRoles.HP[eventObjectID] = ~~(GameData.playerRoles.maxHP[eventObjectID] * sc.operand[1] / 10);
+          mutatePlayerRoles(function(playerRoles) {
+            playerRoles.HP[eventObjectID] = ~~(playerRoles.maxHP[eventObjectID] * sc.operand[1] / 10);
+          });
           script.curePoisonByLevel(eventObjectID, 3);
           for (x = 0; x < PlayerStatus.All; x++) {
             script.removePlayerStatus(eventObjectID, x);
@@ -698,7 +821,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
           w = GameData.playerRoles.equipment[i][playerRole];
           if (w !== 0) {
             script.addItemToInventory(w, 1);
-            GameData.playerRoles.equipment[i][playerRole] = 0;
+            (function(equipIndex, roleIndex) {
+              mutatePlayerRoles(function(playerRoles) {
+                playerRoles.equipment[equipIndex][roleIndex] = 0;
+              });
+            })(i, playerRole);
           }
           script.removeEquipmentEffect(playerRole, i);
         }
@@ -707,7 +834,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         if (w !== 0) {
           script.removeEquipmentEffect(playerRole, sc.operand[1] - 1);
           script.addItemToInventory(w, 1);
-          GameData.playerRoles.equipment[sc.operand[1] - 1][playerRole] = 0;
+          (function(equipIndex, roleIndex) {
+            mutatePlayerRoles(function(playerRoles) {
+              playerRoles.equipment[equipIndex][roleIndex] = 0;
+            });
+          })(sc.operand[1] - 1, playerRole);
         }
       }
       break;
@@ -919,12 +1050,16 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0031:
       script.debug('[SCRIPT] Change battle sprite temporarily for player');
-      Global.equipmentEffect[BodyPart.Extra].spriteNumInBattle[eventObjectID] = sc.operand[0];
+      mutateGlobalEntry('equipmentEffect', BodyPart.Extra, function(effect) {
+        if (effect && effect.spriteNumInBattle) {
+          effect.spriteNumInBattle[eventObjectID] = sc.operand[0];
+        }
+      });
       break;
     case 0x0033:
       script.debug('[SCRIPT] collect the enemy for items');
       if (BATTLE().enemy[eventObjectID].e.collectValue !== 0) {
-        Global.collectValue += BATTLE().enemy[eventObjectID].e.collectValue;
+        adjustGlobalNumber('collectValue', BATTLE().enemy[eventObjectID].e.collectValue);
       } else {
         scriptEntry = sc.operand[0] - 1;
       }
@@ -943,7 +1078,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
             i = Global.collectValue;
           }
         }
-        Global.collectValue -= i;
+        adjustGlobalNumber('collectValue', -i);
         i--;
         script.addItemToInventory(GameData.store[0].items[i], 1);
         ui.startDialog(DialogPosition.CenterWindow, 0, 0, false);
@@ -967,7 +1102,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0036:
       script.debug('[SCRIPT] Set the current playing RNG animation');
-      Global.curPlayingRNG = sc.operand[0];
+      setGlobalValue('curPlayingRNG', sc.operand[0]);
       break;
     case 0x0037:
       script.debug('[SCRIPT] Play RNG animation');
@@ -982,7 +1117,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Teleport the party out of the scene');
       if (!Global.inBattle && GameData.scene[Global.numScene - 1].scriptOnTeleport != 0) {
         var ret = yield script.runTriggerScript(GameData.scene[Global.numScene - 1].scriptOnTeleport, 0xFFFF);
-        GameData.scene[Global.numScene - 1].scriptOnTeleport = ret;
+        mutateScenes(function(scenes) {
+          if (scenes && scenes[Global.numScene - 1]) {
+            scenes[Global.numScene - 1].scriptOnTeleport = ret;
+          }
+        });
       } else {
         // failed
         script.scriptSuccess = false;
@@ -997,10 +1136,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         enemy.e.health -= sc.operand[0];
         return enemy;
       });
-      GameData.playerRoles.HP[w] += sc.operand[0];
-      if (GameData.playerRoles.HP[w] > GameData.playerRoles.maxHP[w]) {
-         GameData.playerRoles.HP[w] = GameData.playerRoles.maxHP[w];
-      }
+      mutatePlayerRoles(function(playerRoles) {
+        playerRoles.HP[w] += sc.operand[0];
+        if (playerRoles.HP[w] > playerRoles.maxHP[w]) {
+          playerRoles.HP[w] = playerRoles.maxHP[w];
+        }
+      });
       break;
     case 0x003A:
       script.debug('[SCRIPT] Player flee from the battle');
@@ -1035,7 +1176,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0043:
       script.debug('[SCRIPT] Set background music');
-      Global.musicNum = sc.operand[0];
+      setGlobalValue('musicNum', sc.operand[0]);
       music.play(sc.operand[0], (sc.operand[0] != 0x3D), sc.operand[1]);
       break;
     case 0x0044:
@@ -1044,7 +1185,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0045:
       script.debug('[SCRIPT] Set battle music');
-      Global.numBattleMusic = sc.operand[0];
+      setGlobalValue('numBattleMusic', sc.operand[0]);
       break;
     case 0x0046:
       script.debug('[SCRIPT] Set the party position on the map');
@@ -1056,18 +1197,36 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       y = sc.operand[1] * 16 + sc.operand[2] * 8;
       x -= PAL_X(Global.partyOffset);
       y -= PAL_Y(Global.partyOffset);
-      Global.viewport = PAL_XY(x, y);
-      x = PAL_X(Global.partyOffset);
-      y = PAL_Y(Global.partyOffset);
-      for (i = 0; i < Const.MAX_PLAYABLE_PLAYER_ROLES; i++) {
-        Global.party[i].x = x;
-        Global.party[i].y = y;
-        Global.trail[i].x = x + PAL_X(Global.viewport);
-        Global.trail[i].y = y + PAL_Y(Global.viewport);
-        Global.trail[i].direction = Global.partyDirection;
-        x += offsetX;
-        y += offsetY;
-      }
+      var viewportPos = PAL_XY(x, y);
+      setGlobalValue('viewport', viewportPos);
+      var partyStartX = PAL_X(Global.partyOffset);
+      var partyStartY = PAL_Y(Global.partyOffset);
+      var viewportX = PAL_X(viewportPos);
+      var viewportY = PAL_Y(viewportPos);
+      var direction = Global.partyDirection;
+      mutateGlobalValue('party', function(party) {
+        mutateGlobalValue('trail', function(trail) {
+          var currentX = partyStartX;
+          var currentY = partyStartY;
+          for (var idx = 0; idx < Const.MAX_PLAYABLE_PLAYER_ROLES; idx++) {
+            var member = party && party[idx];
+            if (member) {
+              member.x = currentX;
+              member.y = currentY;
+            }
+            var trailEntry = trail && trail[idx];
+            if (trailEntry) {
+              trailEntry.x = currentX + viewportX;
+              trailEntry.y = currentY + viewportY;
+              trailEntry.direction = direction;
+            }
+            currentX += offsetX;
+            currentY += offsetY;
+          }
+          return trail;
+        });
+        return party;
+      });
       break;
     case 0x0047:
       script.debug('[SCRIPT] Play sound effect');
@@ -1082,7 +1241,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x004A:
       script.debug('[SCRIPT] Set the current battlefield');
-      Global.numBattleField = sc.operand[0];
+      setGlobalValue('numBattleField', sc.operand[0]);
       break;
     case 0x004B:
       script.debug('[SCRIPT] Nullify the event object for a short while');
@@ -1117,14 +1276,14 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] screen fade out');
       surface.updateScreen(null);
       yield surface.fadeOut((sc.operand[0] ? sc.operand[0] : 1));
-      Global.needToFadeIn = true;
+      setGlobalValue('needToFadeIn', true);
       break;
     case 0x0051:
       script.debug('[SCRIPT] screen fade in')
       surface.updateScreen(null);
       var time = SHORT(sc.operand[0]);
       yield surface.fadeIn(Global.numPalette, Global.nightPalette, (time > 0 ? time : 1));
-      Global.needToFadeIn = false;
+      setGlobalValue('needToFadeIn', false);
       break;
     case 0x0052:
       script.debug('[SCRIPT] hide the event object for a while, default 800 frames');
@@ -1133,11 +1292,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0053:
       script.debug('[SCRIPT] use the day palette');
-      Global.nightPalette = false;
+      setGlobalValue('nightPalette', false);
       break;
     case 0x0054:
       script.debug('[SCRIPT] use the night palette');
-      Global.nightPalette = true;
+      setGlobalValue('nightPalette', true);
       break;
     case 0x0055:
       script.debug('[SCRIPT] Add magic to a player');
@@ -1163,8 +1322,15 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Set the base damage of magic according to MP value'); // 酒神吧大概是
       i = ((sc.operand[1] === 0) ? 8 : sc.operand[1]);
       j = GameData.object[sc.operand[0]].magic.magicNumber;
-      GameData.magic[j].baseDamage = GameData.playerRoles.MP[eventObjectID] * i;
-      GameData.playerRoles.MP[eventObjectID] = 0;
+      var mpValue = GameData.playerRoles.MP[eventObjectID];
+      mutateMagic(function(magicData) {
+        if (magicData && magicData[j]) {
+          magicData[j].baseDamage = mpValue * i;
+        }
+      });
+      mutatePlayerRoles(function(playerRoles) {
+        playerRoles.MP[eventObjectID] = 0;
+      });
       break;
     case 0x0058:
       script.debug('[SCRIPT] Jump if there is less than the specified number of the specified items in the inventory');
@@ -1176,16 +1342,18 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Change to the specified scene');
       if (sc.operand[0] > 0 && sc.operand[0] <= Const.MAX_SCENES && Global.numScene !== sc.operand[0]) {
         // Set data to load the scene in the next frame
-        Global.numScene = sc.operand[0];
+        setGlobalValue('numScene', sc.operand[0]);
         res.setLoadFlags(LoadFlag.Scene);
-        Global.enteringScene = true;
-        Global.layer = 0;
+        setGlobalValue('enteringScene', true);
+        setGlobalValue('layer', 0);
       }
       break;
     case 0x005A:
       script.debug('[SCRIPT] Halve the player\'s HP');
       // The eventObjectID parameter here should indicate the player role
-      GameData.playerRoles.HP[eventObjectID] = ~~(GameData.playerRoles.HP[eventObjectID] / 2);
+      mutatePlayerRoles(function(playerRoles) {
+        playerRoles.HP[eventObjectID] = ~~(playerRoles.HP[eventObjectID] / 2);
+      });
       break;
     case 0x005B:
       script.debug('[SCRIPT] Halve the enemy\'s HP');
@@ -1224,7 +1392,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x005F:
       script.debug('[SCRIPT] Kill the player immediately');
       // The eventObjectID parameter here should indicate the player role
-      GameData.playerRoles.HP[eventObjectID] = 0;
+      mutatePlayerRoles(function(playerRoles) {
+        playerRoles.HP[eventObjectID] = 0;
+      });
       break;
     case 0x0060:
       script.debug('[SCRIPT] Immediate KO of the enemy');
@@ -1238,13 +1408,13 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0062:
       script.debug('[SCRIPT] Pause enemy chasing for a while');
-      Global.chaseSpeedChangeCycles = sc.operand[0];
-      Global.chaseRange = 0;
+      setGlobalValue('chaseSpeedChangeCycles', sc.operand[0]);
+      setGlobalValue('chaseRange', 0);
       break;
     case 0x0063:
       script.debug('[SCRIPT] Speed up enemy chasing for a while');
-      Global.chaseSpeedChangeCycles = sc.operand[0];
-      Global.chaseRange = 3;
+      setGlobalValue('chaseSpeedChangeCycles', sc.operand[0]);
+      setGlobalValue('chaseRange', 3);
       break;
     case 0x0064:
       script.debug('[SCRIPT] Jump if enemy\'s HP is more than the specified percentage');
@@ -1255,7 +1425,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0065:
       script.debug('[SCRIPT] Set the player\'s sprite');
-      GameData.playerRoles.spriteNum[sc.operand[0]] = sc.operand[1];
+      mutatePlayerRoles(function(playerRoles) {
+        playerRoles.spriteNum[sc.operand[0]] = sc.operand[1];
+      });
       if (!Global.inBattle && sc.operand[2]) {
         res.setLoadFlags(LoadFlag.PlayerSprite);
         yield res.loadResources();
@@ -1301,31 +1473,47 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x006D:
       script.debug('[SCRIPT] Set the enter sc and teleport sc for a scene');
       if (sc.operand[0]) {
-        if (sc.operand[1]) {
-          GameData.scene[sc.operand[0] - 1].scriptOnEnter = sc.operand[1];
-        }
-        if (sc.operand[2]) {
-          GameData.scene[sc.operand[0] - 1].scriptOnTeleport = sc.operand[2];
-        }
-        if (sc.operand[1] == 0 && sc.operand[2] == 0) {
-          GameData.scene[sc.operand[0] - 1].scriptOnEnter = 0;
-          GameData.scene[sc.operand[0] - 1].scriptOnTeleport = 0;
-        }
+        mutateScenes(function(scenes) {
+          var target = scenes && scenes[sc.operand[0] - 1];
+          if (!target) {
+            return scenes;
+          }
+          if (sc.operand[1]) {
+            target.scriptOnEnter = sc.operand[1];
+          }
+          if (sc.operand[2]) {
+            target.scriptOnTeleport = sc.operand[2];
+          }
+          if (sc.operand[1] == 0 && sc.operand[2] == 0) {
+            target.scriptOnEnter = 0;
+            target.scriptOnTeleport = 0;
+          }
+          return scenes;
+        });
       }
       break;
     case 0x006E:
       script.debug('[SCRIPT] Move the player to the specified position in one step');
-      for (i = 3; i >= 0; i--) {
-        Global.trail[i + 1] = Global.trail[i];
-      }
-      Global.trail[0].direction = Global.partyDirection;
-      Global.trail[0].x = PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
-      Global.trail[0].y = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
-      Global.viewport = PAL_XY(
+      mutateGlobalValue('trail', function(trail) {
+        if (!trail) {
+          return trail;
+        }
+        for (var idx = 3; idx >= 0; idx--) {
+          trail[idx + 1] = trail[idx];
+        }
+        if (trail[0]) {
+          trail[0].direction = Global.partyDirection;
+          trail[0].x = PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
+          trail[0].y = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
+        }
+        return trail;
+      });
+      var newViewport = PAL_XY(
         PAL_X(Global.viewport) + SHORT(sc.operand[0]),
         PAL_Y(Global.viewport) + SHORT(sc.operand[1])
       );
-      Global.layer = sc.operand[2] * 8;
+      setGlobalValue('viewport', newViewport);
+      setGlobalValue('layer', sc.operand[2] * 8);
       if (sc.operand[0] !== 0 || sc.operand[1] !== 0){
         scene.updatePartyGestures(true);
       }
@@ -1342,8 +1530,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0071:
       script.debug('[SCRIPT] Wave the screen');
-      Global.screenWave = sc.operand[0];
-      Global.waveProgression = SHORT(sc.operand[1]);
+      setGlobalValue('screenWave', sc.operand[0]);
+      setGlobalValue('waveProgression', SHORT(sc.operand[1]));
       break;
     case 0x0072:
       script.debug('[SCRIPT] unknown 0x0072');
@@ -1368,21 +1556,30 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0075:
       script.debug('[SCRIPT] Set the player party');
-      Global.maxPartyMemberIndex = 0;
-      for (i = 0; i < 3; i++) {
-        if (sc.operand[i] != 0) {
-          const playerIndex = Global.maxPartyMemberIndex;
-          Global.party[playerIndex].playerRole = sc.operand[i] - 1;
-          battleService.setPlayerActionType(playerIndex, BattleActionType.Attack);
-          Global.maxPartyMemberIndex++;
+      setGlobalValue('maxPartyMemberIndex', 0);
+      var assignedCount = 0;
+      mutateGlobalValue('party', function(party) {
+        if (!party) {
+          return party;
         }
-      }
-      if (Global.maxPartyMemberIndex === 0) {
-        // HACK for Dream 2.11
-        Global.party[0].playerRole = 0;
-        Global.maxPartyMemberIndex = 1;
-      }
-      Global.maxPartyMemberIndex--;
+        for (var idx = 0; idx < 3; idx++) {
+          if (sc.operand[idx] != 0) {
+            var member = party[assignedCount];
+            if (member) {
+              member.playerRole = sc.operand[idx] - 1;
+            }
+            battleService.setPlayerActionType(assignedCount, BattleActionType.Attack);
+            assignedCount++;
+          }
+        }
+        if (assignedCount === 0 && party[0]) {
+          // HACK for Dream 2.11
+          party[0].playerRole = 0;
+          assignedCount = 1;
+        }
+        return party;
+      });
+      setGlobalValue('maxPartyMemberIndex', assignedCount > 0 ? assignedCount - 1 : 0);
       // Reload the player sprites
       res.setLoadFlags(LoadFlag.PlayerSprite);
       yield res.loadResources();
@@ -1401,7 +1598,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Stop current playing music');
       // WARNING TODO
       // yield music.play(0, false, (sc.operand[0] == 0) ? 2.0 : sc.operand[0] * 2);
-      Global.musicNum = 0;
+      setGlobalValue('musicNum', 0);
       break;
     case 0x0078:
       script.debug('[SCRIPT] unknown 0x0078')
@@ -1449,42 +1646,73 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Move the viewport');
       if (sc.operand[0] === 0 && sc.operand[1] === 0) {
         // Move the viewport back to normal state
-        x = Global.party[0].x - 160;
-        y = Global.party[0].y - 112;
-        Global.viewport = PAL_XY(PAL_X(Global.viewport) + x, PAL_Y(Global.viewport) + y);
-        Global.partyOffset = PAL_XY(160, 112);
-        for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          Global.party[i].x -= x;
-          Global.party[i].y -= y;
-        }
+        var deltaX = Global.party[0].x - 160;
+        var deltaY = Global.party[0].y - 112;
+        var normalizedViewport = PAL_XY(PAL_X(Global.viewport) + deltaX, PAL_Y(Global.viewport) + deltaY);
+        setGlobalValue('viewport', normalizedViewport);
+        setGlobalValue('partyOffset', PAL_XY(160, 112));
+        mutateGlobalValue('party', function(party) {
+          if (!party) {
+            return party;
+          }
+          for (var partyIdx = 0; partyIdx <= Global.maxPartyMemberIndex; partyIdx++) {
+            var member = party[partyIdx];
+            if (member) {
+              member.x -= deltaX;
+              member.y -= deltaY;
+            }
+          }
+          return party;
+        });
         if (sc.operand[2] !== 0xFFFF) {
           yield scene.makeScene();
           surface.updateScreen(null);
         }
       } else {
         i = 0;
-        x = SHORT(sc.operand[0]);
-        y = SHORT(sc.operand[1]);
+        var stepX = SHORT(sc.operand[0]);
+        var stepY = SHORT(sc.operand[1]);
         do {
           if (sc.operand[2] === 0xFFFF) {
-            x = PAL_X(Global.viewport);
-            y = PAL_Y(Global.viewport);
-            Global.viewport = PAL_XY(sc.operand[0] * 32 - 160, sc.operand[1] * 16 - 112);
-            x -= PAL_X(Global.viewport);
-            y -= PAL_Y(Global.viewport);
-            for (j = 0; j <= Global.maxPartyMemberIndex; j++) {
-              Global.party[j].x += x;
-              Global.party[j].y += y;
-            }
+            var previousViewportX = PAL_X(Global.viewport);
+            var previousViewportY = PAL_Y(Global.viewport);
+            var targetViewport = PAL_XY(sc.operand[0] * 32 - 160, sc.operand[1] * 16 - 112);
+            setGlobalValue('viewport', targetViewport);
+            var deltaViewportX = previousViewportX - PAL_X(targetViewport);
+            var deltaViewportY = previousViewportY - PAL_Y(targetViewport);
+            mutateGlobalValue('party', function(party) {
+              if (!party) {
+                return party;
+              }
+              for (var partyIdx = 0; partyIdx <= Global.maxPartyMemberIndex; partyIdx++) {
+                var member = party[partyIdx];
+                if (member) {
+                  member.x += deltaViewportX;
+                  member.y += deltaViewportY;
+                }
+              }
+              return party;
+            });
             // WARNING 这里sdlpal里没有跳出，那岂不是死循环了？
             //break;
           } else {
-            Global.viewport = PAL_XY(PAL_X(Global.viewport) + x, PAL_Y(Global.viewport) + y);
-            Global.partyOffset = PAL_XY(PAL_X(Global.partyOffset) - x, PAL_Y(Global.partyOffset) - y);
-            for (j = 0; j <= Global.maxPartyMemberIndex; j++) {
-               Global.party[j].x -= x;
-               Global.party[j].y -= y;
-            }
+            var incrementalViewport = PAL_XY(PAL_X(Global.viewport) + stepX, PAL_Y(Global.viewport) + stepY);
+            setGlobalValue('viewport', incrementalViewport);
+            var updatedPartyOffset = PAL_XY(PAL_X(Global.partyOffset) - stepX, PAL_Y(Global.partyOffset) - stepY);
+            setGlobalValue('partyOffset', updatedPartyOffset);
+            mutateGlobalValue('party', function(party) {
+              if (!party) {
+                return party;
+              }
+              for (var partyIdx = 0; partyIdx <= Global.maxPartyMemberIndex; partyIdx++) {
+                var member = party[partyIdx];
+                if (member) {
+                  member.x -= stepX;
+                  member.y -= stepY;
+                }
+              }
+              return party;
+            });
           }
           if (sc.operand[2] !== 0xFFFF){
             yield play.update(false);
@@ -1500,8 +1728,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0080:
       script.debug('[SCRIPT] Toggle day/night palette');
-      Global.nightPalette = !Global.nightPalette;
-      yield surface.paletteFade(Global.numPalette, Global.nightPalette, !sc.operand[0]);
+      var toggledNightPalette = !Global.nightPalette;
+      setGlobalValue('nightPalette', toggledNightPalette);
+      yield surface.paletteFade(Global.numPalette, toggledNightPalette, !sc.operand[0]);
       break;
     case 0x0081:
       script.debug('[SCRIPT] Jump if the player is not facing the specified event object');
@@ -1599,9 +1828,13 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0088:
       script.debug('[SCRIPT] Set the base damage of magic according to amount of money'); // 扔钱。。
       i = ((Global.cash > 5000) ? 5000 : Global.cash);
-      Global.cash -= i;
+      adjustGlobalNumber('cash', -i);
       j = GameData.object[sc.operand[0]].magic.magicNumber;
-      GameData.magic[j].baseDamage = ~~(i * 2 / 5);
+      mutateMagic(function(magicData) {
+        if (magicData && magicData[j]) {
+          magicData[j].baseDamage = ~~(i * 2 / 5);
+        }
+      });
       break;
     case 0x0089:
       script.debug('[SCRIPT] Set the battle result');
@@ -1609,11 +1842,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x008A:
       script.debug('[SCRIPT] Enable Auto-Battle for next battle');
-      Global.autoBattle = true;
+      setGlobalValue('autoBattle', true);
       break;
     case 0x008B:
       script.debug('[SCRIPT] change the current palette');
-      Global.numPalette = sc.operand[0];
+      setGlobalValue('numPalette', sc.operand[0]);
       if (!Global.needToFadeIn) {
         var palette = Palette.get(Global.numPalette, false);
         surface.setPalette(palette);
@@ -1622,7 +1855,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x008C:
       script.debug('[SCRIPT] Fade from/to color');
       yield surface.colorFade(sc.operand[1], sc.operand[0], sc.operand[2]); // WARNING param normalize
-      Global.needToFadeIn = false;
+      setGlobalValue('needToFadeIn', false);
       break;
     case 0x008D:
       script.debug('[SCRIPT] Increase player\'s level');
@@ -1630,12 +1863,19 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x008F:
       script.debug('[SCRIPT] Halve the cash amount');
-      Global.cash = ~~(Global.cash / 2);
+      mutateGlobalValue('cash', function(cash) {
+        cash = cash || 0;
+        return ~~(cash / 2);
+      });
       break;
     case 0x0090:
       script.debug('[SCRIPT] Set the object script');
       // WARNING 偏移量不一定对
-      GameData.object[sc.operand[0]].data[2 + sc.operand[2]] = sc.operand[1];
+      mutateObjects(function(objects) {
+        if (objects && objects[sc.operand[0]]) {
+          objects[sc.operand[0]].data[2 + sc.operand[2]] = sc.operand[1];
+        }
+      });
       break;
     case 0x0091:
       script.debug('[SCRIPT] Jump if the enemy is not alone');
@@ -1678,7 +1918,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Fade the screen. Update scene in the process.');
       var time = SHORT(sc.operand[0]);
       yield surface.fadeIn(Global.numPalette, Global.nightPalette, (time > 0 ? time : 1));
-      Global.needToFadeIn = (SHORT(sc.operand[0]) < 0);
+      setGlobalValue('needToFadeIn', (SHORT(sc.operand[0]) < 0));
       break;
     case 0x0094:
       script.debug('[SCRIPT] Jump if the state of event object is the specified one');
@@ -1703,33 +1943,61 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0098:
       script.debug('[SCRIPT] Set follower of the party');
       if (sc.operand[0] > 0) {
-        Global.numFollower = 1;
-        Global.party[Global.maxPartyMemberIndex + 1].playerRole = sc.operand[0];
+        setGlobalValue('numFollower', 1);
+        var followerIndex = Global.maxPartyMemberIndex + 1;
+        mutateGlobalEntry('party', followerIndex, function(member) {
+          if (member) {
+            member.playerRole = sc.operand[0];
+          }
+        });
         res.setLoadFlags(LoadFlag.PlayerSprite);
         yield res.loadResources();
         // Update the position and gesture for the follower
-        Global.party[Global.maxPartyMemberIndex + 1].x = Global.trail[3].x - PAL_X(Global.viewport);
-        Global.party[Global.maxPartyMemberIndex + 1].y = Global.trail[3].y - PAL_Y(Global.viewport);
-        Global.party[Global.maxPartyMemberIndex + 1].frame = Global.trail[3].direction * 3;
+        mutateGlobalEntry('party', followerIndex, function(member) {
+          if (!member) {
+            return;
+          }
+          member.x = Global.trail[3].x - PAL_X(Global.viewport);
+          member.y = Global.trail[3].y - PAL_Y(Global.viewport);
+          member.frame = Global.trail[3].direction * 3;
+        });
       } else {
-        Global.numFollower = 0;
+        setGlobalValue('numFollower', 0);
       }
       break;
     case 0x0099:
       script.debug('[SCRIPT] Change the map for the specified scene');
       if (sc.operand[0] == 0xFFFF) {
-        GameData.scene[Global.numScene - 1].mapNum = sc.operand[1];
+        mutateScenes(function(scenes) {
+          if (scenes && scenes[Global.numScene - 1]) {
+            scenes[Global.numScene - 1].mapNum = sc.operand[1];
+          }
+        });
         res.setLoadFlags(LoadFlag.Scene);
         yield res.loadResources();
       } else {
-        GameData.scene[sc.operand[0] - 1].mapNum = sc.operand[1];
+        mutateScenes(function(scenes) {
+          if (scenes && scenes[sc.operand[0] - 1]) {
+            scenes[sc.operand[0] - 1].mapNum = sc.operand[1];
+          }
+          return scenes;
+        });
       }
       break;
     case 0x009A:
       script.debug('[SCRIPT] Set the state for multiple event objects');
-      for (i = sc.operand[0]; i <= sc.operand[1]; i++) {
-        GameData.eventObject[i - 1].state = sc.operand[2];
-      }
+      mutateEventObjects(function(eventObjects) {
+        if (!eventObjects) {
+          return eventObjects;
+        }
+        for (var idx = sc.operand[0]; idx <= sc.operand[1]; idx++) {
+          var target = eventObjects[idx - 1];
+          if (target) {
+            target.state = sc.operand[2];
+          }
+        }
+        return eventObjects;
+      });
       break;
     case 0x009B:
       script.debug('[SCRIPT] Fade to the current scene');
@@ -1899,15 +2167,35 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x00A1:
       script.debug('[SCRIPT] Set the positions of all party members to the same as the first one');
-      for (i = 0; i < Const.MAX_PLAYABLE_PLAYER_ROLES; i++) {
-        Global.trail[i].direction = Global.partyDirection;
-        Global.trail[i].x = Global.party[0].x + PAL_X(Global.viewport);
-        Global.trail[i].y = Global.party[0].y + PAL_Y(Global.viewport);
-      }
-      for (i = 1; i <= Global.maxPartyMemberIndex; i++) {
-        Global.party[i].x = Global.party[0].x;
-        Global.party[i].y = Global.party[0].y - 1;
-      }
+      mutateGlobalValue('trail', function(trailState) {
+        if (!trailState) {
+          return trailState;
+        }
+        for (var trailIndex = 0; trailIndex < Const.MAX_PLAYABLE_PLAYER_ROLES; trailIndex++) {
+          var trailEntry = trailState[trailIndex];
+          if (!trailEntry) {
+            continue;
+          }
+          trailEntry.direction = Global.partyDirection;
+          trailEntry.x = Global.party[0].x + PAL_X(Global.viewport);
+          trailEntry.y = Global.party[0].y + PAL_Y(Global.viewport);
+        }
+        return trailState;
+      });
+      mutateGlobalValue('party', function(partyState) {
+        if (!partyState) {
+          return partyState;
+        }
+        for (var partyIndex = 1; partyIndex <= Global.maxPartyMemberIndex; partyIndex++) {
+          var partyMember = partyState[partyIndex];
+          if (!partyMember) {
+            continue;
+          }
+          partyMember.x = Global.party[0].x;
+          partyMember.y = Global.party[0].y - 1;
+        }
+        return partyState;
+      });
       scene.updatePartyGestures(false);
       break;
     case 0x00A2:
@@ -2085,7 +2373,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
         } else {
           scriptEntry++;
         }
-        Global.autoBattle = false;
+        setGlobalValue('autoBattle', false);
         break;
       case 0x0008:
         script.debug('[SCRIPT] Replace the entry with the next instruction');

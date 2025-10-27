@@ -7,29 +7,12 @@ const projectRoot = path.resolve(__dirname, '..');
 const srcRoot = path.join(projectRoot, 'src');
 
 const allowedGlobalMutationFiles = new Set([
-  'src/js/pal/battle.js',
-  'src/js/pal/pal-global.js',
-  'src/js/pal/script.js',
-  'src/js/pal/script-extras.js',
-  'src/js/pal/game.js',
-  'src/js/pal/fight.js',
-  'src/services/state-service.js',
   'src/services/battle-service.js'
 ]);
 
-const allowedBattleMutationFiles = new Set([
-  'src/js/pal/script.js',
-  'src/js/pal/fight.js'
-]);
+const allowedBattleMutationFiles = new Set([]);
 
-const allowedGameDataMutationFiles = new Set([
-  'src/js/pal/game.js',
-  'src/js/pal/battle.js',
-  'src/js/pal/script.js',
-  'src/js/pal/fight.js',
-  'src/js/pal/script-extras.js',
-  'src/services/state-service.js'
-]);
+const allowedGameDataMutationFiles = new Set([]);
 
 const jsFilePattern = /\.js$/;
 

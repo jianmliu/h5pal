@@ -119,6 +119,46 @@ function setPlayer(index, mutator) {
   });
 }
 
+function isPlayerAvailable(index) {
+  var partyEntry = Global.party[index];
+  if (!partyEntry) {
+    return false;
+  }
+  var roleId = partyEntry.playerRole;
+  if (GameData.playerRoles.HP[roleId] === 0 &&
+      Global.playerStatus[roleId][PlayerStatus.Puppet] === 0) {
+    return false;
+  }
+  if (Global.playerStatus[roleId][PlayerStatus.Sleep] ||
+      Global.playerStatus[roleId][PlayerStatus.Confused] ||
+      Global.playerStatus[roleId][PlayerStatus.Paralyzed]) {
+    return false;
+  }
+  return true;
+}
+
+function promoteFirstWaitingPlayer() {
+  if (!Global || !Array.isArray(Global.party)) {
+    return -1;
+  }
+  for (var idx = 0; idx <= Global.maxPartyMemberIndex; idx++) {
+    if (!isPlayerAvailable(idx)) {
+      continue;
+    }
+    var playerState = battleService.getPlayer(idx);
+    if (!playerState || playerState.state !== FighterState.Wait) {
+      continue;
+    }
+    setPlayer(idx, function(player) {
+      player.state = FighterState.Com;
+      player.defending = false;
+      return player;
+    });
+    return idx;
+  }
+  return -1;
+}
+
 function adjustInventoryUsage(itemId, delta) {
   if (!itemId || delta === 0) {
     return;
@@ -808,11 +848,20 @@ uibattle.update = function*() {
       if (!BATTLE().enemyCleared) {
         battle.playerCheckReady();
 
+        var readyIndex = -1;
         for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
           if (BATTLE().player[i].state == FighterState.Com) {
-            uibattle.playerReady(i);
+            readyIndex = i;
             break;
           }
+        }
+
+        if (readyIndex < 0) {
+          readyIndex = promoteFirstWaitingPlayer();
+        }
+
+        if (readyIndex >= 0 && isPlayerAvailable(readyIndex)) {
+          uibattle.playerReady(readyIndex);
         }
       }
       break;

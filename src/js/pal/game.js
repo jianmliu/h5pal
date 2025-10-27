@@ -13,6 +13,47 @@ log.trace('game module load');
 
 var game = {};
 
+function setGlobalValue(key, value) {
+  return stateService.setGlobal(key, value);
+}
+
+function updateGlobalValues(patch) {
+  return stateService.updateGlobal(patch);
+}
+
+function mutateGlobalValue(key, mutator) {
+  return stateService.mutateGlobal(key, function(current) {
+    if (typeof mutator !== 'function') {
+      return current;
+    }
+    const result = mutator(current);
+    return typeof result === 'undefined' ? current : result;
+  });
+}
+
+function mutateExp(mutator) {
+  return mutateGlobalValue('exp', function(exp) {
+    if (exp && typeof mutator === 'function') {
+      mutator(exp);
+    }
+    return exp;
+  });
+}
+
+function setGameDataValue(key, value) {
+  return stateService.setGameData(key, value);
+}
+
+function mutateGameDataValue(key, mutator) {
+  return stateService.mutateGameData(key, function(current) {
+    if (typeof mutator !== 'function') {
+      return current;
+    }
+    const result = mutator(current);
+    return typeof result === 'undefined' ? current : result;
+  });
+}
+
 function encodeSavePayload(saveData, savedTimes, timestamp) {
   var buf = saveData.uint8Array;
   var arr = new Array(buf.length);
@@ -78,7 +119,7 @@ game.init = function*(surf) {
 
 game.clearPlayerStatus = function() {
   //Global.playerStatus = initTypedArray(PlayerStatus, Const.MAX_PLAYER_ROLES);
-  var arr = Global.playerStatus = [];
+  var arr = [];
   for (var i=0; i<Const.MAX_PLAYER_ROLES; ++i) {
     var st = [];
     for (var j=0; j<PlayerStatus.All; ++j) {
@@ -86,16 +127,17 @@ game.clearPlayerStatus = function() {
     }
     arr.push(st);
   }
+  setGlobalValue('playerStatus', arr);
 };
 
 game.loadDefaultGame = function*() {
   // Load the default data from the game data files.
-  GameData.eventObject = readTypedArray(EventObject, Files.SSS.readChunk(0));
-  GameData.scene = readTypedArray(Scene, Files.SSS.readChunk(1));
-  GameData.object = readTypedArray(ObjectUnion, Files.SSS.readChunk(2));
-  GameData.playerRoles = new PlayerRoles(Files.DATA.readChunk(3));
+  setGameDataValue('eventObject', readTypedArray(EventObject, Files.SSS.readChunk(0)));
+  setGameDataValue('scene', readTypedArray(Scene, Files.SSS.readChunk(1)));
+  setGameDataValue('object', readTypedArray(ObjectUnion, Files.SSS.readChunk(2)));
+  setGameDataValue('playerRoles', new PlayerRoles(Files.DATA.readChunk(3)));
   // Set some other default data.
-  utils.extend(Global, {
+  updateGlobalValues({
     cash: 0,
     numMusic: 0,
     numPalette: 0,
@@ -108,9 +150,9 @@ game.loadDefaultGame = function*() {
     chaseRange: 1
   });
   if (!PAL_CLASSIC) {
-    Global.battleSpeed = 2;
+    setGlobalValue('battleSpeed', 2);
   }
-  Global.enteringScene = 1;
+  setGlobalValue('enteringScene', 1);
   //utils.extend(Global, {
   //  inventory: initTypedArray(Inventory, Const.MAX_INVENTORY),
   //  poisonStatus: [],
@@ -122,11 +164,17 @@ game.loadDefaultGame = function*() {
   //for (var i=0; i<Const.MAX_POISONS; ++i){
   //  Global.poisonStatus[i] = initTypedArray(PoisonStatus, Const.MAX_PLAYABLE_PLAYER_ROLES);
   //}
-  for (var i=0; i<Const.MAX_PLAYER_ROLES; ++i) {
-    AllExperience.types.forEach(function(name) {
-      Global.exp[name][i].level = GameData.playerRoles.level[i];
-    });
-  }
+  mutateExp(function(exp) {
+    if (!exp) return exp;
+    for (var i = 0; i < Const.MAX_PLAYER_ROLES; ++i) {
+      AllExperience.types.forEach(function(name) {
+        if (exp[name] && exp[name][i]) {
+          exp[name][i].level = GameData.playerRoles.level[i];
+        }
+      });
+    }
+    return exp;
+  });
 };
 
 /**
@@ -134,19 +182,19 @@ game.loadDefaultGame = function*() {
  */
 game.initGlobalGameData = function*() {
   // MKF bundles are preloaded during startup via the resource service.
-  GameData.scriptEntry = readTypedArray(ScriptEntry, Files.SSS.readChunk(4));
-  GameData.store = readTypedArray(Store, Files.DATA.readChunk(0));
-  GameData.enemy = readTypedArray(Enemy, Files.DATA.readChunk(1));
-  GameData.enemyTeam = readTypedArray(EnemyTeam, Files.DATA.readChunk(2));
-  GameData.magic = readTypedArray(Magic, Files.DATA.readChunk(4));
-  GameData.battleField = readTypedArray(BattleField, Files.DATA.readChunk(5));
-  GameData.levelUpMagic = readTypedArray(LevelUpMagicAll, Files.DATA.readChunk(6));
-  GameData.battleEffectIndex = readArray2D(
+  setGameDataValue('scriptEntry', readTypedArray(ScriptEntry, Files.SSS.readChunk(4)));
+  setGameDataValue('store', readTypedArray(Store, Files.DATA.readChunk(0)));
+  setGameDataValue('enemy', readTypedArray(Enemy, Files.DATA.readChunk(1)));
+  setGameDataValue('enemyTeam', readTypedArray(EnemyTeam, Files.DATA.readChunk(2)));
+  setGameDataValue('magic', readTypedArray(Magic, Files.DATA.readChunk(4)));
+  setGameDataValue('battleField', readTypedArray(BattleField, Files.DATA.readChunk(5)));
+  setGameDataValue('levelUpMagic', readTypedArray(LevelUpMagicAll, Files.DATA.readChunk(6)));
+  setGameDataValue('battleEffectIndex', readArray2D(
     Files.DATA.readChunk(11),
     10, 2, 2, 0
-  );
-  GameData.enemyPos = new EnemyPos(Files.DATA.readChunk(13));
-  GameData.levelUpExp = readArray(Files.DATA.readChunk(14), Const.MAX_LEVELS, 2, 0);
+  ));
+  setGameDataValue('enemyPos', new EnemyPos(Files.DATA.readChunk(13)));
+  setGameDataValue('levelUpExp', readArray(Files.DATA.readChunk(14), Const.MAX_LEVELS, 2, 0));
 };
 
 game.loadGame = function*(slot) {
@@ -176,27 +224,30 @@ game._loadGame = function(s) {
   //#endif
 
   // Get all the data from the saved game struct.
-  Global.viewport = PAL_XY(s.viewportX, s.viewportY);
-  Global.maxPartyMemberIndex = s.numPartyMember;
-  Global.numScene = s.numScene;
-  Global.nightPalette = (s.paletteOffset != 0);
-  Global.partyDirection = s.partyDirection;
-  Global.numMusic = s.numMusic;
-  Global.numBattleMusic = s.numBattleMusic;
-  Global.numBattleField = s.numBattleField;
-  Global.screenWave = s.screenWave;
-  Global.waveProgression = 0;
-  Global.collectValue = s.collectValue;
-  Global.layer = s.layer;
-  Global.chaseRange = s.chaseRange;
-  Global.chaseSpeedChangeCycles = s.chaseSpeedChangeCycles;
-  Global.numFollower = s.numFollower;
-  Global.cash = s.cash;
+  updateGlobalValues({
+    viewport: PAL_XY(s.viewportX, s.viewportY),
+    maxPartyMemberIndex: s.numPartyMember,
+    numScene: s.numScene,
+    nightPalette: (s.paletteOffset != 0),
+    partyDirection: s.partyDirection,
+    numMusic: s.numMusic,
+    numBattleMusic: s.numBattleMusic,
+    numBattleField: s.numBattleField,
+    screenWave: s.screenWave,
+    waveProgression: 0,
+    collectValue: s.collectValue,
+    layer: s.layer,
+    chaseRange: s.chaseRange,
+    chaseSpeedChangeCycles: s.chaseSpeedChangeCycles,
+    numFollower: s.numFollower,
+    cash: s.cash
+  });
   if (!PAL_CLASSIC) {
-    Global.battleSpeed = s.battleSpeed;
-    if (Global.battleSpeed > 5 || Global.battleSpeed == 0) {
-      Global.battleSpeed = 2;
+    var nextBattleSpeed = s.battleSpeed;
+    if (nextBattleSpeed > 5 || nextBattleSpeed == 0) {
+      nextBattleSpeed = 2;
     }
+    setGlobalValue('battleSpeed', nextBattleSpeed);
   }
   //Global.party = s.party;
   memcpy(Global.party.uint8Array, s.party.uint8Array, Global.party.uint8Array.length);
@@ -204,7 +255,7 @@ game._loadGame = function(s) {
   memcpy(Global.trail.uint8Array, s.trail.uint8Array, Global.trail.uint8Array.length);
   //Global.exp = s.exp;
   memcpy(Global.exp.uint8Array, s.exp.uint8Array, Global.exp.uint8Array.length);
-  GameData.playerRoles = s.playerRoles;
+  setGameDataValue('playerRoles', s.playerRoles);
   //Global.poisonStatus = [];
   memset(Global.poisonStatus.uint8Array, 0, Global.poisonStatus.uint8Array.length);
   //for (var i=0; i<Const.MAX_POISONS; ++i){
@@ -212,10 +263,10 @@ game._loadGame = function(s) {
   //}
   memcpy(Global.inventory.uint8Array, s.inventory.uint8Array, Global.inventory.uint8Array.length);
   //Global.inventory = s.inventory;
-  GameData.scene = s.scene;
-  GameData.object = s.object;
-  GameData.eventObject = s.eventObject;
-  GameData.enteringScene = false;
+  setGameDataValue('scene', s.scene);
+  setGameDataValue('object', s.object);
+  setGameDataValue('eventObject', s.eventObject);
+  setGameDataValue('enteringScene', false);
 
   //PAL_CompressInventory();
   script.compressInventory();
@@ -297,9 +348,11 @@ game.initGameData = function*(slot) {
   }
 
   stateService.setGlobal('gameStart', true);
-  Global.needToFadeIn = false;
-  Global.curInvMenuItem = 0;
-  Global.inBattle = false;
+  updateGlobalValues({
+    needToFadeIn: false,
+    curInvMenuItem: 0,
+    inBattle: false
+  });
 
   //game.clearPlayerStatus();
   memset(Global.playerStatus.uint8Array, 0, Global.playerStatus.uint8Array.length);
@@ -312,9 +365,11 @@ game._initGameData = function*(s) {
   game._loadGame(s);
 
   stateService.setGlobal('gameStart', true);
-  Global.needToFadeIn = false;
-  Global.curInvMenuItem = 0;
-  Global.inBattle = false;
+  updateGlobalValues({
+    needToFadeIn: false,
+    curInvMenuItem: 0,
+    inBattle: false
+  });
 
   //game.clearPlayerStatus();
   memset(Global.playerStatus.uint8Array, 0, Global.playerStatus.uint8Array.length);
@@ -329,8 +384,10 @@ game.start = function*() {
   if (!Global.enteringScene) {
     // pal.music.play(Global.musicNum, true, 1);
   }
-  Global.needToFadeIn = true;
-  Global.frameNum = 0;
+  updateGlobalValues({
+    needToFadeIn: true,
+    frameNum: 0
+  });
 
   input.init();
   input.clear();

@@ -1,15 +1,19 @@
 import EventBus from './event-bus.js';
+import stateService from './state-service.js';
 
-function getGlobal() {
-  if (typeof globalThis !== 'undefined') return globalThis;
-  if (typeof window !== 'undefined') return window;
-  if (typeof global !== 'undefined') return global;
-  return {};
-}
-
-function getGameGlobal() {
-  const root = getGlobal();
-  return typeof root.Global !== 'undefined' ? root.Global : null;
+function ensureGameGlobal() {
+  let store = stateService.getGlobal();
+  if (store) {
+    return store;
+  }
+  if (typeof globalThis !== 'undefined') {
+    globalThis.Global = globalThis.Global || {};
+    store = globalThis.Global;
+  } else if (typeof global !== 'undefined') {
+    global.Global = global.Global || {};
+    store = global.Global;
+  }
+  return store;
 }
 
 class BattleService extends EventBus {
@@ -34,7 +38,7 @@ class BattleService extends EventBus {
   }
 
   _syncStateFromGlobal() {
-    const gameGlobal = getGameGlobal();
+    const gameGlobal = stateService.getGlobal();
     if (gameGlobal && gameGlobal.battle && this.rawState !== gameGlobal.battle.__raw__) {
       this.rawState = gameGlobal.battle.__raw__ || gameGlobal.battle;
       this.state = gameGlobal.battle;
@@ -102,12 +106,12 @@ class BattleService extends EventBus {
   }
 
   _installGlobalAccessor() {
-    const gameGlobal = getGameGlobal();
+    const gameGlobal = ensureGameGlobal();
     if (!gameGlobal || this._globalAccessorInstalled) {
       return;
     }
     const service = this;
-    let backingValue = gameGlobal.battle || this.state || null;
+    let backingValue = stateService.getGlobal('battle') || this.state || null;
 
     Object.defineProperty(gameGlobal, 'battle', {
       configurable: true,
@@ -151,7 +155,7 @@ class BattleService extends EventBus {
   }
 
   replaceState(nextState) {
-    const gameGlobal = getGameGlobal();
+    const gameGlobal = stateService.getGlobal();
     const previous = this.getState();
     if (gameGlobal) {
       if (!this._globalAccessorInstalled) {
@@ -164,7 +168,7 @@ class BattleService extends EventBus {
       }
       this.rawState = nextState;
       this.state = this._wrapState(nextState);
-      gameGlobal.battle = this.state;
+      stateService.setGlobal('battle', this.state);
       return this.state;
     }
     this.rawState = nextState;

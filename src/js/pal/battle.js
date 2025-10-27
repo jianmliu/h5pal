@@ -24,6 +24,24 @@ var battle = {
 
 battleService.bindModule(battle);
 
+function mutatePlayerRoles(mutator) {
+  return stateService.mutateGameData('playerRoles', function(playerRoles) {
+    if (playerRoles && typeof mutator === 'function') {
+      mutator(playerRoles);
+    }
+    return playerRoles;
+  });
+}
+
+function mutateExp(mutator) {
+  return stateService.mutateGlobal('exp', function(exp) {
+    if (exp && typeof mutator === 'function') {
+      mutator(exp);
+    }
+    return exp;
+  });
+}
+
 global.BattleResult = {
   Won:        3,      // player won the battle
   Lost:       1,      // player lost the battle
@@ -231,8 +249,7 @@ battle.init = function*(surf) {
   yield fight.init(surf, battle);
   yield uibattle.init(surf, battle, ui);
 
-  Global.battle = new Battle();
-  battleService.replaceState(Global.battle);
+  battleService.replaceState(new Battle());
 };
 
 /**
@@ -361,7 +378,7 @@ battle.makeScene = function() {
  * Backup the scene buffer.
  */
 battle.backupScene = function() {
-  Global.battle.sceneBuf = surface.getRect(0, 0, 320, 200);
+  battleService.setSceneBuffer(surface.getRect(0, 0, 320, 200));
 };
 
 /**
@@ -436,13 +453,18 @@ battle.main = function*() {
   // Fade in the screen when needed
   if (Global.needToFadeIn) {
     yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
-    Global.needToFadeIn = false;
+    stateService.setGlobal('needToFadeIn', false);
   }
 
   // Run the pre-battle scripts for each enemies
   for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-    Global.battle.enemy[i].scriptOnTurnStart =
-      yield script.runTriggerScript(Global.battle.enemy[i].scriptOnTurnStart, i);
+    var enemyState = Global.battle.enemy[i];
+    var nextEntry = yield script.runTriggerScript(enemyState.scriptOnTurnStart, i);
+    battleService.setEnemy(i, function(current) {
+      if (!current) return current;
+      current.scriptOnTurnStart = nextEntry;
+      return current;
+    });
 
     if (Global.battle.battleResult != BattleResult.PreBattle) {
       break;
@@ -450,7 +472,7 @@ battle.main = function*() {
   }
 
   if (Global.battle.battleResult == BattleResult.PreBattle) {
-    Global.battle.battleResult = BattleResult.OnGoing;
+    battleService.setBattleResult(BattleResult.OnGoing);
   }
 
   input.clear();
@@ -481,16 +503,28 @@ battle.main = function*() {
 battle.freeBattleSprites = function() {
   log.debug('[BATTLE] freeBattleSprites');
   // Free all the loaded sprites
-  for (var i = 0; i <= Global.maxPartyMemberIndex; i++)
-  {
-    Global.battle.player[i].sprite = null;
-  }
+  battleService.withState(function(state) {
+    if (!state) {
+      return state;
+    }
 
-  for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-    Global.battle.enemy[i].sprite = null;
-  }
+    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+      var playerState = state.player && state.player[i];
+      if (playerState) {
+        playerState.sprite = null;
+      }
+    }
 
-  Global.battle.summonSprite = null;
+    for (var j = 0; j <= state.maxEnemyIndex; j++) {
+      var enemyState = state.enemy && state.enemy[j];
+      if (enemyState) {
+        enemyState.sprite = null;
+      }
+    }
+
+    state.summonSprite = null;
+    return state;
+  });
 };
 
 /**
@@ -518,40 +552,51 @@ battle.loadBattleSprites = function() {
   log.debug('[BATTLE] loadBattleSprites');
   battle.freeBattleSprites();
 
-  // Load battle sprites for players
-  for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-    var s = battle.getPlayerBattleSprite(Global.party[i].playerRole);
-
-    Global.battle.player[i].sprite = new Sprite(Files.F.decompressChunk(s));
-
-    // Set the default position for this player
-    //
-    var x = battle.playerPos[Global.maxPartyMemberIndex][i][0];
-    var y = battle.playerPos[Global.maxPartyMemberIndex][i][1];
-
-    Global.battle.player[i].originalPos = PAL_XY(x, y);
-    Global.battle.player[i].pos = PAL_XY(x, y);
-  }
-
-  // Load battle sprites for enemies
-  for (var i = 0; i < Const.MAX_ENEMIES_IN_TEAM; i++) {
-    var enemy = Global.battle.enemy[i];
-    if (enemy.objectID == 0) {
-       continue;
+  battleService.withState(function(state) {
+    if (!state) {
+      return state;
     }
 
-    var enemyID = GameData.object[enemy.objectID].enemy.enemyID
-    enemy.sprite = new Sprite(Files.ABC.decompressChunk(enemyID));
+    // Load battle sprites for players
+    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+      var playerState = state.player && state.player[i];
+      if (!playerState) {
+        continue;
+      }
 
-    // Set the default position for this enemy
-    var x = GameData.enemyPos.pos[i][Global.battle.maxEnemyIndex].x;
-    var y = GameData.enemyPos.pos[i][Global.battle.maxEnemyIndex].y;
+      var spriteNum = battle.getPlayerBattleSprite(Global.party[i].playerRole);
+      playerState.sprite = new Sprite(Files.F.decompressChunk(spriteNum));
 
-    y += enemy.e.yPosOffset;
+      // Set the default position for this player
+      var x = battle.playerPos[Global.maxPartyMemberIndex][i][0];
+      var y = battle.playerPos[Global.maxPartyMemberIndex][i][1];
+      var position = PAL_XY(x, y);
+      playerState.originalPos = position;
+      playerState.pos = position;
+    }
 
-    enemy.originalPos = PAL_XY(x, y);
-    enemy.pos = PAL_XY(x, y);
-  }
+    // Load battle sprites for enemies
+    for (var enemyIndex = 0; enemyIndex < Const.MAX_ENEMIES_IN_TEAM; enemyIndex++) {
+      var enemyState = state.enemy && state.enemy[enemyIndex];
+      if (!enemyState || enemyState.objectID == 0) {
+        continue;
+      }
+
+      var enemyID = GameData.object[enemyState.objectID].enemy.enemyID;
+      enemyState.sprite = new Sprite(Files.ABC.decompressChunk(enemyID));
+
+      // Set the default position for this enemy
+      var enemyPos = GameData.enemyPos.pos[enemyIndex][state.maxEnemyIndex];
+      var posX = enemyPos.x;
+      var posY = enemyPos.y + (enemyState.e ? enemyState.e.yPosOffset : 0);
+      var enemyPosition = PAL_XY(posX, posY);
+
+      enemyState.originalPos = enemyPosition;
+      enemyState.pos = enemyPosition;
+    }
+
+    return state;
+  });
 };
 
 /**
@@ -562,24 +607,32 @@ battle.loadBattleSprites = function() {
  * @return {BattleEnemy}
  */
 battle.cloneEnemy = function(targetIndex, sourceIndex, options) {
-  var target = Global.battle.enemy[targetIndex];
-  var source = Global.battle.enemy[sourceIndex];
+  var source = battleService.getEnemy(sourceIndex);
   options = options || {};
 
-  target.reset();
-  target.objectID = source.objectID;
-  if (source.e) {
-    target.e = source.e.copy();
-  } else {
-    target.e = null;
-  }
-  target.scriptOnTurnStart = source.scriptOnTurnStart;
-  target.scriptOnBattleEnd = source.scriptOnBattleEnd;
-  target.scriptOnReady = source.scriptOnReady;
-  target.state = FighterState.Wait;
-  target.timeMeter = options.timeMeter != null ? options.timeMeter : 0;
-  target.colorShift = options.colorShift != null ? options.colorShift : 0;
-  return target;
+  return battleService.setEnemy(targetIndex, function(target) {
+    if (!target) {
+      return target;
+    }
+    target.reset();
+    if (source) {
+      target.objectID = source.objectID;
+      target.e = source.e ? source.e.copy() : null;
+      target.scriptOnTurnStart = source.scriptOnTurnStart;
+      target.scriptOnBattleEnd = source.scriptOnBattleEnd;
+      target.scriptOnReady = source.scriptOnReady;
+    } else {
+      target.objectID = 0;
+      target.e = null;
+      target.scriptOnTurnStart = 0;
+      target.scriptOnBattleEnd = 0;
+      target.scriptOnReady = 0;
+    }
+    target.state = FighterState.Wait;
+    target.timeMeter = options.timeMeter != null ? options.timeMeter : 0;
+    target.colorShift = options.colorShift != null ? options.colorShift : 0;
+    return target;
+  });
 };
 
 /**
@@ -590,29 +643,34 @@ battle.cloneEnemy = function(targetIndex, sourceIndex, options) {
  * @return {BattleEnemy}
  */
 battle.spawnEnemy = function(targetIndex, objectID, options) {
-  var enemy = Global.battle.enemy[targetIndex];
   options = options || {};
 
-  enemy.reset();
-  enemy.objectID = objectID;
+  return battleService.setEnemy(targetIndex, function(enemy) {
+    if (!enemy) {
+      return enemy;
+    }
 
-  if (objectID && objectID !== 0xFFFF) {
-    var objectEnemy = GameData.object[objectID].enemy;
-    enemy.e = GameData.enemy[objectEnemy.enemyID].copy();
-    enemy.scriptOnTurnStart = objectEnemy.scriptOnTurnStart;
-    enemy.scriptOnBattleEnd = objectEnemy.scriptOnBattleEnd;
-    enemy.scriptOnReady = objectEnemy.scriptOnReady;
-  } else {
-    enemy.e = null;
-    enemy.scriptOnTurnStart = 0;
-    enemy.scriptOnBattleEnd = 0;
-    enemy.scriptOnReady = 0;
-  }
+    enemy.reset();
+    enemy.objectID = objectID;
 
-  enemy.state = FighterState.Wait;
-  enemy.timeMeter = options.timeMeter != null ? options.timeMeter : 0;
-  enemy.colorShift = options.colorShift != null ? options.colorShift : 0;
-  return enemy;
+    if (objectID && objectID !== 0xFFFF) {
+      var objectEnemy = GameData.object[objectID].enemy;
+      enemy.e = GameData.enemy[objectEnemy.enemyID].copy();
+      enemy.scriptOnTurnStart = objectEnemy.scriptOnTurnStart;
+      enemy.scriptOnBattleEnd = objectEnemy.scriptOnBattleEnd;
+      enemy.scriptOnReady = objectEnemy.scriptOnReady;
+    } else {
+      enemy.e = null;
+      enemy.scriptOnTurnStart = 0;
+      enemy.scriptOnBattleEnd = 0;
+      enemy.scriptOnReady = 0;
+    }
+
+    enemy.state = FighterState.Wait;
+    enemy.timeMeter = options.timeMeter != null ? options.timeMeter : 0;
+    enemy.colorShift = options.colorShift != null ? options.colorShift : 0;
+    return enemy;
+  });
 };
 
 /**
@@ -620,13 +678,18 @@ battle.spawnEnemy = function(targetIndex, objectID, options) {
  * @return {Number} the new max enemy index.
  */
 battle.recalculateMaxEnemyIndex = function() {
+  var state = battleService.getState();
+  if (!state || !Array.isArray(state.enemy)) {
+    battleService.set('maxEnemyIndex', 0);
+    return 0;
+  }
   var maxIndex = 0;
-  for (var i = 0; i < Const.MAX_ENEMIES_IN_TEAM; i++) {
-    if (Global.battle.enemy[i].objectID != 0) {
+  for (var i = 0; i < Const.MAX_ENEMIES_IN_TEAM && i < state.enemy.length; i++) {
+    if (state.enemy[i] && state.enemy[i].objectID != 0) {
       maxIndex = i;
     }
   }
-  Global.battle.maxEnemyIndex = maxIndex;
+  battleService.set('maxEnemyIndex', maxIndex);
   return maxIndex;
 };
 
@@ -637,7 +700,7 @@ battle.loadBattleBackground = function() {
   log.debug('[BATTLE] loadBattleBackground');
   // Create the surface
   var background = surface.getRect(0, 0, 320, 200);
-  Global.battle.background = background;
+  battleService.setBackground(background);
 
   // Load the picture
   var buf = Files.FBP.decompressChunk(Global.numBattleField);
@@ -676,7 +739,10 @@ battle.won = function*() {
   }
 
   // Add the cash value
-  Global.cash += Global.battle.cashGained;
+  stateService.mutateGlobal('cash', function(cash) {
+    cash = cash || 0;
+    return cash + Global.battle.cashGained;
+  });
 
   // Add the experience points for each players
   for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
@@ -691,7 +757,9 @@ battle.won = function*() {
     exp += Global.battle.expGained;
 
     if (GameData.playerRoles.level[w] > Const.MAX_LEVELS) {
-      GameData.playerRoles.level[w] = Const.MAX_LEVELS;
+      mutatePlayerRoles(function(playerRoles) {
+        playerRoles.level[w] = Const.MAX_LEVELS;
+      });
     }
 
     while (exp >= GameData.levelUpExp[GameData.playerRoles.level[w]]) {
@@ -701,12 +769,16 @@ battle.won = function*() {
         levelUp = true;
         script.playerLevelUp(w, 1);
 
-        GameData.playerRoles.HP[w] = GameData.playerRoles.maxHP[w];
-        GameData.playerRoles.MP[w] = GameData.playerRoles.maxMP[w];
+        mutatePlayerRoles(function(playerRoles) {
+          playerRoles.HP[w] = playerRoles.maxHP[w];
+          playerRoles.MP[w] = playerRoles.maxMP[w];
+        });
       }
     }
 
-    Global.exp.primaryExp[w].exp = WORD(exp);
+    mutateExp(function(expState) {
+      expState.primaryExp[w].exp = WORD(exp);
+    });
 
     if (levelUp) {
       // Player has gained a level. Show the message
@@ -789,26 +861,35 @@ battle.won = function*() {
 
     if (totalCount > 0) {
       function* checkHiddenExp(expname, statname, label) {
-        var exp = Global.battle.expGained;
-        exp *= Global.exp[expname][w].count;
-        exp /= totalCount;
-        exp *= 2;
+        var expValue = Global.battle.expGained;
+        expValue *= Global.exp[expname][w].count;
+        expValue /= totalCount;
+        expValue *= 2;
 
-        exp += Global.exp[expname][w].exp;
+        expValue += Global.exp[expname][w].exp;
 
         if (Global.exp[expname][w].level > Const.MAX_LEVELS) {
-          Global.exp[expname][w].level = Const.MAX_LEVELS;
+          mutateExp(function(expState) {
+            expState[expname][w].level = Const.MAX_LEVELS;
+          });
         }
 
-        while (exp >= GameData.levelUpExp[Global.exp[expname][w].level]) {
-          exp -= GameData.levelUpExp[Global.exp[expname][w].level];
-          GameData.playerRoles[statname][w] += randomLong(1, 2);
-          if (Global.exp[expname][w].level < Const.MAX_LEVELS) {
-            Global.exp[expname][w].level++;
-          }
+        while (expValue >= GameData.levelUpExp[Global.exp[expname][w].level]) {
+          expValue -= GameData.levelUpExp[Global.exp[expname][w].level];
+          var increment = randomLong(1, 2);
+          mutatePlayerRoles(function(playerRoles) {
+            playerRoles[statname][w] += increment;
+          });
+          mutateExp(function(expState) {
+            if (expState[expname][w].level < Const.MAX_LEVELS) {
+              expState[expname][w].level++;
+            }
+          });
         }
 
-        Global.exp[expname][w].exp = WORD(exp);
+        mutateExp(function(expState) {
+          expState[expname][w].exp = WORD(expValue);
+        });
 
         if (GameData.playerRoles[statname][w] != origplayerRoles[statname][w]) {
           ui.createSingleLineBox(PAL_XY(83, 60), 8, false);
@@ -860,8 +941,14 @@ battle.won = function*() {
   for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
     w = Global.party[i].playerRole;
 
-    GameData.playerRoles.HP[w] += ~~((GameData.playerRoles.maxHP[w] - GameData.playerRoles.HP[w]) / 2);
-    GameData.playerRoles.MP[w] += ~~((GameData.playerRoles.maxMP[w] - GameData.playerRoles.MP[w]) / 2);
+    var hpDelta = ~~((GameData.playerRoles.maxHP[w] - GameData.playerRoles.HP[w]) / 2);
+    var mpDelta = ~~((GameData.playerRoles.maxMP[w] - GameData.playerRoles.MP[w]) / 2);
+    if (hpDelta || mpDelta) {
+      mutatePlayerRoles(function(playerRoles) {
+        playerRoles.HP[w] += hpDelta;
+        playerRoles.MP[w] += mpDelta;
+      });
+    }
   }
 };
 
@@ -903,7 +990,7 @@ battle.enemyEscape = function*() {
   }
 
   yield sleep(500)
-  Global.battle.battleResult = BattleResult.Terminated;
+  battleService.setBattleResult(BattleResult.Terminated);
 };
 
 /**
@@ -919,7 +1006,11 @@ battle.playerEscape = function*() {
     playerRole = Global.party[i].playerRole;
 
     if (GameData.playerRoles.HP[playerRole] > 0) {
-      Global.battle.player[i].currentFrame = 0;
+      battleService.setPlayer(i, function(playerState) {
+        if (!playerState) return playerState;
+        playerState.currentFrame = 0;
+        return playerState;
+      });
     }
   }
 
@@ -956,12 +1047,18 @@ battle.playerEscape = function*() {
 
   // Remove all players from the screen
   for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-    Global.battle.player[i].pos = PAL_XY(9999, 9999);
+    battleService.setPlayer(i, function(playerState) {
+      if (!playerState) {
+        return playerState;
+      }
+      playerState.pos = PAL_XY(9999, 9999);
+      return playerState;
+    });
   }
 
   yield battle.delay(1, 0, false);
 
-  Global.battle.battleResult = BattleResult.Fleed;
+  battleService.setBattleResult(BattleResult.Fleed);
 };
 
 /**
@@ -976,8 +1073,8 @@ battle.start = function*(enemyTeam, isBoss) {
   var prevWaveLevel = Global.screenWave;
   var prevWaveProgression = Global.waveProgression;
 
-  Global.waveProgression = 0;
-  Global.screenWave = GameData.battleField[Global.numBattleField].screenWave;
+  stateService.setGlobal('waveProgression', 0);
+  stateService.setGlobal('screenWave', GameData.battleField[Global.numBattleField].screenWave);
 
   var party = Global.party;
 
@@ -985,109 +1082,165 @@ battle.start = function*(enemyTeam, isBoss) {
   // EXP count records
   for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
     var w = party[i].playerRole;
+    var roleIndex = w;
 
     if (GameData.playerRoles.HP[w] == 0) {
-      GameData.playerRoles.HP[w] = 1;
-      Global.playerStatus[w][PlayerStatus.Puppet] = 0;
+      stateService.mutateGameData('playerRoles', function(playerRoles) {
+        if (playerRoles && playerRoles.HP) {
+          playerRoles.HP[roleIndex] = 1;
+        }
+        return playerRoles;
+      });
+      stateService.mutateGlobal('playerStatus', function(status) {
+        if (status && status[roleIndex]) {
+          status[roleIndex][PlayerStatus.Puppet] = 0;
+        }
+        return status;
+      });
     }
 
-    Global.exp.healthExp[w].count = 0;
-    Global.exp.magicExp[w].count = 0;
-    Global.exp.attackExp[w].count = 0;
-    Global.exp.magicPowerExp[w].count = 0;
-    Global.exp.defenseExp[w].count = 0;
-    Global.exp.dexterityExp[w].count = 0;
-    Global.exp.fleeExp[w].count = 0;
+    stateService.mutateGlobal('exp', function(exp) {
+      if (!exp) return exp;
+      exp.healthExp[roleIndex].count = 0;
+      exp.magicExp[roleIndex].count = 0;
+      exp.attackExp[roleIndex].count = 0;
+      exp.magicPowerExp[roleIndex].count = 0;
+      exp.defenseExp[roleIndex].count = 0;
+      exp.dexterityExp[roleIndex].count = 0;
+      exp.fleeExp[roleIndex].count = 0;
+      return exp;
+    });
   }
 
   // Clear all item-using records
-  for (var i = 0; i < Const.MAX_INVENTORY; i++) {
-    Global.inventory[i].amountInUse = 0;
-  }
+  stateService.mutateGlobal('inventory', function(inventory) {
+    if (!Array.isArray(inventory)) {
+      return inventory;
+    }
+    for (var idx = 0; idx < Const.MAX_INVENTORY && idx < inventory.length; idx++) {
+      var slot = inventory[idx];
+      if (slot) {
+        slot.amountInUse = 0;
+      }
+    }
+    return inventory;
+  });
 
-  // Store all enemies
-  for (var i = 0; i < Const.MAX_ENEMIES_IN_TEAM; i++) {
-    //memset(&(Global.battle.enemy[i]), 0, sizeof(BATTLEENEMY));
-    var enemy = Global.battle.enemy[i];
-    enemy.reset();
-    var w = GameData.enemyTeam[enemyTeam].enemy[i];
-
-    if (w == 0xFFFF) {
-      break;
+  battleService.withState(function(state) {
+    if (!state) {
+      return state;
     }
 
-    //if (w != 0) {
-    // WTF？怎么会这样，这里把条件去掉以后会莫名其妙的少了好多BUG
-      enemy.e = GameData.enemy[GameData.object[w].enemy.enemyID].copy();
-      enemy.objectID = w;
-      enemy.state = FighterState.Wait;
-      enemy.scriptOnTurnStart = GameData.object[w].enemy.scriptOnTurnStart;
-      enemy.scriptOnBattleEnd = GameData.object[w].enemy.scriptOnBattleEnd;
-      enemy.scriptOnReady = GameData.object[w].enemy.scriptOnReady;
-      enemy.colorShift = 0;
-    //}
-  }
+    var computedMaxEnemyIndex = -1;
+    var enemyTeamConfig = GameData.enemyTeam[enemyTeam].enemy;
 
-  Global.battle.maxEnemyIndex = i - 1;
+    for (var enemyIndex = 0; enemyIndex < Const.MAX_ENEMIES_IN_TEAM; enemyIndex++) {
+      var enemyState = state.enemy && state.enemy[enemyIndex];
+      if (!enemyState) {
+        break;
+      }
 
-  // Store all players
-  for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-    Global.battle.player[i].timeMeter = 15.0;
-    Global.battle.player[i].hidingTime = 0;
-    Global.battle.player[i].state = FighterState.Wait;
-    Global.battle.player[i].action.target = -1;
-    Global.battle.player[i].defending = false;
-    Global.battle.player[i].currentFrame = 0;
-    Global.battle.player[i].colorShift = false;
-  }
+      enemyState.reset();
+      var enemyObjectId = enemyTeamConfig[enemyIndex];
+
+      if (enemyObjectId === 0xFFFF) {
+        break;
+      }
+
+      var enemyDefinition = GameData.object[enemyObjectId].enemy;
+      enemyState.e = GameData.enemy[enemyDefinition.enemyID].copy();
+      enemyState.objectID = enemyObjectId;
+      enemyState.state = FighterState.Wait;
+      enemyState.scriptOnTurnStart = enemyDefinition.scriptOnTurnStart;
+      enemyState.scriptOnBattleEnd = enemyDefinition.scriptOnBattleEnd;
+      enemyState.scriptOnReady = enemyDefinition.scriptOnReady;
+      enemyState.colorShift = 0;
+
+      computedMaxEnemyIndex = enemyIndex;
+    }
+
+    state.maxEnemyIndex = computedMaxEnemyIndex;
+
+    for (var playerIndex = 0; playerIndex <= Global.maxPartyMemberIndex; playerIndex++) {
+      var playerState = state.player && state.player[playerIndex];
+      if (!playerState) {
+        continue;
+      }
+      playerState.timeMeter = 15.0;
+      playerState.hidingTime = 0;
+      playerState.state = FighterState.Wait;
+      if (playerState.action) {
+        playerState.action.target = -1;
+      }
+      playerState.defending = false;
+      playerState.currentFrame = 0;
+      playerState.colorShift = false;
+    }
+
+    return state;
+  });
 
   // Load sprites and background
   battle.loadBattleSprites();
   battle.loadBattleBackground();
 
   // Create the surface for scene buffer
-  Global.battle.sceneBuf = surface.getRect(0, 0, 320, 200);
+  var sceneSurface = surface.getRect(0, 0, 320, 200);
+  battleService.setSceneBuffer(sceneSurface);
 
   yield script.updateEquipments();
 
-  Global.battle.expGained = 0;
-  Global.battle.cashGained = 0;
+  battleService.withState(function(state) {
+    if (!state) {
+      return state;
+    }
 
-  Global.battle.isBoss = isBoss;
-  Global.battle.enemyCleared = false;
-  Global.battle.enemyMoving = false;
-  Global.battle.hidingTime = 0;
-  Global.battle.movingPlayerIndex = 0;
+    state.expGained = 0;
+    state.cashGained = 0;
+    state.isBoss = isBoss;
+    state.enemyCleared = false;
+    state.enemyMoving = false;
+    state.hidingTime = 0;
+    state.movingPlayerIndex = 0;
 
-  Global.battle.UI.msg = [];
-  Global.battle.UI.nextMsg = [];
-  Global.battle.UI.msgShowTime = 0;
-  Global.battle.UI.state = BattleUIState.Wait;
-  Global.battle.UI.autoAttack = Global.autoBattle;
-  Global.battle.UI.selectedIndex = 0;
-  Global.battle.UI.prevEnemyTarget = 0;
+    if (state.UI) {
+      state.UI.msg = [];
+      state.UI.nextMsg = [];
+      state.UI.msgShowTime = 0;
+      state.UI.state = BattleUIState.Wait;
+      state.UI.autoAttack = Global.autoBattle;
+      state.UI.selectedIndex = 0;
+      state.UI.prevEnemyTarget = 0;
+      if (Array.isArray(state.UI.showNum)) {
+        state.UI.showNum.forEach(function(sn) {
+          if (sn && typeof sn.reset === 'function') {
+            sn.reset();
+          }
+        });
+      }
+    }
 
-  //utils.fillArray(Global.battle.UI.showNum, uibattle.ShowNum);
-  //memset(Global.battle.UI.rgShowNum, 0, sizeof(Global.battle.UI.rgShowNum));
-  Global.battle.UI.showNum.forEach(function(sn, i) {
-    sn.reset();
+    state.summonSprite = null;
+    state.backgroundColorShift = 0;
+    state.battleResult = BattleResult.PreBattle;
+    state.phase = BattlePhase.SelectAction;
+    state.repeat = false;
+    state.force = false;
+    state.flee = false;
+
+    return state;
   });
 
-  Global.battle.summonSprite = null;
-  Global.battle.backgroundColorShift = 0;
+  if (typeof fight.updateTimeChargingUnit === 'function') {
+    fight.updateTimeChargingUnit();
+  }
 
   stateService.setGlobal('inBattle', true);
-  Global.battle.battleResult = BattleResult.PreBattle;
 
   battle.updateFighters();
 
   // Load the battle effect sprite.
   //Global.battle.effectSprite = Files.DATA.readChunk(10);
-
-  Global.battle.phase = BattlePhase.SelectAction;
-  Global.battle.repeat = false;
-  Global.battle.force = false;
-  Global.battle.flee = false;
 
   //#ifdef PAL_ALLOW_KEYREPEAT
   //SDL_EnableKeyRepeat(120, 75);
@@ -1113,9 +1266,18 @@ battle.start = function*(enemyTeam, isBoss) {
   }
 
   // Clear all item-using records
-  for (var w = 0; w < Const.MAX_INVENTORY; w++) {
-    Global.inventory[w].amountInUse = 0;
-  }
+  stateService.mutateGlobal('inventory', function(inventory) {
+    if (!Array.isArray(inventory)) {
+      return inventory;
+    }
+    for (var idx = 0; idx < Const.MAX_INVENTORY && idx < inventory.length; idx++) {
+      var slot = inventory[idx];
+      if (slot) {
+        slot.amountInUse = 0;
+      }
+    }
+    return inventory;
+  });
 
   // Clear all player status, poisons and temporary effects
   script.clearAllPlayerStatus();
@@ -1130,21 +1292,18 @@ battle.start = function*(enemyTeam, isBoss) {
   //free(Global.battle.lpEffectSprite);
 
   // Free the surfaces for the background picture and scene buffer
-  Global.battle.background = null;
-  Global.battle.sceneBuf = null;
+  battleService.setBackground(null);
+  battleService.setSceneBuffer(null);
   //SDL_FreeSurface(Global.battle.lpBackground);
   //SDL_FreeSurface(Global.battle.lpSceneBuf);
-
-  Global.battle.background = null;
-  Global.battle.sceneBuf = null;
 
   stateService.setGlobal('inBattle', false);
 
   music.play(Global.numMusic, true, 1);
 
   // Restore the screen waving effects
-  Global.waveProgression = prevWaveProgression;
-  Global.screenWave = prevWaveLevel;
+  stateService.setGlobal('waveProgression', prevWaveProgression);
+  stateService.setGlobal('screenWave', prevWaveLevel);
 
   return result;
 }
