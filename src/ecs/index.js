@@ -23,7 +23,10 @@ import {
   createMapMetaComponent,
   createMapTileComponent,
   createNpcStateComponent,
-  createScriptRegisterComponent
+  createScriptRegisterComponent,
+  createMoveIntentComponent,
+  createMoveRequestQueueComponent,
+  createCollisionStateComponent
 } from './components/world.js';
 
 export const ECSComponents = {
@@ -59,7 +62,10 @@ export {
   createMapMetaComponent,
   createMapTileComponent,
   createNpcStateComponent,
-  createScriptRegisterComponent
+  createScriptRegisterComponent,
+  createMoveIntentComponent,
+  createMoveRequestQueueComponent,
+  createCollisionStateComponent
 };
 
 export default {
@@ -86,5 +92,8 @@ export default {
   createMapMetaComponent,
   createMapTileComponent,
   createNpcStateComponent,
-  createScriptRegisterComponent
+  createScriptRegisterComponent,
+  createMoveIntentComponent,
+  createMoveRequestQueueComponent,
+  createCollisionStateComponent
 };

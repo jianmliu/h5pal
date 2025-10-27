@@ -1,8 +1,10 @@
 import EventBus from './event-bus.js';
+import collisionSystem from '../ecs/systems/collision-system.js';
+import npcMoveSystem from '../ecs/systems/npc-move-system.js';
 import renderMapSystem from '../ecs/systems/render-map-system.js';
 import renderEventObjectSystem from '../ecs/systems/render-event-object-system.js';
 
-const DEFAULT_PIPELINE = ['map', 'eventObjects'];
+const DEFAULT_PIPELINE = ['collision', 'movement', 'map', 'eventObjects'];
 
 class WorldSystemManager extends EventBus {
   constructor(worldService, baseContext = {}) {
@@ -67,6 +69,8 @@ class WorldSystemManager extends EventBus {
 
 export default function createWorldSystemManager(options = {}) {
   const manager = new WorldSystemManager(options.worldService || null, options.context);
+  manager.register('collision', collisionSystem);
+  manager.register('movement', npcMoveSystem);
   manager.register('map', renderMapSystem);
   manager.register('eventObjects', renderEventObjectSystem);
   return manager;

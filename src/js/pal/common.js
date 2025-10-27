@@ -11,10 +11,10 @@ var slice = Array.prototype.slice;
  * @type {Object}
  */
 global.DEBUG = {
-  Timing: false,
-  ShowSpriteRect: false,
-  ShowSpritePos:  false,
-  ShowSpriteSize: false,
+  Timing: true,
+  ShowSpriteRect: true,
+  ShowSpritePos:  true,
+  ShowSpriteSize: true,
 };
 
 var log = global.log = {
@@ -43,6 +43,8 @@ for (var name in LogLevel) {
   name = name.toLowerCase();
   log[name] = log.write.bind(log, level);
 }
+
+log.level = LogLevel.Debug;
 
 /**
  * 游戏速度倍率

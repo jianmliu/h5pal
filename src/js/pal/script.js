@@ -1,6 +1,7 @@
 import scene from './scene';
 import Palette from './palette';
 import script_extras from './script-extras';
+import scriptHelper from './script-helper';
 import res from './res';
 import rng from './rng';
 import music from './music';
@@ -314,8 +315,16 @@ script.debug = function() {
   }
 }
 
-// import script_helper from './script-helper';
-var traceScript = function(){}; // script_helper.debug;
+var traceScript = function(){};
+if (scriptHelper && typeof scriptHelper.debug === 'function') {
+  traceScript = scriptHelper.debug.bind(scriptHelper);
+  if (typeof window !== 'undefined') {
+    window.scriptHelper = scriptHelper;
+  }
+  if (typeof global !== 'undefined') {
+    global.scriptHelper = scriptHelper;
+  }
+}
 
 script.init = function*(surf) {
   log.debug('[SCRIPT] init');
@@ -337,19 +346,29 @@ script.NPCWalkOneStep = function(eventObjectID, speed) {
   }
 
   var p = eventObjects[eventObjectID - 1];
+  var moveSpeed = (typeof speed === 'number' && isFinite(speed) && speed !== 0)
+    ? Math.abs(speed)
+    : 1;
+  var dx = ((p.direction === Direction.West || p.direction === Direction.South) ? -2 : 2) * moveSpeed;
+  var dy = ((p.direction === Direction.West || p.direction === Direction.North) ? -1 : 1) * moveSpeed;
 
-  // Move the event object by the specified direction
-  p.x += ((p.direction == Direction.West || p.direction == Direction.South) ? -2 : 2) * speed;
-  p.y += ((p.direction == Direction.West || p.direction == Direction.North) ? -1 : 1) * speed;
+  worldService.enqueueMoveRequest({
+    eventObjectId: eventObjectID,
+    eventIndex: eventObjectID - 1,
+    dx: dx,
+    dy: dy,
+    direction: p.direction,
+    speed: moveSpeed,
+    spriteFrames: p.spriteFrames,
+    spriteFramesAuto: p.spriteFramesAuto,
+    origin: 'script'
+  });
 
-  // Update the gesture
-  if (p.spriteFrames > 0) {
-    p.currentFrameNum++;
-    p.currentFrameNum %= (p.spriteFrames == 3 ? 4 : p.spriteFrames);
-  } else if (p.spriteFramesAuto > 0) {
-    p.currentFrameNum++;
-    p.currentFrameNum %= p.spriteFramesAuto;
-  }
+  worldService.runSystems(['collision', 'movement'], {
+    mapCache: scene.mapCache,
+    Files: typeof Files !== 'undefined' ? Files : null,
+    viewportComponent: worldService.getViewportComponent()
+  });
 };
 
 /**
@@ -369,17 +388,20 @@ script.NPCWalkTo = function(eventObjectID, x, y, h, speed) {
   var evtObj = GameData.eventObject[eventObjectID - 1],
       offsetX = (x * 32 + h * 16) - evtObj.x,
       offsetY = (y * 16 + h * 8) - evtObj.y;
+  var moveSpeed = (typeof speed === 'number' && isFinite(speed) && speed !== 0)
+    ? Math.abs(speed)
+    : 1;
   if (offsetY < 0) {
     evtObj.direction = (offsetX < 0 ? Direction.West : Direction.North);
   } else {
     evtObj.direction = (offsetX < 0 ? Direction.South : Direction.East);
   }
 
-  if (abs(offsetX) < speed * 2 || abs(offsetY) < speed * 2) {
+  if (abs(offsetX) < moveSpeed * 2 || abs(offsetY) < moveSpeed * 2) {
     evtObj.x = x * 32 + h * 16;
     evtObj.y = y * 16 + h * 8;
   } else {
-    script.NPCWalkOneStep(eventObjectID, speed);
+    script.NPCWalkOneStep(eventObjectID, moveSpeed);
   }
 
   if (evtObj.x === x * 32 + h * 16 && evtObj.y === y * 16 + h * 8) {
@@ -483,6 +505,7 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
   var viewport = getViewportValue();
   var partyOffset = getPartyOffsetValue();
   while (offsetX !== 0 || offsetY !== 0) {
+    var previousDirection = stateService.getGlobal('partyDirection');
     var nextDirection = (offsetY < 0)
       ? (offsetX < 0 ? Direction.West : Direction.North)
       : (offsetX < 0 ? Direction.South : Direction.East);
@@ -2519,6 +2542,22 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
  * @yield {Number} The entry point of the script.
  */
 script.runTriggerScript = function*(scriptEntry, eventObjectID) {
+  if (typeof scriptEntry !== 'number' || Number.isNaN(scriptEntry)) {
+    log.warning(
+      '[SCRIPT] runTriggerScript received invalid entry ' + scriptEntry +
+      ' (event ' + (eventObjectID || 0) + ')'
+    );
+    script.scriptSuccess = false;
+    return 0;
+  }
+  if (scriptEntry <= 0 || !GameData.scriptEntry || !GameData.scriptEntry[scriptEntry]) {
+    log.trace(
+      '[SCRIPT] runTriggerScript skipped missing entry ' + scriptEntry +
+      ' (event ' + (eventObjectID || 0) + ')'
+    );
+    script.scriptSuccess = false;
+    return 0;
+  }
   var lastEventObjectID = 0,
       nextScriptEntry = scriptEntry,
       ended = false,

@@ -13,7 +13,8 @@ var scene = {
   playerSprites: [],
   mapCache: {},
   thisStepFrame: 0,
-  applyWaveIndex: 0
+  applyWaveIndex: 0,
+  currentSceneId: null
 };
 
 var abs = Math.abs;
@@ -71,6 +72,13 @@ scene.makeScene = function*() {
     activeScene = GameData.scene[sceneId - 1];
   }
   if (!activeScene) return;
+  if (scene.currentSceneId !== sceneId) {
+    scene.currentSceneId = sceneId;
+    if (activeScene) {
+      activeScene.eventObjectSprite = null;
+      activeScene._renderedMapId = null;
+    }
+  }
   yield activeScene.render();
 };
 
@@ -268,11 +276,20 @@ scene.updatePartyGestures = function(walking) {
  * @return {Boolean}                   TRUE if the location is obstacle, FALSE if not.
  */
 scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
-  //log.trace('[Scene] checkObstacle(' + [pos, checkEventObjects, selfObject].join(',') + ')');
+  var options = {
+    checkEventObjects: checkEventObjects !== false
+  };
+  if (typeof selfObject === 'number') {
+    options.selfEventIndex = selfObject - 1;
+  }
+  var blocked = worldService.isPositionBlocked({ x: PAL_X(pos), y: PAL_Y(pos) }, options);
+  if (blocked === true) {
+    return blocked;
+  }
+  // Fallback to legacy behaviour if collision state is not available.
   if (PAL_X(pos) < 0 || PAL_X(pos) >= 2048 || PAL_Y(pos) < 0 || PAL_Y(pos) >= 2048) {
     return true;
   }
-  // Check if the map tile at the specified position is blocking
   var x = ~~(PAL_X(pos) / 32);
   var y = ~~(PAL_Y(pos) / 16);
   var h = 0;
@@ -291,18 +308,6 @@ scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
       y++;
     }
   }
-  //if (xr + yr * 2 >= 16) {
-  //  if (xr + yr * 2 >= 48) {
-  //    x++;
-  //    y++;
-  //  } else if (32 - xr + yr * 2 > 16) {
-  //    x++;
-  //  } else if (32 - xr + yr * 2 < 48) {
-  //    h = 1;
-  //  } else {
-  //    y++;
-  //  }
-  //}
 
   var scenes = GameData.scene;
   var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
@@ -316,23 +321,19 @@ scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
     return true;
   }
 
-  var eventObjects = GameData.eventObject;
   if (checkEventObjects) {
+    var eventObjects = GameData.eventObject;
     var nextScene = scenes ? scenes[numScene] : null;
     var startIndex = sc && typeof sc.eventObjectIndex === 'number' ? sc.eventObjectIndex : 0;
     var endIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
       ? nextScene.eventObjectIndex
       : eventObjects.length;
-    // Loop through all event objects in the current scene
     for (var i = startIndex; i < endIndex; i++) {
-      if (i == selfObject - 1) {
-        // Skip myself
+      if (i === selfObject - 1) {
         continue;
       }
       var p = eventObjects[i];
-      // Is this object a blocking one?
       if (p.state >= ObjectState.Blocker) {
-        // Check for collision
         if (abs(p.x - PAL_X(pos)) + abs(p.y - PAL_Y(pos)) * 2 < 16) {
           return true;
         }
@@ -393,7 +394,7 @@ scene.applyWave = function(buffer) {
 };
 
 utils.extend(Scene.prototype, {
-  loadEventObjectSpites: function() {
+  loadEventObjectSpites: function(version) {
     var scenes = GameData.scene;
     var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
     var eventObjects = GameData.eventObject;
@@ -413,20 +414,27 @@ utils.extend(Scene.prototype, {
     var MGO = Files.MGO;
     var array = this.eventObjectSprite = new Array(num);
 
-    for (var i=0; i<num; ++i,++index) {
+    for (var i = 0; i < num; ++i, ++index) {
       var n = eventObjects[index].spriteNum;
-      if (n == 0){
+      if (n == 0) {
         array[i] = null;
         continue;
       }
 
       var sprite = array[i] = new Sprite(MGO.decompressChunk(n));
+      sprite.__paletteSpriteNum = n;
       eventObjects[index].spriteFramesAuto = sprite.frameCount;
     }
+    this._eventSpriteVersion = version;
     worldService.setPartyOffset(PAL_XY(160, 112));
   },
   getEventObjectSprite: function(eventObjectID) {
-    if (!this.eventObjectSprite) this.loadEventObjectSpites();
+    var version = typeof worldService.getEventObjectsVersion === 'function'
+      ? worldService.getEventObjectsVersion()
+      : null;
+    if (!this.eventObjectSprite || (version != null && this._eventSpriteVersion !== version)) {
+      this.loadEventObjectSpites(version);
+    }
 
     var scenes = GameData.scene;
     var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
@@ -445,7 +453,32 @@ utils.extend(Scene.prototype, {
       return null;
     }
 
-    return this.eventObjectSprite[eventObjectID];
+    var globalIndex = currentScene.eventObjectIndex + eventObjectID;
+    var state = eventObjects && globalIndex >= 0 && globalIndex < eventObjects.length
+      ? eventObjects[globalIndex]
+      : null;
+    var spriteNum = state && typeof state.spriteNum === 'number' ? state.spriteNum : 0;
+    var cached = this.eventObjectSprite[eventObjectID];
+
+    if (spriteNum <= 0) {
+      if (cached) {
+        this.eventObjectSprite[eventObjectID] = null;
+      }
+      return null;
+    }
+
+    if (!cached || cached.__paletteSpriteNum !== spriteNum) {
+      var chunk = Files.MGO.decompressChunk(spriteNum);
+      var sprite = new Sprite(chunk);
+      sprite.__paletteSpriteNum = spriteNum;
+      this.eventObjectSprite[eventObjectID] = sprite;
+      if (state) {
+        state.spriteFramesAuto = sprite.frameCount;
+      }
+      return sprite;
+    }
+
+    return cached;
     //return gpResources->lppEventObjectSprites[wEventObjectID];
   },
   addToDrawList: function(frame, x, y, layer) {
@@ -540,18 +573,29 @@ utils.extend(Scene.prototype, {
     var mapMeta = typeof worldService.getMapMetaComponent === 'function'
       ? worldService.getMapMetaComponent()
       : null;
+    var resolvedMapId = this.mapNum;
     if (mapMeta && typeof mapMeta.mapId === 'number') {
-      this.mapNum = mapMeta.mapId;
+      resolvedMapId = mapMeta.mapId;
+      if (this._renderedMapId !== mapMeta.mapId) {
+        this.eventObjectSprite = null;
+        this._renderedMapId = mapMeta.mapId;
+      }
+      this.mapNum = resolvedMapId;
     }
     worldService.runSystems('map', {
       surface: surface,
       mapCache: scene.mapCache,
       Files: typeof Files !== 'undefined' ? Files : null,
       viewportComponent: worldService.getViewportComponent(),
-      mapId: this.mapNum
+      mapId: resolvedMapId
     });
   },
   renderSprites: function() {
+    worldService.runSystems(['collision', 'movement'], {
+      mapCache: scene.mapCache,
+      Files: typeof Files !== 'undefined' ? Files : null,
+      viewportComponent: worldService.getViewportComponent()
+    });
     var viewport = worldService.getViewport();
     var viewportX = PAL_X(viewport);
     var viewportY = PAL_Y(viewport);

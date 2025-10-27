@@ -100,11 +100,16 @@ main.start = function() {
     }
 
     global.services = services;
+    services.world.init();
 
     Palette.init(Files.PAT);
 
-    //var surf = new Surface(document.getElementById('cvs'), 320, 200, document.getElementById('debug'));
-    var surf = new Surface(document.getElementById('cvs'), 320, 200, null);
+    var surf = new Surface(
+      document.getElementById('cvs'),
+      320,
+      200,
+      document.getElementById('debug')
+    );
 
     yield ui.init(surf, services); // 初始化UI，内含初始化文字
 

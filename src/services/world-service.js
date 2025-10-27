@@ -11,7 +11,10 @@ import {
   createMapMetaComponent,
   createMapTileComponent,
   createNpcStateComponent,
-  createScriptRegisterComponent
+  createScriptRegisterComponent,
+  createMoveIntentComponent,
+  createMoveRequestQueueComponent,
+  createCollisionStateComponent
 } from '../ecs/index.js';
 import createWorldSystemManager from './world-systems.js';
 
@@ -47,12 +50,16 @@ class WorldService extends EventBus {
       scene: null,
       mapMeta: null,
       mapTile: null,
-      scriptRegister: null
+      scriptRegister: null,
+      moveQueue: null,
+      collision: null
     };
     this._initialised = false;
     this._handleGlobalChanged = this._handleGlobalChanged.bind(this);
     this._handleGameDataChanged = this._handleGameDataChanged.bind(this);
     this.systemManager = createWorldSystemManager({ worldService: this });
+    this._collisionState = null;
+    this._eventObjectsVersion = 0;
   }
 
   init() {
@@ -81,12 +88,38 @@ class WorldService extends EventBus {
     this.entityMaps.mapMeta = null;
     this.entityMaps.mapTile = null;
     this.entityMaps.scriptRegister = null;
+    this.entityMaps.moveQueue = null;
+    this.entityMaps.collision = null;
+    this._collisionState = null;
+    this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
   }
 
   _ensureInitialised() {
     if (!this._initialised) {
       this.init();
     }
+  }
+
+  _ensureMoveQueue() {
+    this._ensureInitialised();
+    let entityId = this.entityMaps.moveQueue;
+    if (!entityId) {
+      entityId = this.registry.createEntity();
+      this.registry.addComponent(entityId, WorldComponents.MoveRequestQueue, createMoveRequestQueueComponent());
+      this.entityMaps.moveQueue = entityId;
+    }
+    return this.registry.getComponent(entityId, WorldComponents.MoveRequestQueue);
+  }
+
+  _ensureCollisionStateEntity() {
+    this._ensureInitialised();
+    let entityId = this.entityMaps.collision;
+    if (!entityId) {
+      entityId = this.registry.createEntity();
+      this.registry.addComponent(entityId, WorldComponents.CollisionState, createCollisionStateComponent());
+      this.entityMaps.collision = entityId;
+    }
+    return this.registry.getComponent(entityId, WorldComponents.CollisionState);
   }
 
   getRegistry() {
@@ -102,6 +135,7 @@ class WorldService extends EventBus {
     this.syncMapTiles();
     this.syncEventObjects();
     this.syncScriptRegisters();
+    this._ensureMoveQueue();
   }
 
   syncViewport() {
@@ -388,6 +422,7 @@ class WorldService extends EventBus {
 
     this.fire('eventObjectsSynced', { count: eventObjects.length });
     this.fire('npcStatesSynced', { count: eventObjects.length, sceneId });
+    this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
   }
 
   syncScriptRegisters() {
@@ -490,6 +525,10 @@ class WorldService extends EventBus {
   getEventObjectIds() {
     this._ensureInitialised();
     return Array.from(this.entityMaps.eventObject.keys());
+  }
+
+  getEventObjectsVersion() {
+    return typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0;
   }
 
   getViewport() {
@@ -617,6 +656,81 @@ class WorldService extends EventBus {
     this.systemManager.runPipeline(phases, runtime);
   }
 
+  enqueueMoveRequest(request) {
+    this._ensureInitialised();
+    const eventIndex = typeof request === 'object' && request != null
+      ? (typeof request.eventIndex === 'number'
+        ? request.eventIndex
+        : (typeof request.eventObjectId === 'number' ? request.eventObjectId - 1 : null))
+      : null;
+    if (eventIndex != null) {
+      const component = this.getEventObjectComponent(eventIndex);
+      const currentRef = this.getEventObject(eventIndex);
+      if (component && currentRef && component.stateRef !== currentRef) {
+        this.syncEventObjects();
+      }
+    }
+    const queue = this._ensureMoveQueue();
+    queue.requests.push(Object.assign({}, request));
+    return queue.requests.length;
+  }
+
+  drainMoveRequests() {
+    const queue = this._ensureMoveQueue();
+    const requests = queue.requests.slice();
+    queue.requests.length = 0;
+    return requests;
+  }
+
+  setMoveIntent(eventIndex, intent) {
+    const entityId = this.entityMaps.eventObject.get(eventIndex);
+    if (!entityId) {
+      return null;
+    }
+    const component = this.registry.getComponent(entityId, WorldComponents.MoveIntent);
+    if (component) {
+      Object.assign(component, intent);
+      return component;
+    }
+    return this.registry.addComponent(entityId, WorldComponents.MoveIntent, createMoveIntentComponent(Object.assign({ id: eventIndex }, intent)));
+  }
+
+  clearMoveIntent(eventIndex) {
+    const entityId = this.entityMaps.eventObject.get(eventIndex);
+    if (!entityId) {
+      return;
+    }
+    this.registry.removeComponent(entityId, WorldComponents.MoveIntent);
+  }
+
+  getMoveIntent(eventIndex) {
+    const entityId = this.entityMaps.eventObject.get(eventIndex);
+    if (!entityId) {
+      return null;
+    }
+    return this.registry.getComponent(entityId, WorldComponents.MoveIntent);
+  }
+
+  setCollisionState(payload) {
+    const component = this._ensureCollisionStateEntity();
+    component.mapId = typeof payload.mapId === 'number' ? payload.mapId : component.mapId;
+    component.state = payload.state || null;
+    component.version = (typeof component.version === 'number' ? component.version : 0) + 1;
+    this._collisionState = component.state;
+  }
+
+  getCollisionState() {
+    return this._collisionState;
+  }
+
+  isPositionBlocked(position, options = {}) {
+    const state = this._collisionState;
+    if (!state || typeof state.isBlocked !== 'function') {
+      return null;
+    }
+    return state.isBlocked(position, options);
+  }
+
   mutatePartyMember(index, mutator) {
     this._ensureInitialised();
     if (typeof mutator !== 'function') {
@@ -660,10 +774,13 @@ class WorldService extends EventBus {
   }
 
   _handleGlobalChanged(event) {
-    if (!event || !event.key) {
+    const payload = event && typeof event === 'object'
+      ? (event.data && typeof event.data === 'object' ? event.data : event)
+      : null;
+    if (!payload || !payload.key) {
       return;
     }
-    switch (event.key) {
+    switch (payload.key) {
       case 'viewport':
       case 'partyOffset':
         this.syncViewport();
@@ -686,10 +803,13 @@ class WorldService extends EventBus {
   }
 
   _handleGameDataChanged(event) {
-    if (!event || !event.key) {
+    const payload = event && typeof event === 'object'
+      ? (event.data && typeof event.data === 'object' ? event.data : event)
+      : null;
+    if (!payload || !payload.key) {
       return;
     }
-    switch (event.key) {
+    switch (payload.key) {
       case 'eventObject':
         this.syncEventObjects();
         break;

@@ -7,7 +7,10 @@ export const COMPONENTS = Object.freeze({
   MapMeta: 'worldMapMeta',
   MapTile: 'worldMapTile',
   NpcState: 'worldNpcState',
-  ScriptRegister: 'worldScriptRegister'
+  ScriptRegister: 'worldScriptRegister',
+  MoveIntent: 'worldMoveIntent',
+  MoveRequestQueue: 'worldMoveRequestQueue',
+  CollisionState: 'worldCollisionState'
 });
 
 export function createViewportComponent(options = {}) {
@@ -91,5 +94,31 @@ export function createScriptRegisterComponent(options = {}) {
     count: typeof options.count === 'number' ? options.count : 0,
     entries: options.entries || null,
     lastSynced: options.lastSynced || Date.now()
+  };
+}
+
+export function createMoveIntentComponent(options = {}) {
+  return {
+    id: typeof options.id === 'number' ? options.id : -1,
+    dx: typeof options.dx === 'number' ? options.dx : 0,
+    dy: typeof options.dy === 'number' ? options.dy : 0,
+    direction: typeof options.direction === 'number' ? options.direction : null,
+    speed: typeof options.speed === 'number' ? options.speed : 0,
+    frames: typeof options.frames === 'number' ? options.frames : 1,
+    origin: options.origin || 'script'
+  };
+}
+
+export function createMoveRequestQueueComponent(options = {}) {
+  return {
+    requests: Array.isArray(options.requests) ? options.requests.slice() : []
+  };
+}
+
+export function createCollisionStateComponent(options = {}) {
+  return {
+    mapId: typeof options.mapId === 'number' ? options.mapId : null,
+    state: options.state || null,
+    version: typeof options.version === 'number' ? options.version : 0
   };
 }
