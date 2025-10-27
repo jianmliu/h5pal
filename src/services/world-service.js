@@ -13,6 +13,7 @@ import {
   createNpcStateComponent,
   createScriptRegisterComponent
 } from '../ecs/index.js';
+import createWorldSystemManager from './world-systems.js';
 
 function getGlobalStore() {
   if (typeof globalThis !== 'undefined' && globalThis.Global) {
@@ -51,6 +52,7 @@ class WorldService extends EventBus {
     this._initialised = false;
     this._handleGlobalChanged = this._handleGlobalChanged.bind(this);
     this._handleGameDataChanged = this._handleGameDataChanged.bind(this);
+    this.systemManager = createWorldSystemManager({ worldService: this });
   }
 
   init() {
@@ -451,6 +453,22 @@ class WorldService extends EventBus {
     return this.registry.getComponent(this.entityMaps.scene, WorldComponents.Scene);
   }
 
+  getMapMetaComponent() {
+    this._ensureInitialised();
+    if (!this.entityMaps.mapMeta) {
+      return null;
+    }
+    return this.registry.getComponent(this.entityMaps.mapMeta, WorldComponents.MapMeta);
+  }
+
+  getMapTileComponent() {
+    this._ensureInitialised();
+    if (!this.entityMaps.mapTile) {
+      return null;
+    }
+    return this.registry.getComponent(this.entityMaps.mapTile, WorldComponents.MapTile);
+  }
+
   getEventObjectComponent(id) {
     this._ensureInitialised();
     const entityId = this.entityMaps.eventObject.get(id);
@@ -458,6 +476,20 @@ class WorldService extends EventBus {
       return null;
     }
     return this.registry.getComponent(entityId, WorldComponents.EventObject);
+  }
+
+  getNpcStateByEventId(id) {
+    this._ensureInitialised();
+    const entityId = this.entityMaps.eventObject.get(id);
+    if (!entityId) {
+      return null;
+    }
+    return this.registry.getComponent(entityId, WorldComponents.NpcState);
+  }
+
+  getEventObjectIds() {
+    this._ensureInitialised();
+    return Array.from(this.entityMaps.eventObject.keys());
   }
 
   getViewport() {
@@ -567,6 +599,22 @@ class WorldService extends EventBus {
   getMapData() {
     const component = this.getSceneComponent();
     return component ? component.mapRef : null;
+  }
+
+  runSystems(phases, context = {}) {
+    if (!this.systemManager || typeof this.systemManager.runPipeline !== 'function') {
+      return;
+    }
+    const runtime = Object.assign(
+      {},
+      context,
+      {
+        worldService: this,
+        world: this,
+        registry: this.registry
+      }
+    );
+    this.systemManager.runPipeline(phases, runtime);
   }
 
   mutatePartyMember(index, mutator) {

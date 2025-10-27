@@ -537,31 +537,28 @@ utils.extend(Scene.prototype, {
     return (mapCache[mapNum] = map);
   },
   renderMap: function() {
-    var viewport = worldService.getViewport();
-    var viewportX = PAL_X(viewport);
-    var viewportY = PAL_Y(viewport);
-    var rect = new RECT(
-      viewportX, viewportY,
-      320, 200
-    );
-    var map = this.getMap();
-    surface.blitMap(map, rect, 0);
-    surface.blitMap(map, rect, 1);
+    var mapMeta = typeof worldService.getMapMetaComponent === 'function'
+      ? worldService.getMapMetaComponent()
+      : null;
+    if (mapMeta && typeof mapMeta.mapId === 'number') {
+      this.mapNum = mapMeta.mapId;
+    }
+    worldService.runSystems('map', {
+      surface: surface,
+      mapCache: scene.mapCache,
+      Files: typeof Files !== 'undefined' ? Files : null,
+      viewportComponent: worldService.getViewportComponent(),
+      mapId: this.mapNum
+    });
   },
   renderSprites: function() {
     var viewport = worldService.getViewport();
     var viewportX = PAL_X(viewport);
     var viewportY = PAL_Y(viewport);
     var party = worldService.getParty();
-    var playerRoles = GameData.playerRoles;
-    var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
-    var scenes = GameData.scene;
-    var eventObjects = GameData.eventObject;
     var drawList = this.drawList || (this.drawList = []);
     var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
     var followerCount = stateService.getGlobal('numFollower') || 0;
-    var currentScene = scenes && numScene ? scenes[numScene - 1] : null;
-    var nextScene = scenes ? scenes[numScene] : null;
 
     // Players
     var layer = stateService.getGlobal('layer') || 0;
@@ -588,61 +585,13 @@ utils.extend(Scene.prototype, {
       this.calcCoverTiles(obj);
     }
     // Event Objects (Monsters/NPCs/others)
-    var startIndex = currentScene ? currentScene.eventObjectIndex : 0;
-    var endIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
-      ? nextScene.eventObjectIndex
-      : eventObjects.length;
-    for (var i = startIndex; i < endIndex; ++i) {
-      var eventObj = eventObjects[i];
-
-      surface.__debugStr('['+i+']', eventObj.x - viewportX, eventObj.y - viewportY, '#f00', 'middle', 'center', 24);
-
-      if (eventObj.state == ObjectState.Hidden || eventObj.vanishTime > 0 || eventObj.state < 0) {
-        continue;
-      }
-
-      // Get the sprite
-      var sprite = this.getEventObjectSprite(i + 1);
-      if (!sprite) {
-        continue;
-      }
-
-      var frameNum = eventObj.currentFrameNum;
-      if (eventObj.spriteFrames == 3) {
-        // walking character
-        if (frameNum == 2) {
-          frameNum = 0;
-        }
-        if (frameNum == 3) {
-          frameNum = 2;
-        }
-      }
-
-      var frame = sprite.getFrame(eventObj.direction * eventObj.spriteFrames + frameNum)
-      if (!frame) {
-        continue;
-      }
-
-      // Calculate the coordinate and check if outside the screen
-      var x = SHORT(eventObj.x) - viewportX;
-      x -= ~~(frame.width / 2);
-      if (x >= 320 || x < -frame.width) {
-        // outside the screen; skip it
-        continue;
-      }
-      var y = SHORT(eventObj.y) - viewportY;
-      y += eventObj.layer * 8 + 9;
-      var vy = y - frame.height - eventObj.layer * 8 + 2;
-      if (vy >= 200 || vy < -frame.height) {
-        // outside the screen; skip it
-        continue;
-      }
-
-      // Add it into the array
-      var obj = this.addToDrawList(frame, x, y, eventObj.layer * 8 + 2);
-      // Calculate covering map tiles
-      this.calcCoverTiles(obj);
-    }
+    worldService.runSystems('eventObjects', {
+      surface: surface,
+      viewportValue: viewport,
+      addToDrawList: this.addToDrawList.bind(this),
+      calcCoverTiles: this.calcCoverTiles.bind(this),
+      getEventObjectSprite: this.getEventObjectSprite.bind(this)
+    });
 
     // All sprites are now in our array; sort them by their vertical positions.
     drawList.sort(compareSprite); // 按Y升序
