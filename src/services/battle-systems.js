@@ -1089,7 +1089,16 @@ export class BattleSystemManager extends EventBus {
     if (!Array.isArray(phases)) {
       throw new Error('pipeline must be an array');
     }
-    this._pipeline = phases.map((entry) => this._normalizePipelineEntry(entry));
+    var normalized = phases.map((entry) => this._normalizePipelineEntry(entry));
+    var seen = Object.create(null);
+    for (var i = 0; i < normalized.length; i++) {
+      var phase = normalized[i].phase;
+      if (seen[phase]) {
+        throw new Error('Duplicate pipeline phase: ' + phase);
+      }
+      seen[phase] = true;
+    }
+    this._pipeline = normalized;
   }
 
   getPipeline() {

@@ -344,9 +344,13 @@ scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
 
 scene.applyWave = function(buffer) {
   var wave = new Array(32);
-  stateService.setGlobal('screenWave', (stateService.getGlobal('screenWave') || 0) + (stateService.getGlobal('waveProgression') || 0));
+  stateService.setGlobal(
+    'screenWave',
+    (stateService.getGlobal('screenWave') || 0) + (stateService.getGlobal('waveProgression') || 0)
+  );
+  var screenWave = stateService.getGlobal('screenWave') || 0;
   var buf = new Uint8Array(320);
-  if (Global.screenWave === 0 || Global.screenWave >= 256) {
+  if (screenWave === 0 || screenWave >= 256) {
     // No need to wave the screen
     stateService.setGlobal('screenWave', 0);
     stateService.setGlobal('waveProgression', 0);
@@ -362,7 +366,7 @@ scene.applyWave = function(buffer) {
     a += b;
 
     // WARNING: assuming the screen width is 320
-    wave[i] = ~~(a * Global.screenWave / 256);
+    wave[i] = ~~(a * screenWave / 256);
     wave[i + 16] = 320 - wave[i];
   }
 
@@ -560,6 +564,7 @@ utils.extend(Scene.prototype, {
     var nextScene = scenes ? scenes[numScene] : null;
 
     // Players
+    var layer = stateService.getGlobal('layer') || 0;
     for (var i = 0; i <= maxPartyMemberIndex + followerCount; ++i) {
       var player = party[i];
       if (!player) {
@@ -570,15 +575,14 @@ utils.extend(Scene.prototype, {
         continue;
       }
       var bitmap = sprite.getFrame(player.frame);
-
       if (!bitmap) continue;
 
       // Add it to our array
       var obj = this.addToDrawList(
         bitmap,
         player.x - ~~(bitmap.width / 2),
-        player.y + Global.layer + 10,
-        Global.layer + 6
+        player.y + layer + 10,
+        layer + 6
       );
       // Calculate covering tiles on the map
       this.calcCoverTiles(obj);
@@ -673,9 +677,12 @@ utils.extend(Scene.prototype, {
     //surface.__debugClear(0, 0, 320, 200);
     this.renderSprites();
     // Check if we need to fade in.
-    if (Global.needToFadeIn) {
+    var needToFadeIn = stateService.getGlobal('needToFadeIn');
+    if (needToFadeIn) {
+      var paletteId = stateService.getGlobal('numPalette');
+      var useNightPalette = stateService.getGlobal('nightPalette');
       //surface.refresh();
-      yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
+      yield surface.fadeIn(paletteId, useNightPalette, 1);
       stateService.setGlobal('needToFadeIn', false);
     }
   }

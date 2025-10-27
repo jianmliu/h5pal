@@ -736,12 +736,13 @@ fight.init = function*(surf, _battle) {
    * @param  {Number} magicID             object ID of the magic.
    * @return {Number}                     The damage value of the magic attack.
    */
-  battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, poisonResistance, magicID) {
-    magicID = GameData.object[magicID].magic.magicNumber;
+battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, poisonResistance, magicID) {
+  var damage;
+  magicID = GameData.object[magicID].magic.magicNumber;
 
-    // Formula courtesy of palxex and shenyanduxing
-    magicStrength *= randomFloat(10, 11);
-    magicStrength /= 10;
+  // Formula courtesy of palxex and shenyanduxing
+  magicStrength *= randomFloat(10, 11);
+  magicStrength /= 10;
 
     damage = battle.calcBaseDamage(magicStrength, defense);
     damage /= 4;
@@ -948,11 +949,19 @@ fight.init = function*(surf, _battle) {
 
       if (SHORT(enemyState.e.health) <= 0) {
         // This enemy is KO'ed
+        var enemyExpReward = enemyState.e && typeof enemyState.e.exp === 'number'
+          ? enemyState.e.exp
+          : 0;
+        var enemyCashReward = enemyState.e && typeof enemyState.e.cash === 'number'
+          ? enemyState.e.cash
+          : 0;
         setBattleField('expGained', function(value) {
-          return (value || 0) + enemyState.e.exp;
+          var currentExp = typeof value === 'number' && !isNaN(value) ? value : 0;
+          return currentExp + enemyExpReward;
         });
         setBattleField('cashGained', function(value) {
-          return (value || 0) + enemyState.e.cash;
+          var currentCash = typeof value === 'number' && !isNaN(value) ? value : 0;
+          return currentCash + enemyCashReward;
         });
 
         sound.play(enemyState.e.deathSound);

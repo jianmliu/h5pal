@@ -19,7 +19,11 @@ import {
   createPartyMemberComponent,
   createTrailComponent,
   createEventObjectComponent,
-  createSceneComponent
+  createSceneComponent,
+  createMapMetaComponent,
+  createMapTileComponent,
+  createNpcStateComponent,
+  createScriptRegisterComponent
 } from './components/world.js';
 
 export const ECSComponents = {
@@ -51,7 +55,11 @@ export {
   createPartyMemberComponent,
   createTrailComponent,
   createEventObjectComponent,
-  createSceneComponent
+  createSceneComponent,
+  createMapMetaComponent,
+  createMapTileComponent,
+  createNpcStateComponent,
+  createScriptRegisterComponent
 };
 
 export default {
@@ -74,5 +82,9 @@ export default {
   createPartyMemberComponent,
   createTrailComponent,
   createEventObjectComponent,
-  createSceneComponent
+  createSceneComponent,
+  createMapMetaComponent,
+  createMapTileComponent,
+  createNpcStateComponent,
+  createScriptRegisterComponent
 };

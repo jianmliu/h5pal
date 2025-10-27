@@ -14,8 +14,8 @@ log.trace('script module load');
 function BATTLE() {
   const state = battleService.getState();
   if (state) return state;
-  if (typeof Global !== 'undefined' && Global && Global.battle) return Global.battle;
-  return {};
+  const fallback = stateService.getGlobal('battle');
+  return fallback || {};
 }
 
 function setGlobalValue(key, value) {
@@ -87,6 +87,91 @@ function getPartyMember(index) {
 
 function getMaxPartyMemberIndex() {
   return worldService.getMaxPartyMemberIndex();
+}
+
+function getSceneIdValue() {
+  return worldService.getSceneId() || stateService.getGlobal('numScene');
+}
+
+function getChaseRangeValue() {
+  var value = stateService.getGlobal('chaseRange');
+  return typeof value === 'number' ? value : 0;
+}
+
+function getCollectValue() {
+  var value = stateService.getGlobal('collectValue');
+  return typeof value === 'number' ? value : 0;
+}
+
+function getCurPlayingRNGValue() {
+  return stateService.getGlobal('curPlayingRNG');
+}
+
+function getFrameCounter() {
+  var value = stateService.getGlobal('frameNum');
+  return typeof value === 'number' ? value : 0;
+}
+
+function isInBattle() {
+  return !!stateService.getGlobal('inBattle');
+}
+
+function getCurrentSaveSlot() {
+  return stateService.getGlobal('currentSaveSlot');
+}
+
+function getPaletteNumber() {
+  var value = stateService.getGlobal('numPalette');
+  return typeof value === 'number' ? value : 0;
+}
+
+function getNightPaletteFlag() {
+  return !!stateService.getGlobal('nightPalette');
+}
+
+function getScriptEntrySafe(scriptEntry, eventObjectID, context) {
+  var sc = GameData.scriptEntry[scriptEntry];
+  if (!sc) {
+    log.warning(
+      '[SCRIPT] ' + (context || 'script') +
+      ' missing script entry ' + scriptEntry +
+      ' (event ' + (eventObjectID || 0) + ')'
+    );
+    script.scriptSuccess = false;
+    return null;
+  }
+  if (!sc.operand || typeof sc.operand.length !== 'number') {
+    sc.operand = [0, 0, 0, 0];
+  }
+  if (typeof sc.operation !== 'number') {
+    log.warning(
+      '[SCRIPT] ' + (context || 'script') +
+      ' invalid operation at entry ' + scriptEntry +
+      ' (event ' + (eventObjectID || 0) + ')'
+    );
+    script.scriptSuccess = false;
+    return null;
+  }
+  return sc;
+}
+
+function getSceneEventRange() {
+  var sceneId = getSceneIdValue();
+  var scenes = GameData.scene;
+  var eventObjects = GameData.eventObject;
+  var currentScene = scenes && sceneId ? scenes[sceneId - 1] : null;
+  var nextScene = scenes ? scenes[sceneId] : null;
+  var startIndex = currentScene && typeof currentScene.eventObjectIndex === 'number'
+    ? currentScene.eventObjectIndex
+    : 0;
+  var endIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
+    ? nextScene.eventObjectIndex
+    : (eventObjects ? eventObjects.length : 0);
+  return {
+    sceneId: sceneId,
+    startIndex: startIndex,
+    endIndex: endIndex
+  };
 }
 
 function getViewportX() {
@@ -360,7 +445,7 @@ script.partyWalkTo = function*(x, y, h, speed) {
       dy += speed * (offsetY < 0 ? -1 : 1);
     }
 
-    log.trace('[SCRIPT] Move the Global.viewport');
+    log.trace('[SCRIPT] Move the viewport');
     viewport = setViewportValue(PAL_XY(dx, dy));
 
     scene.updatePartyGestures(true);
@@ -431,7 +516,7 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
       return trailState;
     });
 
-    // Move the Global.viewport
+    // Move the viewport
     viewport = setViewportValue(PAL_XY(
       PAL_X(viewport) + dx,
       PAL_Y(viewport) + dy
@@ -463,7 +548,8 @@ script.monsterChasePlayer = function(eventObjectID, speed, chaseRange, floating)
   var evtObj = GameData.eventObject[eventObjectID - 1];
   var monsterSpeed = 0;
   var prevx, prevy;
-  if (Global.chaseRange !== 0) {
+  var chaseRangeModifier = getChaseRangeValue();
+  if (chaseRangeModifier !== 0) {
     var viewport = getViewportValue();
     var partyOffset = getPartyOffsetValue();
     var x = PAL_X(viewport) + PAL_X(partyOffset) - evtObj.x,
@@ -498,7 +584,7 @@ script.monsterChasePlayer = function(eventObjectID, speed, chaseRange, floating)
     prevy = prevy * 16 + l * 8;
 
     // Is the party near to the event object?
-    if (abs(x) + abs(y) * 2 < chaseRange * 32 * Global.chaseRange) {
+    if (abs(x) + abs(y) * 2 < chaseRange * 32 * chaseRangeModifier) {
       if (x < 0) {
          if (y < 0) {
             evtObj.direction = Direction.West;
@@ -571,7 +657,10 @@ script.monsterChasePlayer = function(eventObjectID, speed, chaseRange, floating)
  * @yield {Number} The address of the next script instruction to execute.
  */
 script.interpretInstruction = function*(scriptEntry, eventObjectID) {
-  var sc = GameData.scriptEntry[scriptEntry];
+  var sc = getScriptEntrySafe(scriptEntry, eventObjectID, 'interpretInstruction');
+  if (!sc) {
+    return scriptEntry + 1;
+  }
   var evtObj;// = GameData.eventObject[eventObjectID - 1],
   var current;
   var curEventObjectID;
@@ -641,7 +730,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0011:
       script.debug('[SCRIPT] Walk straight to the specified position, at a lower speed');
-      if ((eventObjectID & 1) ^ (Global.frameNum & 1)) {
+      if ((eventObjectID & 1) ^ (getFrameCounter() & 1)) {
         var ret = script.NPCWalkTo(eventObjectID, sc.operand[0], sc.operand[1], sc.operand[2], 2);
         if (!ret) {
           scriptEntry--;
@@ -1188,16 +1277,17 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0034:
       script.debug('[SCRIPT] Transform collected enemies into items');
-      if (Global.collectValue > 0) {
+      var collectValue = getCollectValue();
+      if (collectValue > 0) {
         if (PAL_CLASSIC) {
-          i = randomLong(1, Global.collectValue);
+          i = randomLong(1, collectValue);
           if (i > 9) {
             i = 9;
           }
         } else {
           i = randomLong(1, 9);
-          if (i > Global.collectValue) {
-            i = Global.collectValue;
+          if (i > collectValue) {
+            i = collectValue;
           }
         }
         adjustGlobalNumber('collectValue', -i);
@@ -1229,7 +1319,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0037:
       script.debug('[SCRIPT] Play RNG animation');
       yield rng.play(
-        Global.curPlayingRNG,
+        getCurPlayingRNGValue(),
         sc.operand[0],
         sc.operand[1] > 0 ? sc.operand[1] : 999,
         sc.operand[2] > 0 ? sc.operand[2] : 16
@@ -1237,11 +1327,14 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0038:
       script.debug('[SCRIPT] Teleport the party out of the scene');
-      if (!Global.inBattle && GameData.scene[Global.numScene - 1].scriptOnTeleport != 0) {
-        var ret = yield script.runTriggerScript(GameData.scene[Global.numScene - 1].scriptOnTeleport, 0xFFFF);
+      var sceneId = getSceneIdValue();
+      var scenes = GameData.scene;
+      var currentScene = scenes && sceneId ? scenes[sceneId - 1] : null;
+      if (!isInBattle() && currentScene && currentScene.scriptOnTeleport !== 0) {
+        var ret = yield script.runTriggerScript(currentScene.scriptOnTeleport, 0xFFFF);
         mutateScenes(function(scenes) {
-          if (scenes && scenes[Global.numScene - 1]) {
-            scenes[Global.numScene - 1].scriptOnTeleport = ret;
+          if (scenes && scenes[sceneId - 1]) {
+            scenes[sceneId - 1].scriptOnTeleport = ret;
           }
         });
       } else {
@@ -1390,7 +1483,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x004E:
       script.debug('[SCRIPT] Load the last saved game');
       yield surface.fadeOut(1);
-      yield game.initGameData(Global.currentSaveSlot);
+      yield game.initGameData(getCurrentSaveSlot());
       return 0; // don't go further
     case 0x004F:
       script.debug('[SCRIPT] Fade the screen to red color (game over)');
@@ -1406,7 +1499,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] screen fade in')
       surface.updateScreen(null);
       var time = SHORT(sc.operand[0]);
-      yield surface.fadeIn(Global.numPalette, Global.nightPalette, (time > 0 ? time : 1));
+      yield surface.fadeIn(getPaletteNumber(), getNightPaletteFlag(), (time > 0 ? time : 1));
       setGlobalValue('needToFadeIn', false);
       break;
     case 0x0052:
@@ -1464,7 +1557,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0059:
       script.debug('[SCRIPT] Change to the specified scene');
-      if (sc.operand[0] > 0 && sc.operand[0] <= Const.MAX_SCENES && Global.numScene !== sc.operand[0]) {
+      if (sc.operand[0] > 0 && sc.operand[0] <= Const.MAX_SCENES && getSceneIdValue() !== sc.operand[0]) {
         // Set data to load the scene in the next frame
         setGlobalValue('numScene', sc.operand[0]);
         res.setLoadFlags(LoadFlag.Scene);
@@ -1552,7 +1645,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       mutatePlayerRoles(function(playerRoles) {
         playerRoles.spriteNum[sc.operand[0]] = sc.operand[1];
       });
-      if (!Global.inBattle && sc.operand[2]) {
+      if (!isInBattle() && sc.operand[2]) {
         res.setLoadFlags(LoadFlag.PlayerSprite);
         yield res.loadResources();
       }
@@ -1719,7 +1812,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       //for (var i=0; i<Const.MAX_POISONS; ++i) {
       //  Global.poisonStatus[i] = initTypedArray(PoisonStatus, Const.MAX_PLAYABLE_PLAYER_ROLES);
       //}
-      memset(Global.poisonStatus.uint8Array, 0, Global.poisonStatus.uint8Array.length);
+      mutateGlobalValue('poisonStatus', function(poisonStatus) {
+        if (poisonStatus && poisonStatus.uint8Array) {
+          memset(poisonStatus.uint8Array, 0, poisonStatus.uint8Array.length);
+        }
+        return poisonStatus;
+      });
       yield script.updateEquipments();
       break;
     case 0x0076:
@@ -1763,7 +1861,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x007C:
       script.debug('[SCRIPT] Walk straight to the specified position');
-      if ((eventObjectID & 1) ^ (Global.frameNum & 1)) {
+      if ((eventObjectID & 1) ^ (getFrameCounter() & 1)) {
         var ret = script.NPCWalkTo(eventObjectID, sc.operand[0], sc.operand[1], sc.operand[2], 4);
         if (!ret){
           scriptEntry--;
@@ -1874,14 +1972,15 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0080:
       script.debug('[SCRIPT] Toggle day/night palette');
-      var toggledNightPalette = !Global.nightPalette;
+      var toggledNightPalette = !getNightPaletteFlag();
       setGlobalValue('nightPalette', toggledNightPalette);
-      yield surface.paletteFade(Global.numPalette, toggledNightPalette, !sc.operand[0]);
+      yield surface.paletteFade(getPaletteNumber(), toggledNightPalette, !sc.operand[0]);
       break;
     case 0x0081:
       script.debug('[SCRIPT] Jump if the player is not facing the specified event object');
-      if (sc.operand[0] <= GameData.scene[Global.numScene - 1].eventObjectIndex
-          || sc.operand[0] > GameData.scene[Global.numScene].eventObjectIndex) {
+      var eventRange = getSceneEventRange();
+      if (sc.operand[0] <= eventRange.startIndex
+          || sc.operand[0] > eventRange.endIndex) {
          // The event object is not in the current scene
          scriptEntry = sc.operand[2] - 1;
          script.scriptSuccess = false;
@@ -1911,8 +2010,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0083:
       script.debug('[SCRIPT] Jump if event object is not in the specified zone of the current event object');
-      if (sc.operand[0] <= GameData.scene[Global.numScene - 1].eventObjectIndex
-          || sc.operand[0] > GameData.scene[Global.numScene].eventObjectIndex) {
+      var zoneEventRange = getSceneEventRange();
+      if (sc.operand[0] <= zoneEventRange.startIndex
+          || sc.operand[0] > zoneEventRange.endIndex) {
         // The event object is not in the current scene
         scriptEntry = sc.operand[2] - 1;
         script.scriptSuccess = false;
@@ -1927,8 +2027,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0084:
       script.debug('[SCRIPT] Place the item which player used as an event object to the scene');
-      if (sc.operand[0] <= GameData.scene[Global.numScene - 1].eventObjectIndex
-          || sc.operand[0] > GameData.scene[Global.numScene].eventObjectIndex) {
+      var placementEventRange = getSceneEventRange();
+      if (sc.operand[0] <= placementEventRange.startIndex
+          || sc.operand[0] > placementEventRange.endIndex) {
         // The event object is not in the current scene
         scriptEntry = sc.operand[2] - 1;
         script.scriptSuccess = false;
@@ -2001,8 +2102,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x008B:
       script.debug('[SCRIPT] change the current palette');
       setGlobalValue('numPalette', sc.operand[0]);
-      if (!Global.needToFadeIn) {
-        var palette = Palette.get(Global.numPalette, false);
+      if (!stateService.getGlobal('needToFadeIn')) {
+        var palette = Palette.get(getPaletteNumber(), false);
         surface.setPalette(palette);
       }
       break;
@@ -2033,7 +2134,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0091:
       script.debug('[SCRIPT] Jump if the enemy is not alone');
-      if (Global.inBattle) {
+      if (isInBattle()) {
         for (i = 0; i <= battle.maxEnemyIndex; i++) {
           if (i != eventObjectID && BATTLE().enemy[i].objectID === BATTLE().enemy[eventObjectID].objectID) {
             scriptEntry = sc.operand[0] - 1;
@@ -2044,7 +2145,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0092:
       script.debug('[SCRIPT] Show a magic-casting animation for a player in battle');
-      if (Global.inBattle) {
+      if (isInBattle()) {
         if (sc.operand[0] !== 0) {
           const playerIndex = sc.operand[0] - 1;
           yield battle.battleShowPlayerPreMagicAnim(playerIndex, false);
@@ -2072,7 +2173,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0093:
       script.debug('[SCRIPT] Fade the screen. Update scene in the process.');
       var time = SHORT(sc.operand[0]);
-      yield surface.fadeIn(Global.numPalette, Global.nightPalette, (time > 0 ? time : 1));
+      yield surface.fadeIn(getPaletteNumber(), getNightPaletteFlag(), (time > 0 ? time : 1));
       setGlobalValue('needToFadeIn', (SHORT(sc.operand[0]) < 0));
       break;
     case 0x0094:
@@ -2083,7 +2184,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0095:
       script.debug('[SCRIPT] Jump if the current scene is the specified one');
-      if (Global.numScene === SHORT(sc.operand[0])) {
+      if (getSceneIdValue() === SHORT(sc.operand[0])) {
         scriptEntry = sc.operand[1] - 1;
       }
       break;
@@ -2129,8 +2230,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Change the map for the specified scene');
       if (sc.operand[0] == 0xFFFF) {
         mutateScenes(function(scenes) {
-          if (scenes && scenes[Global.numScene - 1]) {
-            scenes[Global.numScene - 1].mapNum = sc.operand[1];
+          var sceneId = getSceneIdValue();
+          if (scenes && sceneId && scenes[sceneId - 1]) {
+            scenes[sceneId - 1].mapNum = sc.operand[1];
           }
         });
         res.setLoadFlags(LoadFlag.Scene);
@@ -2443,7 +2545,11 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
   ui.setDialogDelayTime(3);
 
   while (scriptEntry !== 0 && !ended) {
-    sc = GameData.scriptEntry[scriptEntry];
+    sc = getScriptEntrySafe(scriptEntry, eventObjectID, 'runTriggerScript');
+    if (!sc) {
+      scriptEntry = 0;
+      break;
+    }
 
     log.trace('[SCRIPT] runTriggerScript %d: (%d(0x%.4x) - %d, %d, %d)',
       scriptEntry, sc.operation, sc.operation,
@@ -2504,7 +2610,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
         if (false && ui.dialogIsPlayingRNG()) {
           // WARNING TODO
           surface.restoreScreen();
-        } else if (Global.inBattle) {
+        } else if (isInBattle()) {
           // WARNING TODO
           battle.makeScene();
           surface.blit(BATTLE().sceneBuf);
@@ -2628,7 +2734,10 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
 };
 
 script.runAutoScript = function*(scriptEntry, eventObjectID) {
-  var sc = GameData.scriptEntry[scriptEntry];
+  var sc = getScriptEntrySafe(scriptEntry, eventObjectID, 'runAutoScript');
+  if (!sc) {
+    return scriptEntry;
+  }
   var evtObj = GameData.eventObject[eventObjectID - 1];
 
   traceScript(scriptEntry, sc, eventObjectID);

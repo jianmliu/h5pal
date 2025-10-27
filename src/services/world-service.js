@@ -7,7 +7,11 @@ import {
   createPartyMemberComponent,
   createTrailComponent,
   createEventObjectComponent,
-  createSceneComponent
+  createSceneComponent,
+  createMapMetaComponent,
+  createMapTileComponent,
+  createNpcStateComponent,
+  createScriptRegisterComponent
 } from '../ecs/index.js';
 
 function getGlobalStore() {
@@ -39,7 +43,10 @@ class WorldService extends EventBus {
       party: new Map(),
       trail: null,
       eventObject: new Map(),
-      scene: null
+      scene: null,
+      mapMeta: null,
+      mapTile: null,
+      scriptRegister: null
     };
     this._initialised = false;
     this._handleGlobalChanged = this._handleGlobalChanged.bind(this);
@@ -69,6 +76,9 @@ class WorldService extends EventBus {
     this.entityMaps.trail = null;
     this.entityMaps.scene = null;
     this.entityMaps.eventObject.clear();
+    this.entityMaps.mapMeta = null;
+    this.entityMaps.mapTile = null;
+    this.entityMaps.scriptRegister = null;
   }
 
   _ensureInitialised() {
@@ -86,7 +96,10 @@ class WorldService extends EventBus {
     this.syncPartyMembers();
     this.syncTrail();
     this.syncScene();
+    this.syncMapMeta();
+    this.syncMapTiles();
     this.syncEventObjects();
+    this.syncScriptRegisters();
   }
 
   syncViewport() {
@@ -213,6 +226,91 @@ class WorldService extends EventBus {
       mapId,
       map: mapRef
     });
+
+    this.syncMapMeta();
+    this.syncMapTiles();
+  }
+
+  syncMapMeta() {
+    this._ensureInitialised();
+    const registry = this.registry;
+    const sceneEntity = this.entityMaps.scene;
+    if (!sceneEntity) {
+      return;
+    }
+    const numScene = stateService.getGlobal('numScene');
+    const gameData = getGameDataStore();
+    const scenes = gameData && Array.isArray(gameData.scene) ? gameData.scene : [];
+    const sceneIndex = typeof numScene === 'number' ? numScene - 1 : -1;
+    const sceneRef = sceneIndex >= 0 && sceneIndex < scenes.length ? scenes[sceneIndex] : null;
+    const mapId = sceneRef && typeof sceneRef.mapNum === 'number' ? sceneRef.mapNum : null;
+    const maps = gameData && Array.isArray(gameData.map) ? gameData.map : null;
+    const mapRef = mapId != null && maps ? maps[mapId] || null : null;
+
+    const payload = {
+      sceneId: numScene,
+      mapId,
+      sceneRef,
+      mapRef,
+      scriptOnEnter: sceneRef ? sceneRef.scriptOnEnter : null,
+      scriptOnTeleport: sceneRef ? sceneRef.scriptOnTeleport : null
+    };
+
+    const component = registry.getComponent(sceneEntity, WorldComponents.MapMeta);
+    if (component) {
+      component.sceneId = payload.sceneId;
+      component.mapId = payload.mapId;
+      component.sceneRef = payload.sceneRef;
+      component.mapRef = payload.mapRef;
+      component.scriptOnEnter = payload.scriptOnEnter;
+      component.scriptOnTeleport = payload.scriptOnTeleport;
+    } else {
+      registry.addComponent(sceneEntity, WorldComponents.MapMeta, createMapMetaComponent(payload));
+    }
+    this.entityMaps.mapMeta = sceneEntity;
+    this.fire('mapMetaSynced', { sceneId: payload.sceneId, mapId: payload.mapId });
+  }
+
+  syncMapTiles() {
+    this._ensureInitialised();
+    const registry = this.registry;
+    const sceneEntity = this.entityMaps.scene;
+    if (!sceneEntity) {
+      return;
+    }
+    const numScene = stateService.getGlobal('numScene');
+    const gameData = getGameDataStore();
+    const scenes = gameData && Array.isArray(gameData.scene) ? gameData.scene : [];
+    const sceneIndex = typeof numScene === 'number' ? numScene - 1 : -1;
+    const sceneRef = sceneIndex >= 0 && sceneIndex < scenes.length ? scenes[sceneIndex] : null;
+    const mapId = sceneRef && typeof sceneRef.mapNum === 'number' ? sceneRef.mapNum : null;
+    const maps = gameData && Array.isArray(gameData.map) ? gameData.map : null;
+    const mapRef = mapId != null && maps ? maps[mapId] || null : null;
+
+    const payload = {
+      mapId,
+      sceneId: numScene,
+      mapRef,
+      width: mapRef && typeof mapRef.width === 'number' ? mapRef.width : 64,
+      height: mapRef && typeof mapRef.height === 'number' ? mapRef.height : 128,
+      layers: mapRef && mapRef.layers ? mapRef.layers : null,
+      tileData: mapRef && mapRef.tiles ? mapRef.tiles : null
+    };
+
+    const component = registry.getComponent(sceneEntity, WorldComponents.MapTile);
+    if (component) {
+      component.mapId = payload.mapId;
+      component.sceneId = payload.sceneId;
+      component.mapRef = payload.mapRef;
+      component.width = payload.width;
+      component.height = payload.height;
+      component.layers = payload.layers;
+      component.tileData = payload.tileData;
+    } else {
+      registry.addComponent(sceneEntity, WorldComponents.MapTile, createMapTileComponent(payload));
+    }
+    this.entityMaps.mapTile = sceneEntity;
+    this.fire('mapTilesSynced', { sceneId: payload.sceneId, mapId: payload.mapId });
   }
 
   syncEventObjects() {
@@ -251,6 +349,29 @@ class WorldService extends EventBus {
           } : null;
         }
       }
+      const npcPayload = {
+        id: i,
+        sceneId,
+        stateRef: eventObject,
+        position: eventObject ? { x: eventObject.x, y: eventObject.y, layer: eventObject.layer } : null,
+        direction: eventObject ? eventObject.direction : null,
+        currentFrame: eventObject ? eventObject.currentFrameNum : null,
+        state: eventObject ? eventObject.state : null,
+        vanishTime: eventObject ? eventObject.vanishTime : null
+      };
+      const npcComponent = registry.getComponent(entityId, WorldComponents.NpcState);
+      if (npcComponent) {
+        npcComponent.id = npcPayload.id;
+        npcComponent.sceneId = npcPayload.sceneId;
+        npcComponent.stateRef = npcPayload.stateRef;
+        npcComponent.position = npcPayload.position;
+        npcComponent.direction = npcPayload.direction;
+        npcComponent.currentFrame = npcPayload.currentFrame;
+        npcComponent.state = npcPayload.state;
+        npcComponent.vanishTime = npcPayload.vanishTime;
+      } else {
+        registry.addComponent(entityId, WorldComponents.NpcState, createNpcStateComponent(npcPayload));
+      }
       visited.add(i);
     }
 
@@ -264,6 +385,37 @@ class WorldService extends EventBus {
     });
 
     this.fire('eventObjectsSynced', { count: eventObjects.length });
+    this.fire('npcStatesSynced', { count: eventObjects.length, sceneId });
+  }
+
+  syncScriptRegisters() {
+    this._ensureInitialised();
+    const registry = this.registry;
+    const gameData = getGameDataStore();
+    const scriptEntries = gameData && gameData.scriptEntry ? gameData.scriptEntry : [];
+    let entityId = this.entityMaps.scriptRegister;
+    const payload = {
+      count: Array.isArray(scriptEntries) || (scriptEntries && typeof scriptEntries.length === 'number')
+        ? scriptEntries.length
+        : 0,
+      entries: scriptEntries,
+      lastSynced: Date.now()
+    };
+    if (!entityId) {
+      entityId = registry.createEntity();
+      registry.addComponent(entityId, WorldComponents.ScriptRegister, createScriptRegisterComponent(payload));
+      this.entityMaps.scriptRegister = entityId;
+    } else {
+      const component = registry.getComponent(entityId, WorldComponents.ScriptRegister);
+      if (component) {
+        component.count = payload.count;
+        component.entries = payload.entries;
+        component.lastSynced = payload.lastSynced;
+      } else {
+        registry.addComponent(entityId, WorldComponents.ScriptRegister, createScriptRegisterComponent(payload));
+      }
+    }
+    this.fire('scriptRegistersSynced', { count: payload.count });
   }
 
   getViewportComponent() {
@@ -476,6 +628,8 @@ class WorldService extends EventBus {
         break;
       case 'numScene':
         this.syncScene();
+        this.syncMapMeta();
+        this.syncMapTiles();
         this.syncEventObjects();
         break;
       default:
@@ -492,9 +646,19 @@ class WorldService extends EventBus {
         this.syncEventObjects();
         break;
       case 'scene':
+        this.syncScene();
+        this.syncMapMeta();
+        this.syncMapTiles();
+        this.syncEventObjects();
+        break;
       case 'map':
         this.syncScene();
+        this.syncMapMeta();
+        this.syncMapTiles();
         this.syncEventObjects();
+        break;
+      case 'scriptEntry':
+        this.syncScriptRegisters();
         break;
       default:
         break;

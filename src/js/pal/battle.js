@@ -687,9 +687,16 @@ battle.won = function*() {
   // Backup the initial player stats
   var origplayerRoles = GameData.playerRoles.copy();
 
-  var battleState = battleService.getState() || stateService.getGlobal('battle') || (typeof Global !== 'undefined' && Global && Global.battle) || {};
-  var expGained = Number(battleState && battleState.expGained) || 0;
-  var cashGained = Number(battleState && battleState.cashGained) || 0;
+  var battleState = battleService.getState() ||
+    stateService.getGlobal('battle') ||
+    (typeof Global !== 'undefined' && Global && Global.battle) ||
+    {};
+  var expGained = battleState && typeof battleState.expGained === 'number' && !isNaN(battleState.expGained)
+    ? battleState.expGained
+    : 0;
+  var cashGained = battleState && typeof battleState.cashGained === 'number' && !isNaN(battleState.cashGained)
+    ? battleState.cashGained
+    : 0;
   var isBossBattle = !!(battleState && battleState.isBoss);
 
   if (expGained > 0 || cashGained > 0) {
