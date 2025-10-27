@@ -68,6 +68,18 @@ var uibattle = {
   curSubMenuItem: 0
 };
 
+var UI_TRACKED_KEYS = [
+  'state',
+  'menuState',
+  'curPlayerIndex',
+  'selectedAction',
+  'selectedIndex',
+  'prevEnemyTarget',
+  'actionType',
+  'objectID',
+  'autoAttack'
+];
+
 uibattle.TIMEMETER_COLOR_DEFAULT                   = 0x1B;
 uibattle.TIMEMETER_COLOR_SLOW                      = 0x5B;
 uibattle.TIMEMETER_COLOR_HASTE                     = 0x2A;
@@ -91,25 +103,143 @@ function BATTLE() {
   return {};
 }
 
-function mutateUI(mutator) {
+function snapshotUIState(component) {
+  var uiComponent = component || (battleService.getUIComponent && battleService.getUIComponent());
+  if (!uiComponent || !uiComponent.stateRef) {
+    return null;
+  }
+  var source = uiComponent.stateRef;
+  var snapshot = {};
+  for (var i = 0; i < UI_TRACKED_KEYS.length; i++) {
+    var key = UI_TRACKED_KEYS[i];
+    if (key === 'autoAttack') {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        snapshot[key] = source[key];
+      } else if (typeof uiComponent.autoBattle !== 'undefined') {
+        snapshot[key] = uiComponent.autoBattle;
+      }
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      snapshot[key] = source[key];
+    }
+  }
+  return snapshot;
+}
+
+function emitUIEvents(previousSnapshot, context) {
+  var component = battleService.getUIComponent && battleService.getUIComponent();
+  var currentSnapshot = snapshotUIState(component) || {};
+  var changes = [];
+
+  UI_TRACKED_KEYS.forEach(function(key) {
+    var previous = previousSnapshot ? previousSnapshot[key] : undefined;
+    var current;
+    if (key === 'autoAttack') {
+      if (Object.prototype.hasOwnProperty.call(currentSnapshot, key)) {
+        current = currentSnapshot[key];
+      } else if (component && typeof component.autoBattle !== 'undefined') {
+        current = component.autoBattle;
+      } else {
+        current = undefined;
+      }
+    } else {
+      current = currentSnapshot[key];
+    }
+
+    if (previous !== current) {
+      changes.push({
+        key: key,
+        previous: previous,
+        current: current
+      });
+      if (component && typeof battleService.fire === 'function') {
+        battleService.fire('ui:changed:' + key, {
+          key: key,
+          previous: previous,
+          current: current,
+          component: component,
+          context: context || null
+        });
+      }
+    }
+  });
+
+  if (changes.length > 0 && typeof battleService.fire === 'function') {
+    battleService.fire('ui:changed', {
+      changes: changes,
+      component: component,
+      context: context || null
+    });
+  }
+
+  if (typeof battleService.fire === 'function') {
+    battleService.fire('ui:updated', {
+      changes: changes,
+      component: component,
+      context: context || null
+    });
+  }
+}
+
+function runUIUpdate(mutator, context) {
+  var previousSnapshot = snapshotUIState();
+  var nextAutoBattle;
+
   battleService.updateUI(function(uiState) {
     if (!uiState) return uiState;
-    mutator(uiState);
-    return uiState;
+    var result = mutator ? (mutator(uiState) || uiState) : uiState;
+    if (typeof uiState.autoAttack !== 'undefined') {
+      nextAutoBattle = uiState.autoAttack;
+    }
+    if (typeof result.autoAttack !== 'undefined') {
+      nextAutoBattle = result.autoAttack;
+    }
+    return result;
   });
+
+  if (typeof nextAutoBattle !== 'undefined' && typeof stateService.setGlobal === 'function') {
+    stateService.setGlobal('autoBattle', !!nextAutoBattle);
+  }
+
+  if (typeof battleService.syncUIComponent === 'function') {
+    battleService.syncUIComponent();
+  }
+
+  emitUIEvents(previousSnapshot, context);
 }
 
-function setUI(updates) {
-  mutateUI(function(uiState) {
+function mutateUI(mutator, context) {
+  runUIUpdate(function(uiState) {
+    if (typeof mutator === 'function') {
+      var result = mutator(uiState);
+      return result || uiState;
+    }
+    return uiState;
+  }, context);
+}
+
+function setUI(updates, context) {
+  if (typeof updates === 'function') {
+    runUIUpdate(function(uiState) {
+      return updates(uiState) || uiState;
+    }, context);
+    return;
+  }
+  runUIUpdate(function(uiState) {
     Object.keys(updates).forEach(function(key) {
       var updater = updates[key];
-      uiState[key] = (typeof updater === 'function') ? updater(uiState[key], uiState) : updater;
+      var nextValue = (typeof updater === 'function') ? updater(uiState[key], uiState) : updater;
+      uiState[key] = nextValue;
     });
-  });
+    return uiState;
+  }, context);
 }
 
-function setUIProp(prop, value) {
-  setUI({ [prop]: value });
+function setUIProp(prop, value, context) {
+  var patch = {};
+  patch[prop] = value;
+  setUI(patch, context);
 }
 
 function setPlayer(index, mutator) {
@@ -157,6 +287,99 @@ function promoteFirstWaitingPlayer() {
     return idx;
   }
   return -1;
+}
+
+function getUIComponent() {
+  return typeof battleService.getUIComponent === 'function' ? battleService.getUIComponent() : null;
+}
+
+function getUIStateSnapshot() {
+  var component = getUIComponent();
+  if (component && component.stateRef) {
+    return component.stateRef;
+  }
+  var state = BATTLE();
+  return state && state.UI ? state.UI : null;
+}
+
+function getAutoBattle(component) {
+  var uiComponent = component || getUIComponent();
+  if (uiComponent && typeof uiComponent.autoBattle !== 'undefined') {
+    return uiComponent.autoBattle;
+  }
+  if (typeof stateService.getGlobal === 'function') {
+    var autoBattle = stateService.getGlobal('autoBattle');
+    if (typeof autoBattle !== 'undefined') {
+      return !!autoBattle;
+    }
+  }
+  return !!(typeof Global !== 'undefined' && Global && Global.autoBattle);
+}
+
+function getUIStateObject() {
+  var component = getUIComponent();
+  if (component && component.stateRef) {
+    return component.stateRef;
+  }
+  var state = battleService.getState();
+  if (state && state.UI) {
+    return state.UI;
+  }
+  if (typeof Global !== 'undefined' && Global && Global.battle && Global.battle.UI) {
+    return Global.battle.UI;
+  }
+  return null;
+}
+
+function getUIProp(prop, fallback, component) {
+  var uiComponent = component || getUIComponent();
+  if (!uiComponent) {
+    return typeof fallback === 'undefined' ? null : fallback;
+  }
+  if (prop === 'autoAttack') {
+    if (typeof uiComponent.autoBattle !== 'undefined') {
+      return uiComponent.autoBattle;
+    }
+    if (typeof stateService.getGlobal === 'function') {
+      var autoBattle = stateService.getGlobal('autoBattle');
+      if (typeof autoBattle !== 'undefined') {
+        return !!autoBattle;
+      }
+    }
+  }
+  var uiState = uiComponent.stateRef || getUIStateObject();
+  if (uiState && Object.prototype.hasOwnProperty.call(uiState, prop)) {
+    return uiState[prop];
+  }
+  return typeof fallback === 'undefined' ? null : fallback;
+}
+
+function getPartyMember(index) {
+  if (typeof Global === 'undefined' || !Global || !Array.isArray(Global.party)) {
+    return null;
+  }
+  return Global.party[index] || null;
+}
+
+function getCurrentPlayerIndex(fallback, component) {
+  var index = getUIProp('curPlayerIndex', null, component);
+  if (typeof index === 'number' && index >= 0) {
+    return index;
+  }
+  return typeof fallback === 'number' ? fallback : 0;
+}
+
+function getCurrentPartyEntry(fallbackIndex, component) {
+  var index = getCurrentPlayerIndex(fallbackIndex, component);
+  return getPartyMember(index);
+}
+
+function getCurrentPlayerRole(fallbackRole, component) {
+  var entry = getCurrentPartyEntry(undefined, component);
+  if (entry && typeof entry.playerRole === 'number') {
+    return entry.playerRole;
+  }
+  return typeof fallbackRole === 'number' ? fallbackRole : 0;
 }
 
 function adjustInventoryUsage(itemId, delta) {
@@ -378,7 +601,11 @@ uibattle.playerInfoBox = function(pos, playerRole, timeMeter, timeMeterColor, up
  * @return {Boolean}         true if the action is valid, false if not.
  */
 uibattle.isActionValid = function(actionType) {
-  var playerRole = Global.party[BATTLE().UI.curPlayerIndex].playerRole;
+  var partyEntry = getCurrentPartyEntry();
+  if (!partyEntry) {
+    return false;
+  }
+  var playerRole = partyEntry.playerRole;
 
   switch (actionType) {
     case BattleUIAction.Attack:
@@ -585,7 +812,7 @@ uibattle.throwItem = function() {
   if (selectedItem != 0xFFFF) {
     if (selectedItem != 0) {
       var applyAll = GameData.object[selectedItem].item.flags & ItemFlag.ApplyToAll;
-      var prevTarget = BATTLE().UI.prevEnemyTarget;
+      var prevTarget = getUIProp('prevEnemyTarget', 0);
       var updates = {
         actionType: BattleActionType.ThrowItem,
         objectID: selectedItem,
@@ -649,19 +876,21 @@ uibattle.update = function*() {
     uibattle.lastStateMutation = uibattle._pendingStateMutation;
     uibattle._pendingStateMutation = null;
   }
-      if (input.isKeyPressed(Key.Auto)) {
-    var enableAuto = !Global.autoBattle;
-    stateService.setGlobal('autoBattle', enableAuto);
-    mutateUI(function(uiState) {
-      uiState.autoAttack = enableAuto;
-      uiState.menuState = BattleMenuState.Main;
-      if (!enableAuto && uiState.state !== BattleUIState.Wait) {
-        uiState.state = BattleUIState.Wait;
+  if (input.isKeyPressed(Key.Auto)) {
+    var enableAuto = !getAutoBattle();
+    setUI({
+      autoAttack: enableAuto,
+      menuState: BattleMenuState.Main,
+      state: function(current) {
+        if (!enableAuto && current !== BattleUIState.Wait) {
+          return BattleUIState.Wait;
+        }
+        return current;
       }
     });
   }
 
-  if (Global.autoBattle) {
+  if (getAutoBattle()) {
     ui.drawText(
       ui.getWord(BATTLEUI_LABEL_AUTO),
       PAL_XY(280, 10),
@@ -688,8 +917,12 @@ uibattle.update = function*() {
         }
       }
 
-      if (BATTLE().UI.state != BattleUIState.Wait) {
-        var playerRole = Global.party[BATTLE().UI.curPlayerIndex].playerRole;
+      if (getUIProp('state', BattleUIState.Wait) != BattleUIState.Wait) {
+        var currentPartyEntry = getCurrentPartyEntry();
+        if (!currentPartyEntry) {
+          return end();
+        }
+        var playerRole = currentPartyEntry.playerRole;
         var updates = null;
 
         if (GameData.playerRoles.HP[playerRole] == 0 &&
@@ -768,7 +1001,7 @@ uibattle.update = function*() {
     return end();
   }
 
-  if (!Global.autoBattle) {
+  if (!getAutoBattle()) {
     // Draw the player info boxes.
     for (var i = 0; i <= Global.maxPartyMemberIndex; i++)
     {
@@ -790,14 +1023,19 @@ uibattle.update = function*() {
     return end();
   }
 
-  if (BATTLE().UI.state != BattleUIState.Wait) {
-    var playerRole = Global.party[BATTLE().UI.curPlayerIndex].playerRole;
+  var uiStateValue = getUIProp('state', BattleUIState.Wait);
+  if (uiStateValue != BattleUIState.Wait) {
+    var currentEntry = getCurrentPartyEntry();
+    if (!currentEntry) {
+      return end();
+    }
+    var playerRole = currentEntry.playerRole;
 
     if (GameData.playerRoles.HP[playerRole] == 0 &&
         Global.playerStatus[playerRole][PlayerStatus.Puppet]) {
       setUI({
         actionType: BattleActionType.Attack,
-        selectedIndex: script.playerCanAttackAll(Global.party[BATTLE().UI.curPlayerIndex].playerRole)
+        selectedIndex: script.playerCanAttackAll(playerRole)
           ? -1
           : battle.selectAutoTarget()
       });
@@ -805,7 +1043,6 @@ uibattle.update = function*() {
       return end(); // don't go further
     }
 
-    // Cancel any actions if player is dead or sleeping.
     if (GameData.playerRoles.HP[playerRole] == 0 ||
         Global.playerStatus[playerRole][PlayerStatus.Sleep] != 0 ||
         Global.playerStatus[playerRole][PlayerStatus.Paralyzed] != 0) {
@@ -820,10 +1057,10 @@ uibattle.update = function*() {
       return end(); // don't go further
     }
 
-    if (Global.autoBattle) {
+    if (getAutoBattle()) {
       setUI({
         actionType: BattleActionType.Attack,
-        selectedIndex: script.playerCanAttackAll(Global.party[BATTLE().UI.curPlayerIndex].playerRole)
+        selectedIndex: script.playerCanAttackAll(playerRole)
           ? -1
           : battle.selectAutoTarget()
       });
@@ -831,19 +1068,18 @@ uibattle.update = function*() {
       return end(); // don't go further
     }
 
-    // Draw the arrow on the player's head.
-    var i = SPRITENUM_BATTLE_ARROW_CURRENTPLAYER_RED;
-    if (uibattle.frame & 1) {
-      i = SPRITENUM_BATTLE_ARROW_CURRENTPLAYER;
+    var arrowSprite = (uibattle.frame & 1) ? SPRITENUM_BATTLE_ARROW_CURRENTPLAYER : SPRITENUM_BATTLE_ARROW_CURRENTPLAYER_RED;
+    var currentIndex = getCurrentPlayerIndex();
+    var positions = battle.playerPos[Global.maxPartyMemberIndex] || [];
+    var position = positions[currentIndex];
+    if (position) {
+      var x = position[0] - 8;
+      var y = position[1] - 74;
+      surface.blitRLE(ui.sprite.getFrame(arrowSprite), PAL_XY(x, y));
     }
-
-    var x = battle.playerPos[Global.maxPartyMemberIndex][BATTLE().UI.curPlayerIndex][0] - 8;
-    var y = battle.playerPos[Global.maxPartyMemberIndex][BATTLE().UI.curPlayerIndex][1] - 74;
-
-    surface.blitRLE(ui.sprite.getFrame(i), PAL_XY(x, y));
   }
 
-  switch (BATTLE().UI.state) {
+  switch (uiStateValue) {
     case BattleUIState.Wait:
       if (!BATTLE().enemyCleared) {
         battle.playerCheckReady();
@@ -868,7 +1104,11 @@ uibattle.update = function*() {
 
     case BattleUIState.SelectMove: {
       // Draw the icons
-      var playerRole = Global.party[BATTLE().UI.curPlayerIndex].playerRole;
+      var currentEntry = getCurrentPartyEntry();
+      if (!currentEntry) {
+        break;
+      }
+      var playerRole = currentEntry.playerRole;
       var items = [
         { spriteNum: SPRITENUM_BATTLEICON_ATTACK,    pos: PAL_XY(27, 140), action: BattleUIState.ActionAttack },
         { spriteNum: SPRITENUM_BATTLEICON_MAGIC,     pos: PAL_XY(0, 155),  action: BattleUIState.ActionMagic },
@@ -876,7 +1116,7 @@ uibattle.update = function*() {
         { spriteNum: SPRITENUM_BATTLEICON_MISCMENU,  pos: PAL_XY(27, 170), action: BattleUIState.ActionMisc }
       ];
 
-      var menuState = BATTLE().UI.menuState;
+      var menuState = getUIProp('menuState', BattleMenuState.Main);
       if (menuState == BattleMenuState.Main) {
         var nextAction = null;
         if (input.dir == Direction.North) {
@@ -893,7 +1133,7 @@ uibattle.update = function*() {
         }
       }
 
-      var selectedAction = BATTLE().UI.selectedAction;
+      var selectedAction = getUIProp('selectedAction', 0);
       if (!uibattle.isActionValid(items[selectedAction].action)) {
         setUIProp('selectedAction', 0);
         selectedAction = 0;
@@ -909,15 +1149,15 @@ uibattle.update = function*() {
         }
       }
 
-      menuState = BATTLE().UI.menuState;
+      menuState = getUIProp('menuState', BattleMenuState.Main);
       switch (menuState) {
         case BattleMenuState.Main:
           if (input.isKeyPressed(Key.Search)) {
-            selectedAction = BATTLE().UI.selectedAction;
+            selectedAction = getUIProp('selectedAction', 0);
             switch (selectedAction) {
               case 0:
                 // Attack
-                if (script.playerCanAttackAll(Global.party[BATTLE().UI.curPlayerIndex].playerRole)) {
+                if (script.playerCanAttackAll(playerRole)) {
                   setUI({
                     actionType: BattleActionType.Attack,
                     state: BattleUIState.SelectTargetEnemyAll
@@ -925,7 +1165,7 @@ uibattle.update = function*() {
                 } else {
                   setUI({
                     actionType: BattleActionType.Attack,
-                    selectedIndex: BATTLE().UI.prevEnemyTarget,
+                    selectedIndex: getUIProp('prevEnemyTarget', 0),
                     state: BattleUIState.SelectTargetEnemy
                   });
                 }
@@ -939,7 +1179,7 @@ uibattle.update = function*() {
 
               case 2:
                 // Cooperative magic
-                var w = Global.party[BATTLE().UI.curPlayerIndex].playerRole;
+                var w = playerRole;
                 w = script.getPlayerCooperativeMagic(w);
 
                 var coopFlags = GameData.object[w].magic.flags;
@@ -952,7 +1192,7 @@ uibattle.update = function*() {
                     coopUpdates.state = BattleUIState.SelectTargetEnemyAll;
                   } else {
                     coopUpdates.state = BattleUIState.SelectTargetEnemy;
-                    coopUpdates.selectedIndex = BATTLE().UI.prevEnemyTarget;
+                    coopUpdates.selectedIndex = getUIProp('prevEnemyTarget', 0);
                   }
                 } else {
                   if (coopFlags & MagicFlag.ApplyToAll) {
@@ -975,12 +1215,12 @@ uibattle.update = function*() {
             setUIProp('actionType', BattleActionType.Defend);
             battle.commitAction(false);
           } else if (input.isKeyPressed(Key.Force)) {
-            var w = uibattle.pickAutoMagic(Global.party[BATTLE().UI.curPlayerIndex].playerRole, 60);
+            var w = uibattle.pickAutoMagic(playerRole, 60);
 
             if (w == 0) {
               setUI({
                 actionType: BattleActionType.Attack,
-                selectedIndex: script.playerCanAttackAll(Global.party[BATTLE().UI.curPlayerIndex].playerRole)
+                selectedIndex: script.playerCanAttackAll(playerRole)
                   ? -1
                   : battle.selectAutoTarget()
               });
@@ -1007,7 +1247,7 @@ uibattle.update = function*() {
           } else if (input.isKeyPressed(Key.Repeat)) {
             battle.commitAction(true);
           } else if (input.isKeyPressed(Key.Menu)) {
-            var currentIndex = BATTLE().UI.curPlayerIndex;
+            var currentIndex = getCurrentPlayerIndex();
             setPlayer(currentIndex, function(player) {
               player.state = FighterState.Wait;
             });
@@ -1057,7 +1297,7 @@ uibattle.update = function*() {
                   magicUpdates.state = BattleUIState.SelectTargetEnemyAll;
                 } else {
                   magicUpdates.state = BattleUIState.SelectTargetEnemy;
-                  magicUpdates.selectedIndex = BATTLE().UI.prevEnemyTarget;
+                  magicUpdates.selectedIndex = getUIProp('prevEnemyTarget', 0);
                 }
               } else {
                 if (flags & MagicFlag.ApplyToAll) {
@@ -1097,12 +1337,14 @@ uibattle.update = function*() {
                 battle.commitAction(false);
                 break;
               case 1: // auto
-                var enable = !Global.autoBattle;
-                stateService.setGlobal('autoBattle', enable);
-                mutateUI(function(uiState) {
-                  uiState.autoAttack = enable;
-                  if (!enable && uiState.state != BattleUIState.Wait) {
-                    uiState.state = BattleUIState.Wait;
+                var enable = !getAutoBattle();
+                setUI({
+                  autoAttack: enable,
+                  state: function(current) {
+                    if (!enable && current != BattleUIState.Wait) {
+                      return BattleUIState.Wait;
+                    }
+                    return current;
                   }
                 });
                 break;
@@ -1158,7 +1400,7 @@ uibattle.update = function*() {
         break;
       }
 
-      if (BATTLE().UI.actionType == BattleActionType.CoopMagic) {
+      if (getUIProp('actionType', BattleActionType.Attack) == BattleActionType.CoopMagic) {
         if (!uibattle.isActionValid(BattleActionType.CoopMagic)) {
           setUIProp('state', BattleUIState.SelectMove);
           break;
@@ -1171,7 +1413,7 @@ uibattle.update = function*() {
         battle.commitAction(false);
         break;
       }
-      var selectedIndex = BATTLE().UI.selectedIndex;
+      var selectedIndex = getUIProp('selectedIndex', 0);
       if (selectedIndex > maxEnemyIndex) {
         selectedIndex = maxEnemyIndex;
       }
@@ -1237,7 +1479,7 @@ uibattle.update = function*() {
       }
 
       // Draw arrows on the selected player
-      var selectedPlayerIndex = BATTLE().UI.selectedIndex;
+      var selectedPlayerIndex = getUIProp('selectedIndex', 0);
       var x = battle.playerPos[Global.maxPartyMemberIndex][selectedPlayerIndex][0] - 8;
       var y = battle.playerPos[Global.maxPartyMemberIndex][selectedPlayerIndex][1] - 67;
 
@@ -1269,7 +1511,7 @@ uibattle.update = function*() {
       // Don't bother selecting
       setUIProp('selectedIndex', -1);
       battle.commitAction(false);
-      if (BATTLE().UI.actionType == BattleActionType.CoopMagic) {
+      if (getUIProp('actionType', BattleActionType.Attack) == BattleActionType.CoopMagic) {
         if (!uibattle.isActionValid(BattleActionType.CoopMagic)) {
           setUIProp('state', BattleUIState.SelectMove);
           break;
@@ -1313,9 +1555,10 @@ uibattle.update = function*() {
   function end() {
     // Show the text message if there is one.
     // Draw the numbers
+    var showNumbers = getUIProp('showNum', []);
     for (var i = 0; i < BATTLEUI_MAX_SHOWNUM; i++) {
-      var entry = BATTLE().UI.showNum[i];
-      if (entry.num > 0) {
+      var entry = showNumbers[i];
+      if (entry && entry.num > 0) {
         if ((hrtime() - entry.time) / BattleFrameTime > 10) {
           mutateUI(function(uiState) {
             if (uiState.showNum && uiState.showNum[i]) {

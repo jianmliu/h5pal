@@ -6,6 +6,8 @@ import sound from './sound';
 import resourceService from '../../services/resource-service.js';
 import utils from './utils';
 import battleService from '../../services/battle-service.js';
+import { recomputeTimeChargingUnit } from '../../services/battle-systems.js';
+import { BattleComponents } from '../../ecs/index.js';
 import stateService from '../../services/state-service.js';
 
 log.trace('fight module load');
@@ -48,23 +50,15 @@ function mutateEnemy(index, mutator) {
 }
 
 function mutateUI(mutator) {
-  return battleService.setUI(function(uiState) {
+  var result = battleService.setUI(function(uiState) {
     if (!uiState) {
       return uiState;
     }
     mutator(uiState);
     return uiState;
   });
-}
-
-function mutateActionQueue(index, mutator) {
-  return battleService.setActionQueue(index, function(entry) {
-    if (!entry) {
-      return entry;
-    }
-    mutator(entry);
-    return entry;
-  });
+  updateUIComponent();
+  return result;
 }
 
 function setPlayerPosition(index, position) {
@@ -193,16 +187,6 @@ function mutateExp(mutator) {
   });
 }
 
-var timeChargingUnit = 1;
-var lastChargeTick = hrtime();
-
-function getMaxPartyIndex() {
-  if (!Global || typeof Global.maxPartyMemberIndex !== 'number') {
-    return -1;
-  }
-  return Global.maxPartyMemberIndex;
-}
-
 function getPartyEntry(index) {
   if (!Global || !Array.isArray(Global.party)) {
     return null;
@@ -210,155 +194,84 @@ function getPartyEntry(index) {
   return Global.party[index] || null;
 }
 
-function safeGetPlayerDexterity(role) {
-  if (typeof role !== 'number' || role < 0) {
-    return 1;
+function updateUIComponent(patch) {
+  if (!battleService.getUIEntity || !battleService.getRegistry) {
+    return;
   }
-  try {
-    var value = script.getPlayerDexterity(role);
-    if (typeof value === 'number' && !isNaN(value) && value > 0) {
-      return value;
-    }
-  } catch (err) {
-    if (log && typeof log.warn === 'function') {
-      log.warn('[BATTLE] getPlayerDexterity fallback', err);
-    }
+  var entityId = battleService.getUIEntity();
+  if (!entityId) {
+    return;
   }
-  if (typeof GameData !== 'undefined' &&
-      GameData &&
-      GameData.playerRoles &&
-      Array.isArray(GameData.playerRoles.dexterity)) {
-    var fallback = GameData.playerRoles.dexterity[role];
-    if (typeof fallback === 'number' && !isNaN(fallback) && fallback > 0) {
-      return fallback;
-    }
+  var registry = battleService.getRegistry();
+  var component = registry.getComponent(entityId, BattleComponents.UIState);
+  if (!component) {
+    return;
   }
-  return 1;
+  if (typeof patch === 'function') {
+    patch(component);
+    return;
+  }
+  var uiState = getUIState();
+  component.stateRef = uiState;
+  component.state = uiState ? uiState.state : null;
+  component.menuState = uiState ? uiState.menuState : null;
+  component.currentPlayer = uiState ? uiState.curPlayerIndex : null;
+  component.selectedAction = uiState ? uiState.selectedAction : null;
+  component.selectedIndex = uiState ? uiState.selectedIndex : null;
+  component.autoBattle = uiState ? uiState.autoAttack : false;
 }
 
-function updateTimeChargingUnit() {
-  var primaryRole = 0;
-  var firstPartyEntry = getPartyEntry(0);
-  if (firstPartyEntry && typeof firstPartyEntry.playerRole === 'number') {
-    primaryRole = firstPartyEntry.playerRole;
+function getUIState() {
+  if (typeof battleService.getUI === 'function') {
+    var ui = battleService.getUI();
+    if (ui) {
+      return ui;
+    }
   }
-  var baseDexterity = safeGetPlayerDexterity(primaryRole);
-  if (baseDexterity <= 0) {
-    baseDexterity = 1;
+  if (typeof battleService.getUIComponent === 'function') {
+    var component = battleService.getUIComponent();
+    if (component && component.stateRef) {
+      return component.stateRef;
+    }
   }
-  var unit = Math.pow(baseDexterity + 5, 0.3) / baseDexterity;
-  var battleSpeed = stateService.getGlobal('battleSpeed') || 1;
-  if (battleSpeed > 1) {
-    unit /= (1 + (battleSpeed - 1) * 0.5);
-  } else {
-    unit /= 1.2;
-  }
-  timeChargingUnit = unit;
-  lastChargeTick = hrtime();
-}
-
-function getTimeChargingSpeed(dexterity) {
-  if (!dexterity) {
-    return 0;
-  }
-  var uiState = BATTLE().UI || {};
-  if (uiState.state === BattleUIState.SelectMove && uiState.menuState !== BattleMenuState.Main) {
-    return 0;
-  }
-  if (uiState.msgShowTime && hrtime() < uiState.msgShowTime) {
-    return 0;
-  }
-  var speed = timeChargingUnit * dexterity;
-  if (Global.autoBattle) {
-    speed *= 3;
-  }
-  return speed;
-}
-
-function chargeTimeMeters() {
   var state = battleService.getState();
-  if (!state) {
-    return;
+  if (state && state.UI) {
+    return state.UI;
   }
+  if (typeof Global !== 'undefined' && Global && Global.battle && Global.battle.UI) {
+    return Global.battle.UI;
+  }
+  return null;
+}
 
-  var uiState = state.UI || {};
-  var now = hrtime();
-  var delta = now - lastChargeTick;
-  if (delta < 0 || delta > 500) {
-    // clamp to avoid huge jumps after pauses
-    delta = FrameTime;
+function getUIProp(prop, fallback) {
+  var uiState = getUIState();
+  if (uiState && Object.prototype.hasOwnProperty.call(uiState, prop)) {
+    return uiState[prop];
   }
-  lastChargeTick = now;
-  var step = delta / FrameTime;
-  if (step <= 0) {
-    return;
-  }
-
-  var submenuActive = uiState.state === BattleUIState.SelectMove && uiState.menuState !== BattleMenuState.Main;
-  var messageActive = uiState.msgShowTime && uiState.msgShowTime > now;
-  if (submenuActive || messageActive) {
-    return;
-  }
-
-  if (state.player && Array.isArray(state.player)) {
-    var maxPartyIndex = getMaxPartyIndex();
-    for (var playerIndex = 0; playerIndex <= maxPartyIndex; playerIndex++) {
-      var partyEntry = getPartyEntry(playerIndex);
-      if (!partyEntry) {
-        continue;
-      }
-      var playerState = state.player[playerIndex];
-      if (!playerState || playerState.state !== FighterState.Wait) {
-        continue;
-      }
-      var playerRole = partyEntry.playerRole;
-      var dexterity = battle.getPlayerActualDexterity(playerRole);
-      if (!dexterity || dexterity <= 0) {
-        dexterity = safeGetPlayerDexterity(playerRole);
-      }
-      var modifier = playerState.timeSpeedModifier != null ? playerState.timeSpeedModifier : 1;
-      var increment = getTimeChargingSpeed(dexterity) * modifier * step;
-      if (increment > 0) {
-        var nextValue = playerState.timeMeter + increment;
-        if (nextValue > 120) {
-          nextValue = 120;
-        }
-        playerState.timeMeter = nextValue;
-      }
-    }
-  }
-
-  if (state.enemy && Array.isArray(state.enemy)) {
-    for (var enemyIndex = 0; enemyIndex <= state.maxEnemyIndex; enemyIndex++) {
-      var enemyState = state.enemy[enemyIndex];
-      if (!enemyState || enemyState.objectID === 0 || enemyState.state !== FighterState.Wait) {
-        continue;
-      }
-      var enemyDexterity = battle.getEnemyDexterity(enemyIndex);
-      var enemyIncrement = getTimeChargingSpeed(enemyDexterity) * step;
-      if (enemyIncrement > 0 && Global.autoBattle) {
-        enemyIncrement /= 2;
-      }
-      if (enemyIncrement > 0) {
-        var nextEnemyValue = enemyState.timeMeter + enemyIncrement;
-        if (nextEnemyValue > 120) {
-          nextEnemyValue = 120;
-        }
-        enemyState.timeMeter = nextEnemyValue;
-        if (nextEnemyValue >= 100) {
-          if (state.hidingTime === 0) {
-            enemyState.state = FighterState.Com;
-          } else {
-            enemyState.timeMeter = 0;
-          }
-        }
-      }
-    }
-  }
+  return typeof fallback === 'undefined' ? null : fallback;
 }
 
 var surface = null
 var battle = null;
+
+function updateTimeChargingUnit() {
+  recomputeTimeChargingUnit();
+}
+
+function chargeTimeMeters() {
+  if (!battleService || typeof battleService.runSystems !== 'function') {
+    return;
+  }
+  battleService.runSystems(['time', 'ai'], { surface: surface, battle: battle });
+}
+
+function decayStatusCounters() {
+  if (!battleService || typeof battleService.runSystems !== 'function') {
+    return;
+  }
+  battleService.runSystems('status', { battle: battle });
+}
 
 fight.init = function*(surf, _battle) {
   log.debug('[BATTLE] init fight');
@@ -375,7 +288,7 @@ fight.init = function*(surf, _battle) {
    * @return {Number}
    */
   battle.selectAutoTarget = function() {
-    var i = BATTLE().UI.prevEnemyTarget;
+    var i = getUIProp('prevEnemyTarget', -1);
 
     if (i >= 0 && i <= BATTLE().maxEnemyIndex &&
         BATTLE().enemy[i].objectID != 0 &&
@@ -450,52 +363,13 @@ fight.init = function*(surf, _battle) {
    */
   battle.updateFighters = function() {
     log.trace('[BATTLE] updateFighters');
-    withBattle(function(state) {
-      for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-        var playerRole = Global.party[i].playerRole;
-        var player = state.player[i];
-        if (!player) continue;
-
-        player.pos = player.originalPos;
-        player.colorShift = 0;
-
-        if (GameData.playerRoles.HP[playerRole] == 0) {
-          player.currentFrame = (Global.playerStatus[playerRole][PlayerStatus.Puppet] == 0) ? 2 : 0;
-        } else {
-          if (Global.playerStatus[playerRole][PlayerStatus.Sleep] != 0 || battle.isPlayerDying(playerRole)) {
-            player.currentFrame = 1;
-          } else if (player.defending && !state.enemyCleared) {
-            player.currentFrame = 3;
-          } else {
-            player.currentFrame = 0;
-          }
-        }
-      }
-
-      for (var j = 0; j <= state.maxEnemyIndex; j++) {
-        var enemy = state.enemy[j];
-        if (!enemy || enemy.objectID == 0) {
-          continue;
-        }
-
-        enemy.pos = enemy.originalPos;
-        enemy.colorShift = 0;
-
-        if (enemy.status[PlayerStatus.Sleep] > 0 || enemy.status[PlayerStatus.Paralyzed] > 0) {
-          enemy.currentFrame = 0;
-          continue;
-        }
-
-        if (--enemy.e.idleAnimSpeed == 0) {
-          enemy.currentFrame++;
-          enemy.e.idleAnimSpeed = GameData.enemy[GameData.object[enemy.objectID].enemy.enemyID].idleAnimSpeed;
-        }
-
-        if (enemy.currentFrame >= enemy.e.idleFrames) {
-          enemy.currentFrame = 0;
-        }
-      }
-    });
+    if (typeof battleService.runSystems === 'function') {
+      battleService.runSystems('animation', { surface: surface, battle: battle });
+      return;
+    }
+    if (battle.systemManager) {
+      battle.systemManager.run('animation', { surface: surface, battle: battle });
+    }
   };
 
   /**
@@ -581,360 +455,24 @@ fight.init = function*(surf, _battle) {
     }
 
     if (BATTLE().phase == BattlePhase.SelectAction) {
-      if (BATTLE().UI.state == BattleUIState.Wait) {
-        for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          var playerRole = Global.party[i].playerRole;
-
-          // Don't select action for this player if player is KO'ed,
-          // sleeped, confused or paralyzed
-          if (GameData.playerRoles.HP[playerRole] == 0 ||
-              Global.playerStatus[playerRole][PlayerStatus.Sleep] ||
-              Global.playerStatus[playerRole][PlayerStatus.Confused] ||
-              Global.playerStatus[playerRole][PlayerStatus.Paralyzed]) {
-            continue;
-          }
-
-          // Start the menu for the first player whose action is not
-          // yet selected
-          if (BATTLE().player[i].state == FighterState.Wait) {
-            setBattleField('movingPlayerIndex', i);
-            mutatePlayer(i, function(player) {
-              player.state = FighterState.Com;
-              return player;
-            });
-            uibattle.playerReady(i);
-            break;
-          } else if (BATTLE().player[i].action.actionType == BattleActionType.CoopMagic) {
-            // Skip other players if someone selected coopmagic
-            i = Global.maxPartyMemberIndex + 1;
-            break;
-          }
-        }
-
-        if (i > Global.maxPartyMemberIndex) {
-          // actions for all players are decided. fill in the action queue.
-          setBattleField('repeat', false);
-          setBattleField('force', false);
-          setBattleField('flee', false);
-
-          setBattleField('curAction', 0);
-
-          for (var i = 0; i < Const.MAX_ACTIONQUEUE_ITEMS; i++) {
-            mutateActionQueue(i, function(queue) {
-              queue.index = 0xFFFF;
-              queue.dexterity = 0xFFFF;
-              return queue;
-            });
-          }
-
-          var j = 0;
-
-          // Put all enemies into action queue
-          for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
-            var enemy = BATTLE().enemy[i];
-            if (enemy.objectID == 0) {
-              continue;
-            }
-
-            var enemyDexterity = battle.getEnemyDexterity(i) * randomFloat(0.9, 1.1);
-            mutateActionQueue(j, function(queue) {
-              queue.isEnemy = true;
-              queue.index = i;
-              queue.dexterity = enemyDexterity;
-              return queue;
-            });
-
-            j++;
-
-            if (enemy.e.dualMove * 50 + randomLong(0, 100) > 100) {
-              var extraDexterity = battle.getEnemyDexterity(i) * randomFloat(0.9, 1.1);
-              mutateActionQueue(j, function(queue) {
-                queue.isEnemy = true;
-                queue.index = i;
-                queue.dexterity = extraDexterity;
-                return queue;
-              });
-
-              j++;
-            }
-          }
-
-          // Put all players into action queue
-          for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-            var playerRole = Global.party[i].playerRole;
-            var playerState = BATTLE().player[i];
-            var nextActionType = playerState.action.actionType;
-            var nextState = playerState.state;
-            var queueDexterity = 0;
-
-            if (GameData.playerRoles.HP[playerRole] == 0 ||
-                Global.playerStatus[playerRole][PlayerStatus.Sleep] > 0 ||
-                Global.playerStatus[playerRole][PlayerStatus.Paralyzed] > 0) {
-              // players who are unable to move should attack physically if recovered
-              // in the same turn
-              nextActionType = BattleActionType.Attack;
-              nextState = FighterState.Act;
-              queueDexterity = 0;
-            } else {
-              var dexterity = battle.getPlayerActualDexterity(playerRole);
-
-              if (Global.playerStatus[playerRole][PlayerStatus.Confused] > 0) {
-                nextActionType = BattleActionType.Attack;
-                nextState = FighterState.Act;
-              }
-
-              switch (nextActionType) {
-                case BattleActionType.CoopMagic:
-                  dexterity *= 10;
-                  break;
-
-                case BattleActionType.Defend:
-                  dexterity *= 5;
-                  break;
-
-                case BattleActionType.Magic:
-                  if ((GameData.object[playerState.action.actionID].magic.flags & MagicFlag.UsableToEnemy) == 0) {
-                     dexterity *= 3;
-                  }
-                  break;
-
-                case BattleActionType.Flee:
-                  dexterity /= 2;
-                  break;
-
-                case BattleActionType.UseItem:
-                  dexterity *= 3;
-                  break;
-
-                default:
-                  break;
-              }
-
-              if (battle.isPlayerDying(playerRole)) {
-                 dexterity /= 2;
-              }
-
-              dexterity *= randomFloat(0.9, 1.1);
-              queueDexterity = dexterity;
-            }
-
-            mutateActionQueue(j, function(queue) {
-              queue.isEnemy = false;
-              queue.index = i;
-              queue.dexterity = queueDexterity;
-              return queue;
-            });
-
-            mutatePlayer(i, function(player) {
-              player.action.actionType = nextActionType;
-              player.state = nextState;
-              return player;
-            });
-
-            j++;
-          }
-
-          // Sort the action queue by dexterity value
-          BATTLE().actionQueue.sort(function(a, b) {
-            if (a.dexterity === 0xFFFF) return 1;
-            if (b.dexterity === 0xFFFF) return -1;
-            return -(a.dexterity - b.dexterity);
-          });
-
-          // Perform the actions
-          setBattleField('phase', BattlePhase.PerformAction);
-        }
-      }
+      yield* battleService.runGeneratorSystems('queue', {
+        battle: battle,
+        surface: surface,
+        onPlayerReady: typeof uibattle.playerReady === 'function' ? uibattle.playerReady : null
+      });
     } else {
-      // Are all actions finished?
-      if (BATTLE().curAction >= Const.MAX_ACTIONQUEUE_ITEMS ||
-          BATTLE().actionQueue[BATTLE().curAction].dexterity == 0xFFFF) {
-        for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          mutatePlayer(i, function(player) {
-            player.defending = false;
-            return player;
-          });
-        }
-
-        // Run poison scripts
-        battle.backupStat();
-
-        for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          var playerRole = Global.party[i].playerRole;
-
-          for (var j = 0; j < Const.MAX_POISONS; j++) {
-            if (Global.poisonStatus[j][i].poisonID != 0) {
-              const poisonIndex = j;
-              const partyIndex = i;
-              const nextScriptEntry = yield script.runTriggerScript(
-                Global.poisonStatus[poisonIndex][partyIndex].poisonScript,
-                playerRole
-              );
-              mutateGlobalValue('poisonStatus', function(poisonStatus) {
-                if (poisonStatus && poisonStatus[poisonIndex] && poisonStatus[poisonIndex][partyIndex]) {
-                  poisonStatus[poisonIndex][partyIndex].poisonScript = nextScriptEntry;
-                }
-                return poisonStatus;
-              });
-            }
-          }
-
-          // Update statuses
-          for (var j = 0; j < PlayerStatus.All; j++) {
-            if (Global.playerStatus[playerRole][j] > 0) {
-              const statusIndex = j;
-              const roleIndex = playerRole;
-              mutateGlobalValue('playerStatus', function(status) {
-                if (status && status[roleIndex]) {
-                  status[roleIndex][statusIndex] = (status[roleIndex][statusIndex] || 0) - 1;
-                }
-                return status;
-              });
-            }
-          }
-        }
-
-        for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
-          var enemyState = BATTLE().enemy[i];
-          if (!enemyState) {
-            continue;
-          }
-
-          for (var j = 0; j < Const.MAX_POISONS; j++) {
-            var poisonSlot = enemyState.poisons[j];
-            if (poisonSlot && poisonSlot.poisonID != 0) {
-              var nextScriptEntry = yield script.runTriggerScript(
-                poisonSlot.poisonScript,
-                WORD(i)
-              );
-              battleService.setEnemyPoison(i, j, function(slot) {
-                slot.poisonScript = nextScriptEntry;
-                return slot;
-              });
-            }
-          }
-
-          // Update statuses
-          for (var j = 0; j < PlayerStatus.All; j++) {
-            if (enemyState.status[j] > 0) {
-              battleService.setEnemyStatus(i, j, function(value) {
-                return value > 0 ? value - 1 : value;
-              });
-            }
-          }
-        }
-
-        yield battle.postActionCheck(false);
-        if (battle.displayStatChange()) {
-          yield battle.delay(8, 0, true);
-        }
-
-        var hidingTime = BATTLE().hidingTime;
-        if (hidingTime > 0) {
-          hidingTime--;
-          battleService.setHidingTime(hidingTime);
-          if (hidingTime == 0) {
-            battle.backupScene();
-            battle.makeScene();
-            yield battle.fadeScene();
-          }
-        }
-
-        if (BATTLE().hidingTime == 0) {
-          for (var i = 0; i <= BATTLE().maxEnemyIndex; i++) {
-            var enemyTurnState = BATTLE().enemy[i];
-            if (!enemyTurnState || enemyTurnState.objectID == 0 || !enemyTurnState.scriptOnTurnStart) {
-              continue;
-            }
-
-            var turnStartResult = yield script.runTriggerScript(
-              enemyTurnState.scriptOnTurnStart,
-              WORD(i)
-            );
-
-            mutateEnemy(i, function(enemy) {
-              enemy.scriptOnTurnStart = turnStartResult;
-              return enemy;
-            });
-          }
-        }
-
-        // Clear all item-using records
-        mutateInventory(function(inventory) {
-          if (!Array.isArray(inventory)) {
-            return inventory;
-          }
-          for (var idx = 0; idx < Const.MAX_INVENTORY && idx < inventory.length; idx++) {
-            var slot = inventory[idx];
-            if (slot) {
-              slot.amountInUse = 0;
-            }
-          }
-          return inventory;
-        });
-
-        // Proceed to next turn...
-        setBattleField('phase', BattlePhase.SelectAction);
-      } else {
-        var i = BATTLE().actionQueue[BATTLE().curAction].index;
-
-        if (BATTLE().actionQueue[BATTLE().curAction].isEnemy) {
-          var actingEnemy = BATTLE().enemy[i];
-          if (BATTLE().hidingTime == 0 &&
-              !onlyPuppet &&
-              actingEnemy &&
-              actingEnemy.objectID != 0) {
-            if (actingEnemy.scriptOnReady) {
-              var readyScriptResult = yield script.runTriggerScript(
-                actingEnemy.scriptOnReady,
-                WORD(i)
-              );
-              mutateEnemy(i, function(enemy) {
-                enemy.scriptOnReady = readyScriptResult;
-                return enemy;
-              });
-            }
-
-            setBattleField('enemyMoving', true);
-            yield battle.enemyPerformAction(i);
-            setBattleField('enemyMoving', false);
-          }
-        } else if (BATTLE().player[i].state == FighterState.Act) {
-          var playerRole = Global.party[i].playerRole;
-          var updatedActionType = null;
-
-          if (GameData.playerRoles.HP[playerRole] == 0) {
-            if (Global.playerStatus[playerRole][PlayerStatus.Puppet] == 0) {
-              updatedActionType = BattleActionType.Pass;
-            }
-          } else if (Global.playerStatus[playerRole][PlayerStatus.Sleep] > 0 ||
-                     Global.playerStatus[playerRole][PlayerStatus.Paralyzed] > 0) {
-            updatedActionType = BattleActionType.Pass;
-          } else if (Global.playerStatus[playerRole][PlayerStatus.Confused] > 0) {
-            updatedActionType = BattleActionType.AttackMate;
-          }
-
-          if (updatedActionType !== null) {
-            mutatePlayer(i, function(player) {
-              player.action.actionType = updatedActionType;
-              return player;
-            });
-          }
-
-          // Perform the action for this player.
-          setBattleField('movingPlayerIndex', i);
-          yield battle.playerPerformAction(i);
-        }
-
-        setBattleField('curAction', function(value) {
-          return (value || 0) + 1;
-        });
-      }
+      yield* battleService.runGeneratorSystems('action', {
+        battle: battle,
+        surface: surface,
+        onlyPuppet: onlyPuppet
+      });
     }
 
     // The R and F keys and Fleeing should affect all players
-    if (BATTLE().UI.menuState == BattleMenuState.Main &&
-        BATTLE().UI.state == BattleUIState.SelectMove) {
+    var currentMenuState = getUIProp('menuState', BattleMenuState.Main);
+    var currentUIState = getUIProp('state', BattleUIState.Wait);
+    if (currentMenuState == BattleMenuState.Main &&
+        currentUIState == BattleUIState.SelectMove) {
       if (input.isKeyPressed(Key.ForceRepeat)) {
         setBattleField('repeat', true);
       } else if (input.isKeyPressed(Key.Force)) {
@@ -960,11 +498,20 @@ fight.init = function*(surf, _battle) {
    */
   battle.commitAction = function(repeat) {
     log.debug(['[BATTLE] commitAction', repeat].join(' '));
-    var curPlayer = BATTLE().player[BATTLE().UI.curPlayerIndex];
+    var currentIndex = getUIProp('curPlayerIndex', 0);
+    var curPlayer = BATTLE().player[currentIndex];
+    if (!curPlayer) {
+      return;
+    }
+    var currentPartyEntry = getPartyEntry(currentIndex);
+    var currentRoleId = currentPartyEntry ? currentPartyEntry.playerRole : null;
     if (!repeat) {
-      curPlayer.action.actionType = BATTLE().UI.actionType;
-      curPlayer.action.target = SHORT(BATTLE().UI.selectedIndex);
-      curPlayer.action.actionID = BATTLE().UI.objectID;
+      var actionType = getUIProp('actionType', curPlayer.action.actionType);
+      var selectedIndex = SHORT(getUIProp('selectedIndex', curPlayer.action.target));
+      var objectId = getUIProp('objectID', curPlayer.action.actionID);
+      curPlayer.action.actionType = actionType;
+      curPlayer.action.target = selectedIndex;
+      curPlayer.action.actionID = objectId;
     } else if (curPlayer.action.actionType == BattleActionType.Pass) {
       curPlayer.action.actionType = BattleActionType.Attack;
       curPlayer.action.target = -1;
@@ -976,7 +523,8 @@ fight.init = function*(surf, _battle) {
         var w = curPlayer.action.actionID;
         w = GameData.magic[GameData.object[w].magic.magicNumber].costMP;
 
-        if (GameData.playerRoles.MP[Global.party[BATTLE().UI.curPlayerIndex].playerRole] < w) {
+        if (currentRoleId !== null &&
+            GameData.playerRoles.MP[currentRoleId] < w) {
           w = curPlayer.action.actionID;
           w = GameData.magic[GameData.object[w].magic.magicNumber].type;
           if (w == MagicType.ApplyToPlayer || w == MagicType.ApplyToParty ||
@@ -1016,7 +564,7 @@ fight.init = function*(surf, _battle) {
         break;
     }
 
-    if (BATTLE().UI.actionType == BattleActionType.Flee) {
+    if (getUIProp('actionType', curPlayer.action.actionType) == BattleActionType.Flee) {
       setBattleField('flee', true);
     }
 

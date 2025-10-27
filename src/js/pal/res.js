@@ -4,6 +4,7 @@
  * 由于资源加载已经都放在用时了，这里似乎没用了
  */
 import stateService from '../../services/state-service.js';
+import worldService from '../../services/world-service.js';
 
 var res = {
   loadFlag: 0,
@@ -30,7 +31,7 @@ var res = {
       // Free previous loaded scene (sprites and map)
       // Load map
       // Load sprites
-      stateService.setGlobal('partyOffset', PAL_XY(160, 112));
+      worldService.setPartyOffset(PAL_XY(160, 112));
     }
     if (res.loadFlag & LoadFlag.PlayerSprite) {
       // Free previous loaded player sprites

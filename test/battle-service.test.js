@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BattleComponents } from '../src/ecs/index.js';
 
 const initMock = vi.fn(function* (...args) {
   yield { type: 'initStep', args };
@@ -48,6 +49,8 @@ describe('BattleService', () => {
     battleService.module = null;
     battleService._globalAccessorInstalled = false;
     root.Global = {};
+    root.Global.playerStatus = [];
+    root.Global.poisonStatus = [];
     battleService.bindModule(battleModuleMock);
   });
 
@@ -128,5 +131,226 @@ describe('BattleService', () => {
       previous: 1
     }));
     battleService.off && battleService.off('stateMutated', spy);
+  });
+
+  it('initialises ECS entities for players and enemies', () => {
+    const sampleState = {
+      player: [
+        { timeMeter: 10, timeSpeedModifier: 1, action: {}, pos: 100, originalPos: 90, currentFrame: 0, sprite: { id: 'p0' }, colorShift: 0 },
+        { timeMeter: 5, timeSpeedModifier: 1.5, action: {}, pos: 110, originalPos: 95, currentFrame: 0, sprite: { id: 'p1' }, colorShift: 0 }
+      ],
+      enemy: [
+        {
+          objectID: 42,
+          timeMeter: 7,
+          timeSpeedModifier: 1,
+          status: new Array(9).fill(0),
+          action: { actionType: 2 },
+          pos: 200,
+          originalPos: 180,
+          currentFrame: 0,
+          sprite: { id: 'e0' },
+          e: { idleAnimSpeed: 1, idleFrames: 2 }
+        },
+        { objectID: 0 }
+      ],
+      maxEnemyIndex: 0,
+      actionQueue: [
+        { index: 0, dexterity: 50, isEnemy: false },
+        { index: 0xFFFF, dexterity: 0xFFFF, isEnemy: false }
+      ],
+      UI: {
+        state: 0,
+        menuState: 0,
+        curPlayerIndex: 0,
+        selectedAction: 0,
+        selectedIndex: -1,
+        autoAttack: false
+      }
+    };
+    battleService.replaceState(sampleState);
+    root.Global.maxPartyMemberIndex = 1;
+    root.Global.party = [
+      { playerRole: 3 },
+      { playerRole: 4 }
+    ];
+    root.Global.autoBattle = false;
+    root.Global.playerStatus[3] = new Array(9).fill(0);
+    root.Global.playerStatus[4] = new Array(9).fill(0);
+
+    battleService.initialiseBattleEntities();
+    const registry = battleService.getRegistry();
+
+    const playerEntity = battleService.getPlayerEntity(0);
+    expect(playerEntity).not.toBeNull();
+    const playerActor = registry.getComponent(playerEntity, BattleComponents.BattleActor);
+    expect(playerActor).toEqual(expect.objectContaining({
+      type: 'player',
+      index: 0,
+      roleId: 3
+    }));
+    const playerTime = registry.getComponent(playerEntity, BattleComponents.Time);
+    const currentState = battleService.getState();
+    expect(playerTime.stateRef).toBe(currentState.player[0]);
+    const playerStatus = registry.getComponent(playerEntity, BattleComponents.Status);
+    expect(playerStatus).toEqual(expect.objectContaining({
+      type: 'player',
+      roleId: 3,
+      statusRef: expect.any(Array)
+    }));
+    const playerStats = registry.getComponent(playerEntity, BattleComponents.Stats);
+    expect(playerStats).toEqual(expect.objectContaining({
+      type: 'player',
+      actorIndex: 0
+    }));
+    const playerPosition = registry.getComponent(playerEntity, BattleComponents.Position);
+    expect(playerPosition).toEqual(expect.objectContaining({
+      type: 'player',
+      actorIndex: 0,
+      current: sampleState.player[0].pos,
+      original: sampleState.player[0].originalPos
+    }));
+    const playerSprite = registry.getComponent(playerEntity, BattleComponents.Sprite);
+    expect(playerSprite).toEqual(expect.objectContaining({
+      type: 'player',
+      actorIndex: 0
+    }));
+    const playerAnimation = registry.getComponent(playerEntity, BattleComponents.Animation);
+    expect(playerAnimation).toEqual(expect.objectContaining({
+      type: 'player',
+      actorIndex: 0,
+      currentFrame: sampleState.player[0].currentFrame
+    }));
+    const playerCommand = registry.getComponent(playerEntity, BattleComponents.Command);
+    expect(playerCommand).toEqual(expect.objectContaining({
+      type: 'player',
+      commandRef: sampleState.player[0].action
+    }));
+
+    const enemyEntity = battleService.getEnemyEntity(0);
+    expect(enemyEntity).not.toBeNull();
+    const enemyActor = registry.getComponent(enemyEntity, BattleComponents.BattleActor);
+    expect(enemyActor).toEqual(expect.objectContaining({
+      type: 'enemy',
+      index: 0,
+      objectId: 42
+    }));
+    const enemyTime = registry.getComponent(enemyEntity, BattleComponents.Time);
+    expect(enemyTime.stateRef).toBe(currentState.enemy[0]);
+    const enemyStatus = registry.getComponent(enemyEntity, BattleComponents.Status);
+    expect(enemyStatus).toEqual(expect.objectContaining({
+      type: 'enemy',
+      enemyIndex: 0,
+      statusRef: expect.any(Array)
+    }));
+    const enemyStats = registry.getComponent(enemyEntity, BattleComponents.Stats);
+    expect(enemyStats).toEqual(expect.objectContaining({
+      type: 'enemy',
+      actorIndex: 0
+    }));
+    const enemyPosition = registry.getComponent(enemyEntity, BattleComponents.Position);
+    expect(enemyPosition).toEqual(expect.objectContaining({
+      type: 'enemy',
+      actorIndex: 0,
+      current: sampleState.enemy[0].pos,
+      original: sampleState.enemy[0].originalPos
+    }));
+    const enemySprite = registry.getComponent(enemyEntity, BattleComponents.Sprite);
+    expect(enemySprite).toEqual(expect.objectContaining({
+      type: 'enemy',
+      actorIndex: 0
+    }));
+    const enemyAnimation = registry.getComponent(enemyEntity, BattleComponents.Animation);
+    expect(enemyAnimation).toEqual(expect.objectContaining({
+      type: 'enemy',
+      actorIndex: 0
+    }));
+    const enemyCommand = registry.getComponent(enemyEntity, BattleComponents.Command);
+    expect(enemyCommand).toEqual(expect.objectContaining({
+      type: 'enemy',
+      commandRef: sampleState.enemy[0].action
+    }));
+
+    const queueEntity = battleService.getQueueEntity(0);
+    expect(queueEntity).not.toBeNull();
+    const queueComp = registry.getComponent(queueEntity, BattleComponents.QueueEntry);
+    expect(queueComp).toEqual(expect.objectContaining({
+      index: 0,
+      entryRef: sampleState.actionQueue[0]
+    }));
+
+    const uiEntity = battleService.getUIEntity();
+    expect(uiEntity).not.toBeNull();
+    const uiComponent = registry.getComponent(uiEntity, BattleComponents.UIState);
+    expect(uiComponent).toEqual(expect.objectContaining({
+      stateRef: sampleState.UI,
+      state: sampleState.UI.state,
+      menuState: sampleState.UI.menuState,
+      currentPlayer: sampleState.UI.curPlayerIndex,
+      selectedAction: sampleState.UI.selectedAction,
+      selectedIndex: sampleState.UI.selectedIndex,
+      autoBattle: false
+    }));
+  });
+
+  it('keeps the UI component synchronised with state updates', () => {
+    const sampleState = {
+      player: [
+        { timeMeter: 10, timeSpeedModifier: 1, action: {} }
+      ],
+      enemy: [
+        { objectID: 0, timeMeter: 0, timeSpeedModifier: 1, status: new Array(9).fill(0), action: { actionType: 0 } }
+      ],
+      maxEnemyIndex: 0,
+      actionQueue: [
+        { index: 0, dexterity: 30, isEnemy: false }
+      ],
+      UI: {
+        state: 0,
+        menuState: 0,
+        curPlayerIndex: 0,
+        selectedAction: 0,
+        selectedIndex: -1,
+        autoAttack: false
+      }
+    };
+    battleService.replaceState(sampleState);
+    root.Global.maxPartyMemberIndex = 0;
+    root.Global.party = [{ playerRole: 3 }];
+    root.Global.autoBattle = false;
+    root.Global.playerStatus[3] = new Array(9).fill(0);
+
+    battleService.initialiseBattleEntities();
+
+    battleService.setUI({
+      state: 2,
+      selectedIndex: 3,
+      autoAttack: true
+    });
+
+    const uiComponent = battleService.getUIComponent();
+    const uiState = battleService.getUI();
+
+    expect(uiState).toEqual(expect.objectContaining({
+      state: 2,
+      selectedIndex: 3,
+      autoAttack: true
+    }));
+    expect(uiComponent.state).toBe(2);
+    expect(uiComponent.selectedIndex).toBe(3);
+    expect(uiComponent.autoBattle).toBe(root.Global.autoBattle);
+
+    root.Global.autoBattle = true;
+    battleService.syncUIComponent();
+    expect(battleService.getUIComponent().autoBattle).toBe(true);
+
+    battleService.updateUI(function(ui) {
+      ui.menuState = 4;
+      return ui;
+    });
+
+    const updatedComponent = battleService.getUIComponent();
+    expect(updatedComponent.menuState).toBe(4);
+    expect(battleService.getUI().menuState).toBe(4);
   });
 });

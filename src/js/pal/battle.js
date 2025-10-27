@@ -11,6 +11,7 @@ import fight from './fight';
 import ui from './ui';
 import uibattle from './uibattle';
 import battleService from '../../services/battle-service.js';
+import createBattleSystemManager from '../../services/battle-systems.js';
 
 log.trace('battle module load');
 
@@ -234,6 +235,7 @@ var Battle = battle.Battle = function() {
 };
 
 var surface = null
+var systemManager = null;
 
 battle.init = function*(surf) {
   log.debug('[BATTLE] init');
@@ -250,127 +252,27 @@ battle.init = function*(surf) {
   yield uibattle.init(surf, battle, ui);
 
   battleService.replaceState(new Battle());
+  systemManager = createBattleSystemManager({
+    battleService: battleService,
+    surface: surf,
+    battle: battle
+  });
+  battle.systemManager = systemManager;
+  if (typeof battleService.setSystemManager === 'function') {
+    battleService.setSystemManager(systemManager);
+  }
 };
 
 /**
  * Generate the battle scene into the scene buffer.
  */
 battle.makeScene = function() {
-  // Draw the background
-  var srcOffset = 0;
-  var dstOffset = 0;
-  var background = Global.battle.background;
-  var sceneBuf = Global.battle.sceneBuf;
-
-  for (var i = 0; i < surface.pitch * surface.height; i++) {
-    var b = background[srcOffset] & 0x0F;
-    b += Global.battle.backgroundColorShift;
-
-    if (b & 0x80) {
-      b = 0;
-    } else if (b & 0x70) {
-      b = 0x0F;
-    }
-
-    sceneBuf[dstOffset] = (b | (background[srcOffset] & 0xF0));
-
-    ++srcOffset;
-    ++dstOffset;
+  if (battleService && typeof battleService.runSystems === 'function') {
+    battleService.runSystems('render', { surface: surface, battle: battle });
+    return;
   }
-
-  scene.applyWave(sceneBuf);
-
-  // Draw the enemies
-  for (var i = Global.battle.maxEnemyIndex; i >= 0; i--) {
-    var enemy = Global.battle.enemy[i];
-    if (enemy.objectID == 0) {
-      continue;
-    }
-    if (!enemy.sprite) {
-      // 当敌人是召唤或者复制出的时候似乎有这个问题
-      continue;
-    }
-    var pos = enemy.pos;
-
-    if (enemy.status[PlayerStatus.Confused] > 0 &&
-        enemy.status[PlayerStatus.Sleep] == 0 &&
-        enemy.status[PlayerStatus.Paralyzed] == 0) {
-      // Enemy is confused
-      pos = PAL_XY(PAL_X(pos) + randomLong(-1, 1), PAL_Y(pos));
-    }
-
-    var frame = enemy.sprite.getFrame(enemy.currentFrame);
-    pos = PAL_XY(PAL_X(pos) - ~~(frame.width / 2), PAL_Y(pos) - frame.height);
-
-    if (enemy.objectID != 0) {
-      if (enemy.colorShift != 0) {
-        surface.blitRLEWithColorShift(frame, pos, enemy.colorShift, sceneBuf);
-      } else {
-        surface.blitRLE(frame, pos, sceneBuf);
-      }
-    }
-  }
-
-  if (Global.battle.summonSprite) {
-    // Draw the summoned god
-    var frame = Global.battle.summonSprite.getFrame(Global.battle.summonFrame);
-    var pos = PAL_XY(
-      PAL_X(Global.battle.summonPos) - ~~(frame.width / 2),
-      PAL_Y(Global.battle.summonPos) - frame.height
-    );
-
-    surface.blitRLE(frame, pos, sceneBuf);
-  } else {
-    // Draw the players
-    for (i = Global.maxPartyMemberIndex; i >= 0; i--) {
-      var pos = Global.battle.player[i].pos;
-      var status = Global.playerStatus[Global.party[i].playerRole];
-
-      if (status[PlayerStatus.Confused] != 0 &&
-          status[PlayerStatus.Sleep] == 0 &&
-          status[PlayerStatus.Paralyzed] == 0 &&
-          GameData.playerRoles.HP[Global.party[i].playerRole] > 0) {
-        // Player is confused
-        continue;
-      }
-
-      var player = Global.battle.player[i];
-      var frame = player.sprite.getFrame(player.currentFrame);
-      pos = PAL_XY(
-        PAL_X(pos) - ~~(frame.width / 2),
-        PAL_Y(pos) - frame.height
-      );
-
-      if (player.colorShift != 0) {
-        surface.blitRLEWithColorShift(frame, pos, player.colorShift, sceneBuf);
-      } else if (Global.battle.hidingTime == 0) {
-        surface.blitRLE(frame, pos, sceneBuf);
-      }
-    }
-
-    // Confused players should be drawn on top of normal players
-    for (var i = Global.maxPartyMemberIndex; i >= 0; i--) {
-      var status = Global.playerStatus[Global.party[i].playerRole];
-      if (status[PlayerStatus.Confused] != 0 &&
-          status[PlayerStatus.Sleep] == 0 &&
-          status[PlayerStatus.Paralyzed] == 0 &&
-          GameData.playerRoles.HP[Global.party[i].playerRole] > 0) {
-        // Player is confused
-        var player = Global.battle.player[i];
-        var frame = player.sprite.getFrame(player.currentFrame);
-        var pos = PAL_XY(PAL_X(player.pos), PAL_Y(player.pos) + randomLong(-1, 1));
-        pos = PAL_XY(
-          PAL_X(pos) - ~~(frame.width / 2),
-          PAL_Y(pos) - frame.height
-        );
-
-        if (player.colorShift != 0) {
-          surface.blitRLEWithColorShift(frame, pos, player.colorShift, sceneBuf);
-        } else if (Global.battle.hidingTime == 0) {
-          surface.blitRLE(frame, pos, sceneBuf);
-        }
-      }
-    }
+  if (systemManager) {
+    systemManager.run('render', { surface: surface, battle: battle });
   }
 };
 
@@ -1230,6 +1132,10 @@ battle.start = function*(enemyTeam, isBoss) {
 
     return state;
   });
+
+  if (typeof battleService.initialiseBattleEntities === 'function') {
+    battleService.initialiseBattleEntities();
+  }
 
   if (typeof fight.updateTimeChargingUnit === 'function') {
     fight.updateTimeChargingUnit();

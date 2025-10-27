@@ -33,6 +33,16 @@ function mutateGlobalEntry(key, index, mutator) {
   });
 }
 
+function mutateGameDataValue(key, mutator) {
+  return stateService.mutateGameData(key, function(current) {
+    if (typeof mutator !== 'function') {
+      return current;
+    }
+    const result = mutator(current);
+    return typeof result === 'undefined' ? current : result;
+  });
+}
+
 script_extras.init = function*(surf, _script) {
   log.debug('[SCRIPT] init extras');
   script = _script;
@@ -208,56 +218,73 @@ script_extras.init = function*(surf, _script) {
       num = 1;
     }
 
-    var index = 0;
-    var found = false;
-    var inventory = Global.inventory;
-    // Search for the specified item in the inventory
-    while (index < Const.MAX_INVENTORY) {
-      if (inventory[index].item == objectID) {
-        found = true;
-        break;
-      } else if (inventory[index].item == 0) {
-         break;
+    var success = false;
+    mutateGlobalValue('inventory', function(inventory) {
+      if (!inventory) {
+        return inventory;
       }
-      index++;
-    }
-
-    if (num > 0) {
-      // Add item
-      if (index >= Const.MAX_INVENTORY) {
-         // inventory is full. cannot add item
-         return false;
-      }
-
-      if (found) {
-        inventory[index].amount += num;
-        if (inventory[index].amount > 99) {
-          // Maximum number is 99
-          inventory[index].amount = 99;
+      var index = 0;
+      var found = false;
+      while (index < Const.MAX_INVENTORY) {
+        var slot = inventory[index];
+        if (!slot) {
+          break;
         }
-      } else {
-        inventory[index].item = objectID;
-        if (num > 99) {
-          num = 99;
+        if (slot.item == objectID) {
+          found = true;
+          break;
+        } else if (slot.item == 0) {
+          break;
         }
-        inventory[index].amount = num;
+        index++;
       }
-      return true;
-    } else {
-      // Remove item
-      if (found) {
-        num *= -1;
-        if (inventory[index].amount < num) {
-          // This item has been run out
-          inventory[index].amount = 0;
-          return false;
-        }
 
-        inventory[index].amount -= num;
-        return true;
+      if (num > 0) {
+        if (index >= Const.MAX_INVENTORY) {
+          return inventory;
+        }
+        var target = inventory[index];
+        if (!target) {
+          return inventory;
+        }
+        if (found) {
+          target.amount += num;
+          if (target.amount > 99) {
+            target.amount = 99;
+          }
+        } else {
+          target.item = objectID;
+          if (num > 99) {
+            num = 99;
+          }
+          target.amount = num;
+        }
+        success = true;
+        return inventory;
       }
-      return false;
-    }
+
+      if (!found) {
+        success = false;
+        return inventory;
+      }
+
+      var removal = num * -1;
+      var removalTarget = inventory[index];
+      if (!removalTarget) {
+        success = false;
+        return inventory;
+      }
+      if (removalTarget.amount < removal) {
+        removalTarget.amount = 0;
+        success = false;
+        return inventory;
+      }
+      removalTarget.amount -= removal;
+      success = true;
+      return inventory;
+    });
+
+    return success;
   };
 
   script.getItemAmount = function(item) {
@@ -275,92 +302,144 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.compressInventory = function() {
-    var j = 0;
-    var inventory = Global.inventory;
-    for (var i=0; i<Const.MAX_INVENTORY; ++i) {
-      if (inventory[i].item == 0) {
-        break;
+    mutateGlobalValue('inventory', function(inventory) {
+      if (!inventory) {
+        return inventory;
       }
-      if (inventory[i].amount > 0) {
-        memcpy(inventory[j].uint8Array, inventory[i].uint8Array, inventory[j].uint8Array.length);
-        j++;
+      var j = 0;
+      for (var i = 0; i < Const.MAX_INVENTORY; ++i) {
+        var slot = inventory[i];
+        if (!slot || slot.item == 0) {
+          break;
+        }
+        if (slot.amount > 0) {
+          var target = inventory[j];
+          if (target && target !== slot) {
+            memcpy(target.uint8Array, slot.uint8Array, target.uint8Array.length);
+          }
+          j++;
+        }
       }
-    }
-    for (; j< Const.MAX_INVENTORY; ++j) {
-      memset(inventory[j].uint8Array, 0, inventory[j].uint8Array.length);
-    }
+      for (; j < Const.MAX_INVENTORY; ++j) {
+        if (inventory[j]) {
+          memset(inventory[j].uint8Array, 0, inventory[j].uint8Array.length);
+        }
+      }
+      return inventory;
+    });
   };
 
   script.increaseHPMP = function(role, HP, MP) {
-    var playerRoles = GameData.playerRoles;
-    // Only care about alive players
-    if (playerRoles.HP[role] > 0) {
-      // change HP
-      playerRoles.HP[role] += HP;
-      if (playerRoles.HP[role] < 0) {
-        playerRoles.HP[role] = 0;
-      } else if (playerRoles.HP[role] > playerRoles.maxHP[role]) {
-        playerRoles.HP[role] = playerRoles.maxHP[role];
+    var success = false;
+    mutateGameDataValue('playerRoles', function(playerRoles) {
+      if (!playerRoles || !playerRoles.HP || !playerRoles.MP) {
+        return playerRoles;
       }
-      // Change MP
-      playerRoles.MP[role] += MP;
-      if (playerRoles.MP[role] < 0) {
-        playerRoles.MP[role] = 0;
-      } else if (playerRoles.MP[role] > playerRoles.maxMP[role]) {
-        playerRoles.MP[role] = playerRoles.maxMP[role];
+      if (playerRoles.HP[role] > 0) {
+        playerRoles.HP[role] += HP;
+        if (playerRoles.HP[role] < 0) {
+          playerRoles.HP[role] = 0;
+        } else if (playerRoles.maxHP && playerRoles.HP[role] > playerRoles.maxHP[role]) {
+          playerRoles.HP[role] = playerRoles.maxHP[role];
+        }
+        playerRoles.MP[role] += MP;
+        if (playerRoles.MP[role] < 0) {
+          playerRoles.MP[role] = 0;
+        } else if (playerRoles.maxMP && playerRoles.MP[role] > playerRoles.maxMP[role]) {
+          playerRoles.MP[role] = playerRoles.maxMP[role];
+        }
+        success = true;
       }
-      return true;
-    }
-    return false;
+      return playerRoles;
+    });
+    return success;
   };
 
   script.addPoisonForPlayer = function(role, poisonID) {
     var index = findIndexByPlayerRole(role);
     if (index < 0) return;
 
-    var poisonStatus = Global.poisonStatus;
-    for (var i=0; i<Const.MAX_POISONS; ++i) {
-      var w = poisonStatus[i][index].poisonID;
-      if (w == 0) {
-        break;
+    mutateGlobalValue('poisonStatus', function(poisonStatus) {
+      if (!poisonStatus) {
+        return poisonStatus;
       }
-      if (w == poisonID) {
-        return; // already poisoned
+      var slotIndex = 0;
+      for (slotIndex = 0; slotIndex < Const.MAX_POISONS; ++slotIndex) {
+        var row = poisonStatus[slotIndex];
+        if (!row) {
+          continue;
+        }
+        var entry = row[index];
+        if (!entry) {
+          continue;
+        }
+        if (entry.poisonID == 0) {
+          break;
+        }
+        if (entry.poisonID == poisonID) {
+          return poisonStatus;
+        }
       }
-    }
-    if (i < Const.MAX_POISONS) {
-      poisonStatus[i][index].poisonID = poisonID;
-      poisonStatus[i][index].poisonScript = GameData.object[poisonID].poison.playerScript;
-    }
+      if (slotIndex < Const.MAX_POISONS) {
+        var targetRow = poisonStatus[slotIndex];
+        if (targetRow && targetRow[index]) {
+          targetRow[index].poisonID = poisonID;
+          targetRow[index].poisonScript = GameData.object[poisonID].poison.playerScript;
+        }
+      }
+      return poisonStatus;
+    });
   };
 
   script.curePoisonByKind = function(role, poisonID) {
     var index = findIndexByPlayerRole(role);
     if (index < 0) return;
 
-    var poisonStatus = Global.poisonStatus;
-    for (var i=0; i<Const.MAX_POISONS; ++i) {
-      var p = poisonStatus[i][index];
-      if (p.poisonID == poisonID) {
-        p.poisonID = 0;
-        p.poisonScript = 0;
+    mutateGlobalValue('poisonStatus', function(poisonStatus) {
+      if (!poisonStatus) {
+        return poisonStatus;
       }
-    }
+      for (var i = 0; i < Const.MAX_POISONS; ++i) {
+        var row = poisonStatus[i];
+        if (!row || !row[index]) {
+          continue;
+        }
+        var entry = row[index];
+        if (entry.poisonID == poisonID) {
+          entry.poisonID = 0;
+          entry.poisonScript = 0;
+        }
+      }
+      return poisonStatus;
+    });
   };
 
   script.curePoisonByLevel = function(role, maxLevel) {
     var index = findIndexByPlayerRole(role);
     if (index < 0) return;
 
-    var poisonStatus = Global.poisonStatus;
-    for (var i=0; i<Const.MAX_POISONS; ++i) {
-      var p = poisonStatus[i][index];
-      var w = p.poisonID;
-      if (GameData.object[w].poison.poisonLevel <= maxLevel) {
-        p.poisonID = 0;
-        p.poisonScript = 0;
+    mutateGlobalValue('poisonStatus', function(poisonStatus) {
+      if (!poisonStatus) {
+        return poisonStatus;
       }
-    }
+      for (var i = 0; i < Const.MAX_POISONS; ++i) {
+        var row = poisonStatus[i];
+        if (!row || !row[index]) {
+          continue;
+        }
+        var entry = row[index];
+        var poisonId = entry.poisonID;
+        if (poisonId == 0) {
+          continue;
+        }
+        var data = GameData.object[poisonId];
+        if (data && data.poison && data.poison.poisonLevel <= maxLevel) {
+          entry.poisonID = 0;
+          entry.poisonScript = 0;
+        }
+      }
+      return poisonStatus;
+    });
   };
 
   script.isPlayerPoisonedByLevel = function(role, minLevel) {

@@ -5,6 +5,7 @@ import battleModule from './battle';
 import battleService from '../../services/battle-service.js';
 import ending from './ending';
 import stateService from '../../services/state-service.js';
+import worldService from '../../services/world-service.js';
 
 battleService.bindModule(battleModule);
 
@@ -20,6 +21,7 @@ play.init = function*(surf) {
   global.play = play;
   surface = surf;
   yield script.init(surf);
+  worldService.init();
   yield battleService.init(surf);
   yield ending.init(surf);
 };
@@ -150,7 +152,7 @@ play.update = function*(trigger) {
 
         if (!scene.checkObstacle(pos, true, 0)) {
           // move here
-          stateService.setGlobal('viewport', PAL_XY(
+          worldService.setViewport(PAL_XY(
             PAL_X(pos) - PAL_X(Global.partyOffset),
             PAL_Y(pos) - PAL_Y(Global.partyOffset)
           ));
