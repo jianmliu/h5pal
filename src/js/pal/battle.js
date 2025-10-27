@@ -12,6 +12,7 @@ import ui from './ui';
 import uibattle from './uibattle';
 import battleService from '../../services/battle-service.js';
 import createBattleSystemManager from '../../services/battle-systems.js';
+import worldService from '../../services/world-service.js';
 
 log.trace('battle module load');
 
@@ -24,6 +25,51 @@ var battle = {
 };
 
 battleService.bindModule(battle);
+
+function BATTLE() {
+  const state = battleService.getState();
+  if (state) return state;
+  if (typeof Global !== 'undefined' && Global && Global.battle) return Global.battle;
+  return {};
+}
+
+function getGlobalValue(key, defaultValue) {
+  var value = stateService.getGlobal(key);
+  return typeof value !== 'undefined' ? value : defaultValue;
+}
+
+function setGlobalValue(key, value) {
+  return stateService.setGlobal(key, value);
+}
+
+function mutateGlobalValue(key, mutator) {
+  return stateService.mutateGlobal(key, mutator);
+}
+
+function getParty() {
+  return worldService.getParty();
+}
+
+function getPartyMember(index) {
+  return worldService.getPartyMember(index);
+}
+
+function getMaxPartyMemberIndex() {
+  return worldService.getMaxPartyMemberIndex();
+}
+
+function getEquipmentEffects() {
+  return getGlobalValue('equipmentEffect', []);
+}
+
+function getEquipmentEffect(index) {
+  var effects = getEquipmentEffects();
+  return effects && effects[index] ? effects[index] : null;
+}
+
+function getExpState() {
+  return getGlobalValue('exp', null);
+}
 
 function mutatePlayerRoles(mutator) {
   return stateService.mutateGameData('playerRoles', function(playerRoles) {
@@ -297,7 +343,8 @@ battle.fadeScene = function*() {
       // Blend the pixels in the 2 buffers, and put the result into the
       // backup buffer
       for (var k = indices[j]; k < surface.pitch * surface.height; k += 6) {
-        var a = Global.battle.sceneBuf[k];
+        var battleState = BATTLE();
+        var a = battleState.sceneBuf[k];
         var b = backup[k];
 
         if (i > 0) {
@@ -324,7 +371,8 @@ battle.fadeScene = function*() {
   }
 
   // Draw the result buffer to the screen as the final step
-  surface.blitSurface(Global.battle.sceneBuf, null, screen, null);
+  var battleState = BATTLE();
+  surface.blitSurface(battleState.sceneBuf, null, screen, null);
   yield uibattle.update();
   surface.updateScreen(null);
 };
@@ -336,7 +384,7 @@ battle.fadeScene = function*() {
 battle.main = function*() {
   surface.backupScreen();
   var screen = surface.byteBuffer;
-  var sceneBuf = Global.battle.sceneBuf;
+  var sceneBuf = BATTLE().sceneBuf;
 
   // Generate the scene and draw the scene to the screen buffer
   battle.makeScene();
@@ -350,17 +398,18 @@ battle.main = function*() {
   yield surface.switchScreen(5);
 
   // Play the battle music
-  music.play(Global.numBattleMusic, true, 0);
+  music.play(getGlobalValue('numBattleMusic', 0), true, 0);
 
   // Fade in the screen when needed
-  if (Global.needToFadeIn) {
-    yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
-    stateService.setGlobal('needToFadeIn', false);
+  if (getGlobalValue('needToFadeIn', false)) {
+    yield surface.fadeIn(getGlobalValue('numPalette', 0), getGlobalValue('nightPalette', false), 1);
+    setGlobalValue('needToFadeIn', false);
   }
 
   // Run the pre-battle scripts for each enemies
-  for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-    var enemyState = Global.battle.enemy[i];
+  var battleState = BATTLE();
+  for (var i = 0; i <= battleState.maxEnemyIndex; i++) {
+    var enemyState = battleState.enemy[i];
     var nextEntry = yield script.runTriggerScript(enemyState.scriptOnTurnStart, i);
     battleService.setEnemy(i, function(current) {
       if (!current) return current;
@@ -368,12 +417,12 @@ battle.main = function*() {
       return current;
     });
 
-    if (Global.battle.battleResult != BattleResult.PreBattle) {
+    if (battleState.battleResult != BattleResult.PreBattle) {
       break;
     }
   }
 
-  if (Global.battle.battleResult == BattleResult.PreBattle) {
+  if (battleState.battleResult == BattleResult.PreBattle) {
     battleService.setBattleResult(BattleResult.OnGoing);
   }
 
@@ -382,7 +431,7 @@ battle.main = function*() {
   // Run the main battle loop.
   while (true) {
     // Break out if the battle ended.
-    if (Global.battle.battleResult != BattleResult.OnGoing) {
+    if (battleState.battleResult != BattleResult.OnGoing) {
       break;
     }
 
@@ -396,7 +445,8 @@ battle.main = function*() {
   }
 
   // Return the battle result
-  return Global.battle.battleResult;
+  var battleState = BATTLE();
+  return battleState ? battleState.battleResult : BattleResult.Terminated;
 };
 
 /**
@@ -410,7 +460,8 @@ battle.freeBattleSprites = function() {
       return state;
     }
 
-    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+    var maxPartyIndex = getMaxPartyMemberIndex();
+    for (var i = 0; i <= maxPartyIndex; i++) {
       var playerState = state.player && state.player[i];
       if (playerState) {
         playerState.sprite = null;
@@ -438,9 +489,19 @@ battle.getPlayerBattleSprite = function(playerRole) {
   log.trace(['[BATTLE] getPlayerBattleSprite', playerRole].join(' '));
   var w = GameData.playerRoles.spriteNumInBattle[playerRole];
 
-  for (var i = 0; i <= Const.MAX_PLAYER_EQUIPMENTS; i++) {
-    if (Global.equipmentEffect[i].spriteNumInBattle[playerRole] != 0) {
-       w = Global.equipmentEffect[i].spriteNumInBattle[playerRole];
+  var equipmentEffects = getEquipmentEffects();
+  var limit = Math.min(
+    Array.isArray(equipmentEffects) ? equipmentEffects.length : 0,
+    Const.MAX_PLAYER_EQUIPMENTS + 1
+  );
+  for (var i = 0; i < limit; i++) {
+    var effect = equipmentEffects[i];
+    if (!effect || !effect.spriteNumInBattle) {
+      continue;
+    }
+    var overrideSprite = effect.spriteNumInBattle[playerRole];
+    if (overrideSprite) {
+      w = overrideSprite;
     }
   }
 
@@ -460,18 +521,23 @@ battle.loadBattleSprites = function() {
     }
 
     // Load battle sprites for players
-    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+    var party = getParty();
+    var maxPartyIndex = getMaxPartyMemberIndex();
+    var positionSet = battle.playerPos[Math.min(Math.max(maxPartyIndex, 0), battle.playerPos.length - 1)] || [];
+    for (var i = 0; i <= maxPartyIndex; i++) {
       var playerState = state.player && state.player[i];
-      if (!playerState) {
+      var partyMember = party[i];
+      if (!playerState || !partyMember) {
         continue;
       }
 
-      var spriteNum = battle.getPlayerBattleSprite(Global.party[i].playerRole);
+      var spriteNum = battle.getPlayerBattleSprite(partyMember.playerRole);
       playerState.sprite = new Sprite(Files.F.decompressChunk(spriteNum));
 
       // Set the default position for this player
-      var x = battle.playerPos[Global.maxPartyMemberIndex][i][0];
-      var y = battle.playerPos[Global.maxPartyMemberIndex][i][1];
+      var positionEntry = positionSet[i] || positionSet[positionSet.length - 1] || [0, 0];
+      var x = positionEntry[0];
+      var y = positionEntry[1];
       var position = PAL_XY(x, y);
       playerState.originalPos = position;
       playerState.pos = position;
@@ -605,7 +671,7 @@ battle.loadBattleBackground = function() {
   battleService.setBackground(background);
 
   // Load the picture
-  var buf = Files.FBP.decompressChunk(Global.numBattleField);
+  var buf = Files.FBP.decompressChunk(getGlobalValue('numBattleField', 0));
 
   // Draw the picture to the surface.
   surface.blit(buf, background);
@@ -621,9 +687,14 @@ battle.won = function*() {
   // Backup the initial player stats
   var origplayerRoles = GameData.playerRoles.copy();
 
-  if (Global.battle.expGained > 0) {
+  var battleState = battleService.getState() || stateService.getGlobal('battle') || (typeof Global !== 'undefined' && Global && Global.battle) || {};
+  var expGained = Number(battleState && battleState.expGained) || 0;
+  var cashGained = Number(battleState && battleState.cashGained) || 0;
+  var isBossBattle = !!(battleState && battleState.isBoss);
+
+  if (expGained > 0 || cashGained > 0) {
     // Play the "battle win" music
-    music.play(Global.battle.isBoss ? 2 : 3, false, 0);
+    music.play(isBossBattle ? 2 : 3, false, 0);
 
     // Show the message about the total number of exp. and cash gained
     ui.createSingleLineBox(PAL_XY(83, 60), 8, false);
@@ -633,30 +704,40 @@ battle.won = function*() {
     ui.drawText(ui.getWord(ui.BATTLEWIN_BEATENEMY_LABEL), PAL_XY(77, 115), 0, false, false);
     ui.drawText(ui.getWord(ui.BATTLEWIN_DOLLAR_LABEL), PAL_XY(197, 115), 0, false, false);
 
-    ui.drawNumber(Global.battle.expGained, 5, PAL_XY(182, 74), NumColor.Yellow, NumAlign.Right);
-    ui.drawNumber(Global.battle.cashGained, 5, PAL_XY(162, 119), NumColor.Yellow, NumAlign.Mid);
+    ui.drawNumber(expGained, 5, PAL_XY(182, 74), NumColor.Yellow, NumAlign.Right);
+    ui.drawNumber(cashGained, 5, PAL_XY(162, 119), NumColor.Yellow, NumAlign.Mid);
 
     surface.updateScreen(rect);
-    yield input.waitForKey(Global.battle.isBoss ? 5500 : 3000);
+    yield input.waitForKey(isBossBattle ? 5500 : 3000);
   }
 
   // Add the cash value
   stateService.mutateGlobal('cash', function(cash) {
     cash = cash || 0;
-    return cash + Global.battle.cashGained;
+    return cash + cashGained;
   });
 
   // Add the experience points for each players
-  for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+  var party = getParty();
+  var maxPartyIndex = getMaxPartyMemberIndex();
+  var expState = getExpState() || {};
+
+  for (var i = 0; i <= maxPartyIndex; i++) {
     var levelUp = false;
 
-    var w = Global.party[i].playerRole;
-    if (GameData.playerRoles.HP[w] == 0) {
+    var partyMember = party[i];
+    if (!partyMember) {
+      continue;
+    }
+
+    var w = partyMember.playerRole;
+    if (GameData.playerRoles.HP[w] === 0) {
       continue; // don't care about dead players
     }
 
-    var exp = Global.exp.primaryExp[w].exp;
-    exp += Global.battle.expGained;
+    var primaryExpBucket = expState.primaryExp && expState.primaryExp[w] ? expState.primaryExp[w] : { exp: 0 };
+    var exp = (primaryExpBucket.exp || 0);
+    exp += expGained;
 
     if (GameData.playerRoles.level[w] > Const.MAX_LEVELS) {
       mutatePlayerRoles(function(playerRoles) {
@@ -681,6 +762,7 @@ battle.won = function*() {
     mutateExp(function(expState) {
       expState.primaryExp[w].exp = WORD(exp);
     });
+    expState = getExpState() || {};
 
     if (levelUp) {
       // Player has gained a level. Show the message
@@ -752,32 +834,39 @@ battle.won = function*() {
 
     // Increasing of other hidden levels
     var totalCount = 0;
-
-    totalCount += Global.exp.attackExp[w].count;
-    totalCount += Global.exp.defenseExp[w].count;
-    totalCount += Global.exp.dexterityExp[w].count;
-    totalCount += Global.exp.fleeExp[w].count;
-    totalCount += Global.exp.healthExp[w].count;
-    totalCount += Global.exp.magicExp[w].count;
-    totalCount += Global.exp.magicPowerExp[w].count;
+    var expBuckets = ['attackExp', 'defenseExp', 'dexterityExp', 'fleeExp', 'healthExp', 'magicExp', 'magicPowerExp'];
+    for (var bucketIndex = 0; bucketIndex < expBuckets.length; bucketIndex++) {
+      var bucketName = expBuckets[bucketIndex];
+      var bucket = expState[bucketName] && expState[bucketName][w];
+      if (bucket && typeof bucket.count === 'number') {
+        totalCount += bucket.count;
+      }
+    }
 
     if (totalCount > 0) {
       function* checkHiddenExp(expname, statname, label) {
-        var expValue = Global.battle.expGained;
-        expValue *= Global.exp[expname][w].count;
+        var bucket = expState[expname] && expState[expname][w];
+        if (!bucket) {
+          return;
+        }
+
+        var expValue = expGained;
+        expValue *= bucket.count;
         expValue /= totalCount;
         expValue *= 2;
 
-        expValue += Global.exp[expname][w].exp;
+        expValue += bucket.exp;
 
-        if (Global.exp[expname][w].level > Const.MAX_LEVELS) {
+        if (bucket.level > Const.MAX_LEVELS) {
           mutateExp(function(expState) {
             expState[expname][w].level = Const.MAX_LEVELS;
           });
+          expState = getExpState() || {};
+          bucket = expState[expname] && expState[expname][w];
         }
 
-        while (expValue >= GameData.levelUpExp[Global.exp[expname][w].level]) {
-          expValue -= GameData.levelUpExp[Global.exp[expname][w].level];
+        while (bucket && expValue >= GameData.levelUpExp[bucket.level]) {
+          expValue -= GameData.levelUpExp[bucket.level];
           var increment = randomLong(1, 2);
           mutatePlayerRoles(function(playerRoles) {
             playerRoles[statname][w] += increment;
@@ -787,11 +876,14 @@ battle.won = function*() {
               expState[expname][w].level++;
             }
           });
+          expState = getExpState() || {};
+          bucket = expState[expname] && expState[expname][w];
         }
 
         mutateExp(function(expState) {
           expState[expname][w].exp = WORD(expValue);
         });
+        expState = getExpState() || {};
 
         if (GameData.playerRoles[statname][w] != origplayerRoles[statname][w]) {
           ui.createSingleLineBox(PAL_XY(83, 60), 8, false);
@@ -835,13 +927,20 @@ battle.won = function*() {
     }
   }
 
-  for (var i = 0; i <= Global.battle.maxEnemyIndex; i++) {
-    yield script.runTriggerScript(Global.battle.enemy[i].scriptOnBattleEnd, i);
+  var battleState = BATTLE();
+  for (var i = 0; i <= battleState.maxEnemyIndex; i++) {
+    yield script.runTriggerScript(battleState.enemy[i].scriptOnBattleEnd, i);
   }
 
   // Recover automatically after each battle
-  for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-    w = Global.party[i].playerRole;
+  var postBattleParty = getParty();
+  var postBattleMaxIndex = getMaxPartyMemberIndex();
+  for (var i = 0; i <= postBattleMaxIndex; i++) {
+    var partyEntry = postBattleParty[i];
+    if (!partyEntry) {
+      continue;
+    }
+    var w = partyEntry.playerRole;
 
     var hpDelta = ~~((GameData.playerRoles.maxHP[w] - GameData.playerRoles.HP[w]) / 2);
     var mpDelta = ~~((GameData.playerRoles.maxMP[w] - GameData.playerRoles.MP[w]) / 2);
@@ -860,13 +959,14 @@ battle.won = function*() {
 battle.enemyEscape = function*() {
   sound.play(45);
 
+  var battleState = BATTLE();
   var f = true;
   // Show the animation
   while (f) {
     f = false;
 
-    for (j = 0; j <= Global.battle.maxEnemyIndex; j++) {
-      var enemy = Global.battle.enemy[j];
+    for (j = 0; j <= battleState.maxEnemyIndex; j++) {
+      var enemy = battleState.enemy[j];
       if (enemy.objectID == 0) {
         continue;
       }
@@ -885,7 +985,7 @@ battle.enemyEscape = function*() {
     }
 
     battle.makeScene();
-    surface.blitSurface(Global.battle.sceneBuf, null, surface.byteBuffer, null);
+    surface.blitSurface(battleState.sceneBuf, null, surface.byteBuffer, null);
     surface.updateScreen(null);
 
     yield sleep(10);
@@ -901,11 +1001,18 @@ battle.enemyEscape = function*() {
 battle.playerEscape = function*() {
   sound.play(45);
 
+  var battleState = BATTLE();
   battle.updateFighters();
   var playerRole;
 
-  for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-    playerRole = Global.party[i].playerRole;
+  var escapeParty = getParty();
+  var escapeMaxIndex = getMaxPartyMemberIndex();
+  for (var i = 0; i <= escapeMaxIndex; i++) {
+    var escapeMember = escapeParty[i];
+    if (!escapeMember) {
+      continue;
+    }
+    playerRole = escapeMember.playerRole;
 
     if (GameData.playerRoles.HP[playerRole] > 0) {
       battleService.setPlayer(i, function(playerState) {
@@ -917,15 +1024,19 @@ battle.playerEscape = function*() {
   }
 
   for (var i = 0; i < 16; i++) {
-    for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
-      playerRole = Global.party[j].playerRole;
-      var player = Global.battle.player[j];
+    for (var j = 0; j <= escapeMaxIndex; j++) {
+      var movingMember = escapeParty[j];
+      if (!movingMember) {
+        continue;
+      }
+      playerRole = movingMember.playerRole;
+      var player = battleState.player[j];
 
       if (GameData.playerRoles.HP[playerRole] > 0) {
         // TODO: This is still not the same as the original game
         switch (j) {
           case 0:
-            if (Global.maxPartyMemberIndex > 0) {
+            if (escapeMaxIndex > 0) {
               player.pos = PAL_XY(PAL_X(player.pos) + 4, PAL_Y(player.pos) + 6);
               break;
             }
@@ -948,7 +1059,7 @@ battle.playerEscape = function*() {
   }
 
   // Remove all players from the screen
-  for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+  for (var i = 0; i <= escapeMaxIndex; i++) {
     battleService.setPlayer(i, function(playerState) {
       if (!playerState) {
         return playerState;
@@ -972,18 +1083,25 @@ battle.playerEscape = function*() {
 battle.start = function*(enemyTeam, isBoss) {
   log.debug(['[BATTLE] start', enemyTeam, isBoss].join(' '));
   // Set the screen waving effects
-  var prevWaveLevel = Global.screenWave;
-  var prevWaveProgression = Global.waveProgression;
+  var prevWaveLevel = getGlobalValue('screenWave', 0);
+  var prevWaveProgression = getGlobalValue('waveProgression', 0);
 
-  stateService.setGlobal('waveProgression', 0);
-  stateService.setGlobal('screenWave', GameData.battleField[Global.numBattleField].screenWave);
+  setGlobalValue('waveProgression', 0);
+  var battleFieldIndex = getGlobalValue('numBattleField', 0);
+  var battleFieldConfig = GameData.battleField[battleFieldIndex];
+  setGlobalValue('screenWave', battleFieldConfig ? battleFieldConfig.screenWave : 0);
 
-  var party = Global.party;
+  var party = getParty();
+  var maxPartyIndex = getMaxPartyMemberIndex();
 
   // Make sure everyone in the party is alive, also clear all hidden
   // EXP count records
-  for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-    var w = party[i].playerRole;
+  for (var i = 0; i <= maxPartyIndex; i++) {
+    var partyMember = party[i];
+    if (!partyMember) {
+      continue;
+    }
+    var w = partyMember.playerRole;
     var roleIndex = w;
 
     if (GameData.playerRoles.HP[w] == 0) {
@@ -1063,7 +1181,7 @@ battle.start = function*(enemyTeam, isBoss) {
 
     state.maxEnemyIndex = computedMaxEnemyIndex;
 
-    for (var playerIndex = 0; playerIndex <= Global.maxPartyMemberIndex; playerIndex++) {
+    for (var playerIndex = 0; playerIndex <= maxPartyIndex; playerIndex++) {
       var playerState = state.player && state.player[playerIndex];
       if (!playerState) {
         continue;
@@ -1110,7 +1228,7 @@ battle.start = function*(enemyTeam, isBoss) {
       state.UI.nextMsg = [];
       state.UI.msgShowTime = 0;
       state.UI.state = BattleUIState.Wait;
-      state.UI.autoAttack = Global.autoBattle;
+      state.UI.autoAttack = !!getGlobalValue('autoBattle', false);
       state.UI.selectedIndex = 0;
       state.UI.prevEnemyTarget = 0;
       if (Array.isArray(state.UI.showNum)) {
@@ -1141,7 +1259,7 @@ battle.start = function*(enemyTeam, isBoss) {
     fight.updateTimeChargingUnit();
   }
 
-  stateService.setGlobal('inBattle', true);
+  setGlobalValue('inBattle', true);
 
   battle.updateFighters();
 
@@ -1203,13 +1321,13 @@ battle.start = function*(enemyTeam, isBoss) {
   //SDL_FreeSurface(Global.battle.lpBackground);
   //SDL_FreeSurface(Global.battle.lpSceneBuf);
 
-  stateService.setGlobal('inBattle', false);
+  setGlobalValue('inBattle', false);
 
-  music.play(Global.numMusic, true, 1);
+  music.play(getGlobalValue('numMusic', 0), true, 1);
 
   // Restore the screen waving effects
-  stateService.setGlobal('waveProgression', prevWaveProgression);
-  stateService.setGlobal('screenWave', prevWaveLevel);
+  setGlobalValue('waveProgression', prevWaveProgression);
+  setGlobalValue('screenWave', prevWaveLevel);
 
   return result;
 }

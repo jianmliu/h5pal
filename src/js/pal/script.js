@@ -105,6 +105,39 @@ function getPartyOffsetY() {
   return PAL_Y(getPartyOffsetValue());
 }
 
+function getCashValue() {
+  var cash = stateService.getGlobal('cash');
+  return typeof cash === 'number' ? cash : 0;
+}
+
+function getEquipmentEffects() {
+  return stateService.getGlobal('equipmentEffect') || [];
+}
+
+function getPartyDirection() {
+  return stateService.getGlobal('partyDirection') || Direction.South;
+}
+
+function setPartyDirection(value) {
+  return stateService.setGlobal('partyDirection', value);
+}
+
+function forEachPartyMember(callback) {
+  if (typeof callback !== 'function') {
+    return;
+  }
+  var party = getPartyState();
+  if (!Array.isArray(party) || !party.length) {
+    return;
+  }
+  var maxIndex = getMaxPartyMemberIndex();
+  for (var i = 0; i <= maxIndex && i < party.length; i++) {
+    var member = party[i];
+    if (!member) continue;
+    callback(member, i);
+  }
+}
+
 function setGameDataValue(key, value) {
   return stateService.setGameData(key, value);
 }
@@ -661,7 +694,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       }*/
       // WARNING HACK
       i = sc.operand[0] - 0xB;
-      var p = new BinaryReader(Global.equipmentEffect[i].uint8Array);
+      var equipmentEffects = getEquipmentEffects();
+      var effectEntry = equipmentEffects[i];
+      if (!effectEntry) {
+        break;
+      }
+      var p = new BinaryReader(effectEntry.uint8Array);
       var offset = (sc.operand[1] * Const.MAX_PLAYER_ROLES + eventObjectID) * 2;
       p.setUint16(offset, SHORT(sc.operand[2])); // WARNING setInt16??
       break;
@@ -744,7 +782,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       var reader;
       if (script.curEquipPart !== -1) {
         // In the progress of equipping items
-        reader = new BinaryReader(Global.equipmentEffect[script.curEquipPart].uint8Array);
+        var activeEffects = getEquipmentEffects();
+        var activeEffect = activeEffects[script.curEquipPart];
+        if (!activeEffect) {
+          break;
+        }
+        reader = new BinaryReader(activeEffect.uint8Array);
       } else {
         reader = new BinaryReader(GameData.playerRoles.uint8Array);
       }
@@ -755,10 +798,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Increase/decrease player\'s HP');
       if (sc.operand[0]) {
         // Apply to everyone
-        for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          w = Global.party[i].playerRole;
-          script.increaseHPMP(w, SHORT(sc.operand[1]), 0);
-        }
+        forEachPartyMember(function(member) {
+          script.increaseHPMP(member.playerRole, SHORT(sc.operand[1]), 0);
+        });
       } else {
         // Apply to one player. The eventObjectID parameter should indicate the player role.
         if (!script.increaseHPMP(eventObjectID, SHORT(sc.operand[1]), 0)) {
@@ -770,10 +812,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Increase/decrease player\'s MP');
       if (sc.operand[0]) {
         // Apply to everyone
-        for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          w = Global.party[i].playerRole;
-          script.increaseHPMP(w, 0, SHORT(sc.operand[1]));
-        }
+        forEachPartyMember(function(member) {
+          script.increaseHPMP(member.playerRole, 0, SHORT(sc.operand[1]));
+        });
       } else {
         // Apply to one player. The eventObjectID parameter should indicate the player role.
         if (!script.increaseHPMP(eventObjectID, 0, SHORT(sc.operand[1]))) {
@@ -785,10 +826,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Increase/decrease player\'s HP and MP');
       if (sc.operand[0]) {
         // Apply to everyone
-        for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          w = Global.party[i].playerRole;
-          script.increaseHPMP(w, SHORT(sc.operand[1]), SHORT(sc.operand[1]));
-        }
+        forEachPartyMember(function(member) {
+          script.increaseHPMP(member.playerRole, SHORT(sc.operand[1]), SHORT(sc.operand[1]));
+        });
       } else {
         // Apply to one player. The eventObjectID parameter should indicate the player role.
         if (!script.increaseHPMP(eventObjectID, SHORT(sc.operand[1]), SHORT(sc.operand[1]))) {
@@ -798,7 +838,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x001E:
       script.debug('[SCRIPT] Increase or decrease cash by the specified amount');
-      if (SHORT(sc.operand[0]) < 0 && Global.cash < -SHORT(sc.operand[0])) {
+      if (SHORT(sc.operand[0]) < 0 && getCashValue() < -SHORT(sc.operand[0])) {
         // not enough cash
         scriptEntry = sc.operand[1] - 1;
       } else {
@@ -817,24 +857,29 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         if (x === 0) {
           x = 1;
         }
-        for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          w = Global.party[i].playerRole;
-          for (j = 0; j < Const.MAX_PLAYER_EQUIPMENTS; j++) {
-            if (GameData.playerRoles.equipment[j][w] === sc.operand[0]) {
-              script.removeEquipmentEffect(w, j);
-              (function(equipIndex, roleIndex) {
-                mutatePlayerRoles(function(playerRoles) {
-                  playerRoles.equipment[equipIndex][roleIndex] = 0;
-                });
-              })(j, w);
-              x--;
-              if (x === 0) {
-                i = 9999;
-                break; // - -''看起来是为了跳出for-i的循环
+        (function() {
+          var party = getPartyState();
+          var maxIndex = getMaxPartyMemberIndex();
+          for (var partyIndex = 0; partyIndex <= maxIndex && partyIndex < party.length; partyIndex++) {
+            var member = party[partyIndex];
+            if (!member) continue;
+            var roleId = member.playerRole;
+            for (var equipIndex = 0; equipIndex < Const.MAX_PLAYER_EQUIPMENTS; equipIndex++) {
+              if (GameData.playerRoles.equipment[equipIndex][roleId] === sc.operand[0]) {
+                script.removeEquipmentEffect(roleId, equipIndex);
+                (function(slot, roleIndex) {
+                  mutatePlayerRoles(function(playerRoles) {
+                    playerRoles.equipment[slot][roleIndex] = 0;
+                  });
+                })(equipIndex, roleId);
+                x--;
+                if (x === 0) {
+                  return;
+                }
               }
             }
           }
-        }
+        })();
         if (x > 0 && sc.operand[2] !== 0) {
           scriptEntry = sc.operand[2] - 1;
         }
@@ -864,21 +909,19 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       if (sc.operand[0]) {
         // Apply to everyone
         script.scriptSuccess = false;
-        for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          w = Global.party[i].playerRole;
-          if (GameData.playerRoles.HP[w] === 0) {
-            (function(roleIndex) {
-              mutatePlayerRoles(function(playerRoles) {
-                playerRoles.HP[roleIndex] = ~~(playerRoles.maxHP[roleIndex] * sc.operand[1] / 10);
-              });
-            })(w);
-            script.curePoisonByLevel(w, 3);
+        forEachPartyMember(function(member) {
+          var roleIndex = member.playerRole;
+          if (GameData.playerRoles.HP[roleIndex] === 0) {
+            mutatePlayerRoles(function(playerRoles) {
+              playerRoles.HP[roleIndex] = ~~(playerRoles.maxHP[roleIndex] * sc.operand[1] / 10);
+            });
+            script.curePoisonByLevel(roleIndex, 3);
             for (x = 0; x < PlayerStatus.All; x++) {
-              script.removePlayerStatus(w, x);
+              script.removePlayerStatus(roleIndex, x);
             }
             script.scriptSuccess = true;
           }
-        }
+        });
       } else {
         // Apply to one player
         if (GameData.playerRoles.HP[eventObjectID] === 0) {
@@ -902,11 +945,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
           w = GameData.playerRoles.equipment[i][playerRole];
           if (w !== 0) {
             script.addItemToInventory(w, 1);
-            (function(equipIndex, roleIndex) {
+            (function(equipIndex) {
               mutatePlayerRoles(function(playerRoles) {
-                playerRoles.equipment[equipIndex][roleIndex] = 0;
+                playerRoles.equipment[equipIndex][playerRole] = 0;
               });
-            })(i, playerRole);
+            })(i);
           }
           script.removeEquipmentEffect(playerRole, i);
         }
@@ -1015,12 +1058,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Apply poison to player');
       if (sc.operand[0]) {
         // Apply to everyone
-        for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          w = Global.party[i].playerRole;
-          if (randomLong(1, 100) > script.getPlayerPoisonResistance(w)) {
-            script.addPoisonForPlayer(w, sc.operand[1]);
+        forEachPartyMember(function(member) {
+          var roleId = member.playerRole;
+          if (randomLong(1, 100) > script.getPlayerPoisonResistance(roleId)) {
+            script.addPoisonForPlayer(roleId, sc.operand[1]);
           }
-        }
+        });
       } else {
         // Apply to one player
         if (randomLong(1, 100) > script.getPlayerPoisonResistance(eventObjectID)) {
@@ -1056,10 +1099,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x002B:
       script.debug('[SCRIPT] Cure poison by object ID for player');
       if (sc.operand[0]) {
-        for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          w = Global.party[i].playerRole;
-          script.curePoisonByKind(w, sc.operand[1]);
-        }
+        forEachPartyMember(function(member) {
+          script.curePoisonByKind(member.playerRole, sc.operand[1]);
+        });
       } else {
         script.curePoisonByKind(eventObjectID, sc.operand[1]);
       }
@@ -1067,10 +1109,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x002C:
       script.debug('[SCRIPT] Cure poisons by level');
       if (sc.operand[0]) {
-        for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          w = Global.party[i].playerRole;
-          script.curePoisonByLevel(w, sc.operand[1]);
-        }
+        forEachPartyMember(function(member) {
+          script.curePoisonByLevel(member.playerRole, sc.operand[1]);
+        });
       } else {
         script.curePoisonByLevel(eventObjectID, sc.operand[1]);
       }
@@ -1211,7 +1252,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0039:
       script.debug('[SCRIPT] Drain HP from enemy');
-      w = Global.party[BATTLE().movingPlayerIndex].playerRole;
+      var movingMember = getPartyMember(BATTLE().movingPlayerIndex);
+      w = movingMember ? movingMember.playerRole : 0;
       battleService.updateEnemy(eventObjectID, enemy => {
         if (!enemy) return enemy;
         enemy.e.health -= sc.operand[0];
@@ -1272,8 +1314,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Set the party position on the map');
       var offsetX, offsetY, x, y;
 
-      offsetX = ((Global.partyDirection === Direction.West || Global.partyDirection === Direction.South) ? 16 : -16);
-      offsetY = ((Global.partyDirection === Direction.West || Global.partyDirection === Direction.North) ? 8 : -8);
+      var currentDirection = getPartyDirection();
+      offsetX = ((currentDirection === Direction.West || currentDirection === Direction.South) ? 16 : -16);
+      offsetY = ((currentDirection === Direction.West || currentDirection === Direction.North) ? 8 : -8);
       x = sc.operand[0] * 32 + sc.operand[2] * 16;
       y = sc.operand[1] * 16 + sc.operand[2] * 8;
       x -= getPartyOffsetX();
@@ -1284,7 +1327,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       var partyStartY = getPartyOffsetY();
       var viewportX = PAL_X(viewportPos);
       var viewportY = PAL_Y(viewportPos);
-      var direction = Global.partyDirection;
+      var direction = getPartyDirection();
       mutateGlobalValue('party', function(party) {
         mutateTrailValue(function(trail) {
           var currentX = partyStartX;
@@ -1517,7 +1560,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0066:
       script.debug('[SCRIPT] Throw weapon to enemy');
       w = sc.operand[1] * 5;
-      w += GameData.playerRoles.attackStrength[Global.party[BATTLE().movingPlayerIndex].playerRole];
+      var attackingMember = getPartyMember(BATTLE().movingPlayerIndex);
+      var attackingRole = attackingMember ? attackingMember.playerRole : 0;
+      w += GameData.playerRoles.attackStrength[attackingRole];
       w += randomLong(0, 4);
       yield battle.simulateMagic(SHORT(eventObjectID), sc.operand[0], w);
       break;
@@ -1629,13 +1674,18 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0074:
       script.debug('[SCRIPT] Jump if not all players are full HP');
-      for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-        w = Global.party[i].playerRole;
-        if (GameData.playerRoles.HP[w] < GameData.playerRoles.maxHP[w]) {
+      (function() {
+        var shouldJump = false;
+        forEachPartyMember(function(member) {
+          var roleId = member.playerRole;
+          if (GameData.playerRoles.HP[roleId] < GameData.playerRoles.maxHP[roleId]) {
+            shouldJump = true;
+          }
+        });
+        if (shouldJump) {
           scriptEntry = sc.operand[0] - 1;
-          break;
         }
-      }
+      })();
       break;
     case 0x0075:
       script.debug('[SCRIPT] Set the player party');
@@ -1690,12 +1740,18 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0079:
       script.debug('[SCRIPT] Jump if the specified player is in the party');
-      for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-        if (GameData.playerRoles.name[Global.party[i].playerRole] === sc.operand[0]){
-          scriptEntry = sc.operand[1] - 1;
-          break;
+      (function() {
+        var party = getPartyState();
+        var maxIndex = getMaxPartyMemberIndex();
+        for (var partyIndex = 0; partyIndex <= maxIndex && partyIndex < party.length; partyIndex++) {
+          var member = party[partyIndex];
+          if (!member) continue;
+          if (GameData.playerRoles.name[member.playerRole] === sc.operand[0]) {
+            scriptEntry = sc.operand[1] - 1;
+            return;
+          }
         }
-      }
+      })();
       break;
     case 0x007A:
       script.debug('[SCRIPT] Walk the party to the specified position, at a higher speed');
@@ -1833,8 +1889,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       }
       x = current.x;
       y = current.y;
-      x += ((Global.partyDirection == Direction.West || Global.partyDirection == Direction.South) ? 16 : -16);
-      y += ((Global.partyDirection == Direction.West || Global.partyDirection == Direction.North) ? 8 : -8);
+      var partyDir = getPartyDirection();
+      x += ((partyDir == Direction.West || partyDir == Direction.South) ? 16 : -16);
+      y += ((partyDir == Direction.West || partyDir == Direction.North) ? 8 : -8);
       x -= getViewportX() + getPartyOffsetX();
       y -= getViewportY() + getPartyOffsetY();
       if (abs(x) + abs(y * 2) < sc.operand[1] * 32 + 16) {
@@ -1879,8 +1936,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       }
       x = getViewportX() + getPartyOffsetX();
       y = getViewportY() + getPartyOffsetY();
-      x += ((Global.partyDirection == Direction.West || Global.partyDirection == Direction.South) ? -16 : 16);
-      y += ((Global.partyDirection == Direction.West || Global.partyDirection == Direction.North) ? -8 : 8);
+      var partyDirPlacement = getPartyDirection();
+      x += ((partyDirPlacement == Direction.West || partyDirPlacement == Direction.South) ? -16 : 16);
+      y += ((partyDirPlacement == Direction.West || partyDirPlacement == Direction.North) ? -8 : 8);
       if (scene.checkObstacle(PAL_XY(x, y), false, 0)) {
         scriptEntry = sc.operand[2] - 1;
         script.scriptSuccess = false;
@@ -1897,16 +1955,21 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0086:
       script.debug('[SCRIPT] Jump if the specified item is not equipped');
       y = false;
-      for (i = 0; i <= Global.maxPartyMemberIndex; i++) {
-        w = Global.party[i].playerRole;
-        for (x = 0; x < Const.MAX_PLAYER_EQUIPMENTS; x++) {
-          if (GameData.playerRoles.equipment[x][w] == sc.operand[0]) {
-            y = true;
-            i = 999;
-            break;
+      (function() {
+        var party = getPartyState();
+        var maxIndex = getMaxPartyMemberIndex();
+        for (var partyIndex = 0; partyIndex <= maxIndex && partyIndex < party.length; partyIndex++) {
+          var member = party[partyIndex];
+          if (!member) continue;
+          var roleId = member.playerRole;
+          for (var slot = 0; slot < Const.MAX_PLAYER_EQUIPMENTS; slot++) {
+            if (GameData.playerRoles.equipment[slot][roleId] == sc.operand[0]) {
+              y = true;
+              return;
+            }
           }
         }
-      }
+      })();
       if (!y) {
         scriptEntry = sc.operand[2] - 1;
       }
@@ -1917,7 +1980,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0088:
       script.debug('[SCRIPT] Set the base damage of magic according to amount of money'); // 扔钱。。
-      i = ((Global.cash > 5000) ? 5000 : Global.cash);
+      var currentCash = getCashValue();
+      i = (currentCash > 5000) ? 5000 : currentCash;
       adjustGlobalNumber('cash', -i);
       j = GameData.object[sc.operand[0]].magic.magicNumber;
       mutateMagic(function(magicData) {
@@ -1993,7 +2057,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         }
 
         for (i = 0; i < 5; i++) {
-          for (j = 0; j <= Global.maxPartyMemberIndex; j++) {
+          var partyMax = getMaxPartyMemberIndex();
+          for (j = 0; j <= partyMax; j++) {
             battleService.setPlayerColorShift(j, i * 2);
           }
           yield battle.delay(1, 0, true); // WARNING param normalize
@@ -2034,7 +2099,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Set follower of the party');
       if (sc.operand[0] > 0) {
         setGlobalValue('numFollower', 1);
-        var followerIndex = Global.maxPartyMemberIndex + 1;
+        var followerIndex = getMaxPartyMemberIndex() + 1;
         mutateGlobalEntry('party', followerIndex, function(member) {
           if (member) {
             member.playerRole = sc.operand[0];

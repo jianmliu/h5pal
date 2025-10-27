@@ -408,64 +408,107 @@ fight.init = function*(surf, _battle) {
 
   /**
    * Called once per video frame in battle.
-   */
+  */
   battle.startFrame = function*() {
     //BATTLE().battleResult = BattleResult.Won;
 
-    var onlyPuppet = true;
-    var sceneBuf = BATTLE().sceneBuf;
+    var battleState = BATTLE();
+    var sceneBuf = battleState.sceneBuf;
     var screen = surface.byteBuffer;
 
-    chargeTimeMeters();
+    var party = stateService.getGlobal('party');
+    if (!Array.isArray(party) && Global && Array.isArray(Global.party)) {
+      party = Global.party;
+    }
+    party = Array.isArray(party) ? party : [];
+    var maxPartyIndex = stateService.getGlobal('maxPartyMemberIndex');
+    if (typeof maxPartyIndex !== 'number') {
+      if (Global && typeof Global.maxPartyMemberIndex === 'number') {
+        maxPartyIndex = Global.maxPartyMemberIndex;
+      } else {
+        maxPartyIndex = party.length > 0 ? party.length - 1 : -1;
+      }
+    }
+    var playerStatus = stateService.getGlobal('playerStatus') || [];
 
-    if (!BATTLE().enemyCleared) {
-      battle.updateFighters();
+    var onlyPuppet = true;
+    var ended = true;
+
+    for (var partyIndex = 0; partyIndex <= maxPartyIndex; partyIndex++) {
+      var partyEntry = party && party[partyIndex] ? party[partyIndex] : null;
+      if (!partyEntry) {
+        continue;
+      }
+      var roleId = partyEntry.playerRole;
+      if (GameData.playerRoles.HP[roleId] !== 0) {
+        onlyPuppet = false;
+        ended = false;
+        break;
+      }
+      var statusRow = playerStatus[roleId] || [];
+      if (statusRow[PlayerStatus.Puppet] !== 0) {
+        ended = false;
+      }
     }
 
-    // Update the scene
-    battle.makeScene();
-    surface.blitSurface(sceneBuf, null, screen, null);
+    if (ended) {
+      battleService.setBattleResult(BattleResult.Lost);
+      return;
+    }
 
-    // Check if the battle is over
-    if (BATTLE().enemyCleared) {
-      // All enemies are cleared. Won the battle.
+    yield* battleService.runTick({
+      battle: battle,
+      surface: surface,
+      sceneBuf: sceneBuf,
+      screen: screen,
+      onPlayerReady: typeof uibattle.playerReady === 'function' ? uibattle.playerReady : null,
+      onlyPuppet: onlyPuppet
+    });
+
+    battleState = BATTLE();
+    sceneBuf = battleState.sceneBuf || sceneBuf;
+
+    if (battleState.enemyCleared) {
       battleService.setBattleResult(BattleResult.Won);
       sound.play(-1);
       return;
-    } else {
-      var ended = true;
-
-      for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-        var playerRole = Global.party[i].playerRole;
-
-        if (GameData.playerRoles.HP[playerRole] != 0) {
-          onlyPuppet = false;
-          ended = false;
-          break;
-        } else if (Global.playerStatus[playerRole][PlayerStatus.Puppet] != 0) {
-          ended = false;
-        }
-      }
-
-      if (ended) {
-        // All players are dead. Lost the battle.
-        battleService.setBattleResult(BattleResult.Lost);
-        return;
-      }
     }
 
-    if (BATTLE().phase == BattlePhase.SelectAction) {
-      yield* battleService.runGeneratorSystems('queue', {
-        battle: battle,
-        surface: surface,
-        onPlayerReady: typeof uibattle.playerReady === 'function' ? uibattle.playerReady : null
-      });
-    } else {
-      yield* battleService.runGeneratorSystems('action', {
-        battle: battle,
-        surface: surface,
-        onlyPuppet: onlyPuppet
-      });
+    // Re-check defeat conditions in case actions resolved this frame.
+    party = stateService.getGlobal('party');
+    if (!Array.isArray(party) && Global && Array.isArray(Global.party)) {
+      party = Global.party;
+    }
+    party = Array.isArray(party) ? party : [];
+    maxPartyIndex = stateService.getGlobal('maxPartyMemberIndex');
+    if (typeof maxPartyIndex !== 'number') {
+      if (Global && typeof Global.maxPartyMemberIndex === 'number') {
+        maxPartyIndex = Global.maxPartyMemberIndex;
+      } else {
+        maxPartyIndex = party.length > 0 ? party.length - 1 : -1;
+      }
+    }
+    playerStatus = stateService.getGlobal('playerStatus') || [];
+
+    var everyoneDown = true;
+    for (var checkIndex = 0; checkIndex <= maxPartyIndex; checkIndex++) {
+      var checkEntry = party && party[checkIndex] ? party[checkIndex] : null;
+      if (!checkEntry) {
+        continue;
+      }
+      var checkRole = checkEntry.playerRole;
+      if (GameData.playerRoles.HP[checkRole] !== 0) {
+        everyoneDown = false;
+        break;
+      }
+      var checkStatus = playerStatus[checkRole] || [];
+      if (checkStatus[PlayerStatus.Puppet] !== 0) {
+        everyoneDown = false;
+      }
+    }
+    if (everyoneDown) {
+      battleService.setBattleResult(BattleResult.Lost);
+      return;
     }
 
     // The R and F keys and Fleeing should affect all players
@@ -480,16 +523,19 @@ fight.init = function*(surf, _battle) {
       }
     }
 
-    if (BATTLE().repeat) {
+    battleState = BATTLE();
+    if (battleState.repeat) {
       input.keyPress = Key.Repeat;
-    } else if (BATTLE().force) {
+    } else if (battleState.force) {
       input.keyPress = Key.Force;
-    } else if (BATTLE().flee) {
+    } else if (battleState.flee) {
       input.keyPress = Key.Flee;
     }
 
+    surface.blitSurface(sceneBuf, null, screen, null);
     // Update the battle UI
     yield uibattle.update();
+    surface.updateScreen(null);
   };
 
   /**

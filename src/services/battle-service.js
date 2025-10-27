@@ -579,6 +579,14 @@ class BattleService extends EventBus {
     yield* this.systemManager.runGenerator(phases, runtimeContext);
   }
 
+  *runTick(context) {
+    if (!this.systemManager || typeof this.systemManager.runTick !== 'function') {
+      return;
+    }
+    const runtimeContext = Object.assign({}, context, { battleService: this });
+    yield* this.systemManager.runTick(runtimeContext);
+  }
+
   _ensureModule(method) {
     if (!this.module || typeof this.module[method] !== 'function') {
       throw new Error(`Battle module is not bound or missing method "${method}"`);

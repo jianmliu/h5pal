@@ -8,6 +8,16 @@ import {
 import input from '../js/pal/input.js';
 import scene from '../js/pal/scene.js';
 
+const DEFAULT_PIPELINE = [
+  'time',
+  'status',
+  'ai',
+  { phase: 'queue', generator: true },
+  { phase: 'action', generator: true },
+  'animation',
+  'render'
+];
+
 function sortByActorIndexDescending(registry, entities) {
   return entities
     .map(function(entityId) {
@@ -1053,10 +1063,37 @@ export class BattleSystemManager extends EventBus {
     this._systems = new Map();
     this._generatorSystems = new Map();
     this._context = baseContext || {};
+    this._pipeline = [];
   }
 
   setContext(context) {
     this._context = context || {};
+  }
+
+  _normalizePipelineEntry(entry) {
+    if (typeof entry === 'string') {
+      return { phase: entry, generator: null };
+    }
+    if (entry && typeof entry.phase === 'string') {
+      return {
+        phase: entry.phase,
+        generator: typeof entry.generator === 'undefined' || entry.generator === null
+          ? null
+          : Boolean(entry.generator)
+      };
+    }
+    throw new Error('Invalid pipeline entry');
+  }
+
+  setPipeline(phases) {
+    if (!Array.isArray(phases)) {
+      throw new Error('pipeline must be an array');
+    }
+    this._pipeline = phases.map((entry) => this._normalizePipelineEntry(entry));
+  }
+
+  getPipeline() {
+    return this._pipeline.slice();
   }
 
   register(phase, systemFn) {
@@ -1108,6 +1145,34 @@ export class BattleSystemManager extends EventBus {
     for (var i = 0; i < phases.length; i++) {
       this.run(phases[i], context);
     }
+  }
+
+  *_runTickPhase(entry, context) {
+    if (!entry || !entry.phase) {
+      return;
+    }
+    var useGenerator = entry.generator;
+    if (useGenerator === null) {
+      useGenerator = this._generatorSystems.has(entry.phase);
+    }
+    if (useGenerator) {
+      yield* this.runGenerator(entry.phase, context);
+    } else {
+      this.run(entry.phase, context);
+    }
+  }
+
+  *_effectivePipeline(context) {
+    var pipeline = this._pipeline && this._pipeline.length
+      ? this._pipeline
+      : DEFAULT_PIPELINE.map((entry) => this._normalizePipelineEntry(entry));
+    for (var i = 0; i < pipeline.length; i++) {
+      yield* this._runTickPhase(pipeline[i], context);
+    }
+  }
+
+  *runTick(context) {
+    yield* this._effectivePipeline(context);
   }
 
   onStateMutated(event) {
@@ -1507,5 +1572,6 @@ export default function createBattleSystemManager(options) {
   manager.register('render', renderSceneSystem);
   manager.registerGenerator('queue', selectActionQueueSystem);
   manager.registerGenerator('action', performActionPhaseSystem);
+  manager.setPipeline(DEFAULT_PIPELINE);
   return manager;
 }
