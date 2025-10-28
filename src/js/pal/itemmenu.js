@@ -1,7 +1,6 @@
 import utils from './utils';
 import input from './input';
 import scene from './scene';
-import stateService from '../../services/state-service.js';
 import worldService from '../../services/world-service.js';
 
 log.trace('itemmenu module load');
@@ -16,7 +15,7 @@ var surface = null;
 var ui = null;
 
 function setCurrentInventoryIndex(value) {
-  stateService.setGlobal('curInvMenuItem', value);
+  worldService.setInventoryMenuIndex(value);
 }
 
 function adjustCurrentInventoryIndex(delta) {
@@ -24,8 +23,7 @@ function adjustCurrentInventoryIndex(delta) {
 }
 
 function getCurrentInventoryIndex() {
-  var value = stateService.getGlobal('curInvMenuItem');
-  return typeof value === 'number' ? value : 0;
+  return worldService.getInventoryMenuIndex();
 }
 
 function ensureInventorySlot(inventory, index) {
@@ -159,7 +157,7 @@ itemmenu.itemSelectMenuUpdate = function() {
   }
 
   // Draw the description of the selected item
-  var objectDescTable = stateService.getGlobal('objectDesc');
+  var objectDescTable = worldService.getObjectDescTable();
   if (!itemmenu.noDesc && objectDescTable != null){
     var descObj = ui.getObjectDesc(objectDescTable, object);
     if (descObj) {
@@ -217,7 +215,7 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
     itemmenu.numInventory++;
   }
   // Also add usable equipped items to the list
-  if ((itemFlags & ItemFlag.Usable) && !stateService.getGlobal('inBattle')) {
+  if ((itemFlags & ItemFlag.Usable) && !worldService.isInBattle()) {
     worldService.mutateInventory((inventory) => {
       if (!Array.isArray(inventory)) {
         return inventory;

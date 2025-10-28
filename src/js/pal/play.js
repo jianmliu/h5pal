@@ -35,8 +35,8 @@ play.update = function*(trigger) {
   var currentSceneId = worldService.getSceneId() || stateService.getGlobal('numScene');
 
   if (trigger) {
-    if (stateService.getGlobal('enteringScene')) {
-      stateService.setGlobal('enteringScene', false);
+    if (worldService.isEnteringScene()) {
+      worldService.setEnteringScene(false);
 
       var sceneData = worldService.getSceneData();
       var scriptOnEnter = sceneData && typeof sceneData.scriptOnEnter === 'number'
@@ -53,7 +53,7 @@ play.update = function*(trigger) {
         });
       }
 
-      if (stateService.getGlobal('enteringScene') || stateService.getGlobal('gameStart')) {
+      if (worldService.isEnteringScene() || worldService.isGameStart()) {
         return;
       }
 
@@ -139,7 +139,7 @@ play.update = function*(trigger) {
 
           input.clear();
 
-          if (stateService.getGlobal('enteringScene') || stateService.getGlobal('gameStart')) {
+          if (worldService.isEnteringScene() || worldService.isGameStart()) {
             return;
           }
         }
@@ -168,7 +168,7 @@ play.update = function*(trigger) {
           return evt;
         });
         currentObj = worldService.getEventObject(currentIdx);
-        if (stateService.getGlobal('enteringScene') || stateService.getGlobal('gameStart')) {
+        if (worldService.isEnteringScene() || worldService.isGameStart()) {
           return;
         }
       }
@@ -202,7 +202,7 @@ play.update = function*(trigger) {
     }
   }
 
-  stateService.setGlobal('frameNum', (stateService.getGlobal('frameNum') || 0) + 1);
+  worldService.incrementFrameCount(1);
 };
 
 /**
@@ -435,9 +435,9 @@ play.startFrame = function*() {
     }
   }
 
-  stateService.setGlobal('chaseSpeedChangeCycles', (stateService.getGlobal('chaseSpeedChangeCycles') || 0) - 1);
-  if ((stateService.getGlobal('chaseSpeedChangeCycles') || 0) === 0) {
-    stateService.setGlobal('chaseRange', 1);
+  worldService.setChaseSpeedChangeCycles(worldService.getChaseSpeedChangeCycles() - 1);
+  if (worldService.getChaseSpeedChangeCycles() === 0) {
+    worldService.setChaseRange(1);
   }
 };
 

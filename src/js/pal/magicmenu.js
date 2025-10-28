@@ -2,6 +2,7 @@ import utils from './utils';
 import input from './input';
 import scene from './scene';
 import uibattle from './uibattle';
+import worldService from '../../services/world-service.js';
 
 log.trace('magicmenu module load');
 
@@ -65,11 +66,14 @@ magicmenu.magicSelectMenuUpdate = function() {
   // Create the box.
   ui.createBox(PAL_XY(10, 42), 4, 16, 1, false);
 
-  if (!Global.objectDesc) {
+  var objectDescTable = worldService.getObjectDescTable();
+  var selectedSlot = magicmenu.magicItems[magicmenu.currentItem] || { MP: 0, magic: 0 };
+
+  if (!objectDescTable) {
     // Draw the cash amount.
     ui.createSingleLineBox(PAL_XY(0, 0), 5, false);
     ui.drawText(ui.getWord(ui.CASH_LABEL), PAL_XY(10, 10), 0, false, false);
-    ui.drawNumber(Global.cash, 6, PAL_XY(49, 14), NumColor.Yellow, NumAlign.Right);
+    ui.drawNumber(worldService.getCash(), 6, PAL_XY(49, 14), NumColor.Yellow, NumAlign.Right);
 
     // Draw the MP of the selected magic.
     ui.createSingleLineBox(PAL_XY(215, 0), 5, false);
@@ -78,13 +82,13 @@ magicmenu.magicSelectMenuUpdate = function() {
       PAL_XY(260, 14)
     );
     ui.drawNumber(
-      magicmenu.magicItems[magicmenu.currentItem].MP, 4,
+      selectedSlot.MP, 4,
       PAL_XY(230, 14),
       NumColor.Yellow, NumAlign.Right
     );
     ui.drawNumber(magicmenu.playerMP, 4, PAL_XY(265, 14), NumColor.Cyan, NumAlign.Right);
   } else {
-    var descObj = ui.getObjectDesc(Global.objectDesc, magicmenu.magicItems[magicmenu.currentItem].magic)
+    var descObj = ui.getObjectDesc(objectDescTable, selectedSlot.magic);
     // Draw the magic description.
     if (descObj) {
       var d = descObj.desc;
@@ -115,7 +119,7 @@ magicmenu.magicSelectMenuUpdate = function() {
       PAL_XY(45, 14)
     );
     ui.drawNumber(
-      magicmenu.magicItems[magicmenu.currentItem].MP, 4,
+      selectedSlot.MP, 4,
       PAL_XY(15, 14),
       NumColor.Yellow, NumAlign.Right
     );
@@ -198,36 +202,44 @@ magicmenu.magicSelectMenuInit = function(playerRole, inBattle, defaultMagic) {
   magicmenu.currentItem = 0;
   magicmenu.magicNum = 0;
 
-  magicmenu.playerMP = GameData.playerRoles.MP[playerRole];
+  magicmenu.playerMP = worldService.getPlayerMP(playerRole);
 
-  // Put all magics of this player to the array
-  for (i = 0; i < Const.MAX_PLAYER_MAGICS; i++) {
-    var w = GameData.playerRoles.magic[i][playerRole];
-    if (w != 0) {
-      magicmenu.magicItems[magicmenu.magicNum].magic = w;
-
-      w = GameData.object[w].magic.magicNumber;
-      magicmenu.magicItems[magicmenu.magicNum].MP = GameData.magic[w].costMP;
-
-      magicmenu.magicItems[magicmenu.magicNum].enabled = true;
-
-      if (magicmenu.magicItems[magicmenu.magicNum].MP > magicmenu.playerMP) {
-        magicmenu.magicItems[magicmenu.magicNum].enabled = false;
-      }
-
-      w = GameData.object[magicmenu.magicItems[magicmenu.magicNum].magic].magic.flags;
-      if (inBattle) {
-        if (!(w & MagicFlag.UsableInBattle)) {
-          magicmenu.magicItems[magicmenu.magicNum].enabled = false;
-        }
-      } else {
-        if (!(w & MagicFlag.UsableOutsideBattle)) {
-          magicmenu.magicItems[magicmenu.magicNum].enabled = false;
-        }
-      }
-
-      magicmenu.magicNum++;
+  const magicSlots = worldService.getPlayerMagicSlots(playerRole);
+  for (var slotIndex = 0; slotIndex < magicSlots.length && slotIndex < Const.MAX_PLAYER_MAGICS; slotIndex++) {
+    var objectId = magicSlots[slotIndex];
+    if (!objectId) {
+      continue;
     }
+    var objectEntry = worldService.getObjectEntry(objectId);
+    var magicData = objectEntry && objectEntry.magic ? objectEntry.magic : null;
+    if (!magicData) {
+      continue;
+    }
+    var magicNumber = magicData.magicNumber || 0;
+    var magicEntry = worldService.getMagicEntry(magicNumber) || {};
+    var costMP = typeof magicEntry.costMP === 'number' ? magicEntry.costMP : 0;
+    var flags = typeof magicData.flags === 'number' ? magicData.flags : 0;
+
+    var slot = magicmenu.magicItems[magicmenu.magicNum];
+    slot.reset(objectId, costMP, true);
+
+    if (slot.MP > magicmenu.playerMP) {
+      slot.enabled = false;
+    }
+
+    if (inBattle) {
+      if (!(flags & MagicFlag.UsableInBattle)) {
+        slot.enabled = false;
+      }
+    } else if (!(flags & MagicFlag.UsableOutsideBattle)) {
+      slot.enabled = false;
+    }
+
+    magicmenu.magicNum++;
+  }
+
+  for (var resetIndex = magicmenu.magicNum; resetIndex < magicmenu.magicItems.length; resetIndex++) {
+    magicmenu.magicItems[resetIndex].reset();
   }
 
   // Sort the array
@@ -277,15 +289,19 @@ magicmenu.magicSelectMenu = function*(playerRole, inBattle, defaultMagic) {
     yield scene.makeScene();
 
     var w = 45;
-
-    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-      uibattle.playerInfoBox(
-        PAL_XY(w, 165),
-        Global.party[i].playerRole,
-        100,
-        uibattle.TIMEMETER_COLOR_DEFAULT,
-        false
-      );
+    var party = worldService.getParty();
+    var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+    for (var i = 0; i <= maxPartyMemberIndex; i++) {
+      var member = party[i];
+      if (member) {
+        uibattle.playerInfoBox(
+          PAL_XY(w, 165),
+          member.playerRole,
+          100,
+          uibattle.TIMEMETER_COLOR_DEFAULT,
+          false
+        );
+      }
       w += 78;
     }
 

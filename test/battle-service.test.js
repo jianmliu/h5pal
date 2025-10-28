@@ -488,7 +488,7 @@ describe('BattleService', () => {
     expect(statsComp).toBeTruthy();
     expect(statsComp.statsRef.hp[0]).toBe(worldService.getPlayerHP(0));
 
-    stateService.mutateGlobal('cash', (cash) => (cash || 0) + 50);
-    expect(stateService.getGlobal('cash')).toBe(150);
+    worldService.adjustCash(50);
+    expect(worldService.getCash()).toBe(150);
   });
 });

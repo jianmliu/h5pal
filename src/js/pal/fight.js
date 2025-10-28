@@ -8,8 +8,280 @@ import utils from './utils';
 import battleService from '../../services/battle-service.js';
 import { recomputeTimeChargingUnit } from '../../services/battle-systems.js';
 import { BattleComponents } from '../../ecs/index.js';
-import stateService from '../../services/state-service.js';
 import worldService from '../../services/world-service.js';
+
+function createMutableIndexedProxy(getter, setter, lengthGetter) {
+  return new Proxy({}, {
+    get(target, prop) {
+      if (prop === 'length') {
+        return typeof lengthGetter === 'function' ? lengthGetter() : target[prop];
+      }
+      const index = Number(prop);
+      if (!Number.isNaN(index)) {
+        return getter(index);
+      }
+      return target[prop];
+    },
+    set(target, prop, value) {
+      const index = Number(prop);
+      if (!Number.isNaN(index)) {
+        setter(index, value);
+        return true;
+      }
+      target[prop] = value;
+      return true;
+    }
+  });
+}
+
+function createReadonlyIndexedProxy(getter, lengthGetter) {
+  return new Proxy({}, {
+    get(target, prop) {
+      if (prop === 'length') {
+        return typeof lengthGetter === 'function' ? lengthGetter() : target[prop];
+      }
+      const index = Number(prop);
+      if (!Number.isNaN(index)) {
+        return getter(index);
+      }
+      return target[prop];
+    },
+    set() {
+      return true;
+    }
+  });
+}
+
+function createPlayerMagicFacade() {
+  const cache = new Map();
+  return new Proxy({}, {
+    get(target, prop) {
+      if (prop === 'length') {
+        const roles = worldService.getPlayerRoles();
+        return roles && Array.isArray(roles.magic) ? roles.magic.length : 0;
+      }
+      const slotIndex = Number(prop);
+      if (!Number.isNaN(slotIndex)) {
+        if (!cache.has(slotIndex)) {
+          cache.set(slotIndex, createMutableIndexedProxy(
+            (roleId) => worldService.getPlayerMagicAt(slotIndex, roleId),
+            (roleId, value) => worldService.setPlayerMagicSlot(roleId, slotIndex, value),
+            () => (typeof Const !== 'undefined' && Const && typeof Const.MAX_PLAYER_ROLES === 'number')
+              ? Const.MAX_PLAYER_ROLES
+              : 0
+          ));
+        }
+        return cache.get(slotIndex);
+      }
+      return target[prop];
+    },
+    set(target, prop, value) {
+      target[prop] = value;
+      return true;
+    }
+  });
+}
+
+function createPlayerRolesFacade() {
+  const lengthGetter = () => (typeof Const !== 'undefined' && Const && typeof Const.MAX_PLAYER_ROLES === 'number')
+    ? Const.MAX_PLAYER_ROLES
+    : 0;
+  const hpProxy = createMutableIndexedProxy(
+    (roleId) => worldService.getPlayerHP(roleId),
+    (roleId, value) => worldService.setPlayerHP(roleId, value),
+    lengthGetter
+  );
+  const mpProxy = createMutableIndexedProxy(
+    (roleId) => worldService.getPlayerMP(roleId),
+    (roleId, value) => worldService.setPlayerMP(roleId, value),
+    lengthGetter
+  );
+  const maxHpProxy = createMutableIndexedProxy(
+    (roleId) => worldService.getPlayerMaxHP(roleId),
+    (roleId, value) => worldService.setPlayerMaxHP(roleId, value),
+    lengthGetter
+  );
+  const maxMpProxy = createMutableIndexedProxy(
+    (roleId) => worldService.getPlayerMaxMP(roleId),
+    (roleId, value) => worldService.setPlayerMaxMP(roleId, value),
+    lengthGetter
+  );
+  const magicProxy = createPlayerMagicFacade();
+  const soundLengthGetter = lengthGetter;
+  const magicSoundProxy = createReadonlyIndexedProxy(
+    (roleId) => worldService.getPlayerMagicSound(roleId),
+    soundLengthGetter
+  );
+  const attackSoundProxy = createReadonlyIndexedProxy(
+    (roleId) => worldService.getPlayerAttackSound(roleId),
+    soundLengthGetter
+  );
+  const criticalSoundProxy = createReadonlyIndexedProxy(
+    (roleId) => worldService.getPlayerCriticalSound(roleId),
+    soundLengthGetter
+  );
+  const weaponSoundProxy = createReadonlyIndexedProxy(
+    (roleId) => worldService.getPlayerWeaponSound(roleId),
+    soundLengthGetter
+  );
+  const coverSoundProxy = createReadonlyIndexedProxy(
+    (roleId) => worldService.getPlayerCoverSound(roleId),
+    soundLengthGetter
+  );
+  const dyingSoundProxy = createReadonlyIndexedProxy(
+    (roleId) => worldService.getPlayerDyingSound(roleId),
+    soundLengthGetter
+  );
+  const deathSoundProxy = createReadonlyIndexedProxy(
+    (roleId) => worldService.getPlayerDeathSound(roleId),
+    soundLengthGetter
+  );
+  const coveredByProxy = createReadonlyIndexedProxy(
+    (roleId) => worldService.getPlayerCoveredBy(roleId),
+    soundLengthGetter
+  );
+  const nameProxy = createReadonlyIndexedProxy(
+    (roleId) => worldService.getPlayerNameId(roleId),
+    soundLengthGetter
+  );
+
+  return new Proxy({}, {
+    get(target, prop) {
+      switch (prop) {
+        case 'HP':
+          return hpProxy;
+        case 'MP':
+          return mpProxy;
+        case 'maxHP':
+          return maxHpProxy;
+        case 'maxMP':
+          return maxMpProxy;
+        case 'magic':
+          return magicProxy;
+        case 'magicSound':
+          return magicSoundProxy;
+        case 'attackSound':
+          return attackSoundProxy;
+        case 'criticalSound':
+          return criticalSoundProxy;
+        case 'weaponSound':
+          return weaponSoundProxy;
+        case 'coverSound':
+          return coverSoundProxy;
+        case 'dyingSound':
+          return dyingSoundProxy;
+        case 'deathSound':
+          return deathSoundProxy;
+        case 'coveredBy':
+          return coveredByProxy;
+        case 'name':
+          return nameProxy;
+        default:
+          return target[prop];
+      }
+    },
+    set(target, prop, value) {
+      target[prop] = value;
+      return true;
+    }
+  });
+}
+
+function createFightGameDataFacade() {
+  const playerRolesProxy = createPlayerRolesFacade();
+  const magicProxy = createReadonlyIndexedProxy(
+    (id) => worldService.getMagicEntry(id),
+    null
+  );
+  const objectProxy = createReadonlyIndexedProxy(
+    (id) => worldService.getObjectEntry(id),
+    null
+  );
+  const enemyProxy = createReadonlyIndexedProxy(
+    (id) => worldService.getEnemyEntry(id),
+    null
+  );
+  const battleFieldProxy = createReadonlyIndexedProxy(
+    (id) => worldService.getBattleFieldEntry(id),
+    null
+  );
+  const battleEffectProxy = createReadonlyIndexedProxy(
+    (id) => worldService.getBattleEffectIndexRow(id),
+    null
+  );
+
+  return new Proxy({}, {
+    get(target, prop) {
+      switch (prop) {
+        case 'playerRoles':
+          return playerRolesProxy;
+        case 'magic':
+          return magicProxy;
+        case 'object':
+          return objectProxy;
+        case 'enemy':
+          return enemyProxy;
+        case 'battleField':
+          return battleFieldProxy;
+        case 'battleEffectIndex':
+          return battleEffectProxy;
+        default:
+          return target[prop];
+      }
+    },
+    set(target, prop, value) {
+      target[prop] = value;
+      return true;
+    }
+  });
+}
+
+function createFightGlobalFacade() {
+  return new Proxy({}, {
+    get(target, prop) {
+      switch (prop) {
+        case 'battle':
+          return battleService.getState();
+        case 'playerStatus':
+          return worldService.getPlayerStatusMatrix();
+        case 'party':
+          return worldService.getParty();
+        case 'maxPartyMemberIndex':
+          return worldService.getMaxPartyMemberIndex();
+        case 'autoBattle':
+          return worldService.getAutoBattle();
+        case 'screenWave':
+          return worldService.getScreenWave();
+        case 'numBattleField':
+          return worldService.getBattleFieldId();
+        default:
+          return target[prop];
+      }
+    },
+    set(target, prop, value) {
+      switch (prop) {
+        case 'autoBattle':
+          worldService.setAutoBattle(value);
+          return true;
+        case 'screenWave':
+          worldService.setScreenWave(value);
+          return true;
+        case 'maxPartyMemberIndex':
+          worldService.setMaxPartyMemberIndex(value);
+          return true;
+        case 'numBattleField':
+          worldService.setBattleFieldId(value);
+          return true;
+        default:
+          target[prop] = value;
+          return true;
+      }
+    }
+  });
+}
+
+const Global = createFightGlobalFacade();
+const GameData = createFightGameDataFacade();
 
 log.trace('fight module load');
 
@@ -55,47 +327,19 @@ function getMaxPartyIndex() {
 }
 
 function getPlayerRolesData() {
-  const data = stateService.getGameData('playerRoles');
-  if (data) {
-    return data;
-  }
-  if (typeof GameData !== 'undefined' && GameData && GameData.playerRoles) {
-    return GameData.playerRoles;
-  }
-  return null;
+  return worldService.getPlayerRoles();
 }
 
 function getPlayerStatusMatrix() {
-  const status = stateService.getGlobal('playerStatus');
-  if (status) {
-    return status;
-  }
-  if (typeof Global !== 'undefined' && Global && Global.playerStatus) {
-    return Global.playerStatus;
-  }
-  return [];
+  return worldService.getPlayerStatusMatrix();
 }
 
 function getPlayerStatusRow(roleId) {
-  const matrix = getPlayerStatusMatrix();
-  return matrix && matrix[roleId] ? matrix[roleId] : [];
+  return worldService.getPlayerStatus(roleId) || [];
 }
 
 function getPlayerHP(roleId) {
-  const roles = getPlayerRolesData();
-  if (roles && roles.HP) {
-    const value = roles.HP[roleId];
-    if (typeof value === 'number') {
-      return value;
-    }
-  }
-  if (typeof GameData !== 'undefined' && GameData && GameData.playerRoles && GameData.playerRoles.HP) {
-    const fallback = GameData.playerRoles.HP[roleId];
-    if (typeof fallback === 'number') {
-      return fallback;
-    }
-  }
-  return 0;
+  return worldService.getPlayerHP(roleId) || 0;
 }
 
 function mutateEnemy(index, mutator) {
@@ -147,89 +391,8 @@ function mutatePlayerAction(index, mutator) {
   });
 }
 
-function setGlobalValue(key, value) {
-  return stateService.setGlobal(key, value);
-}
-
-function mutateGlobalValue(key, mutator) {
-  return stateService.mutateGlobal(key, function(current) {
-    if (typeof mutator !== 'function') {
-      return current;
-    }
-    const result = mutator(current);
-    return typeof result === 'undefined' ? current : result;
-  });
-}
-
-function mutateGlobalEntry(key, index, mutator) {
-  return mutateGlobalValue(key, function(collection) {
-    if (!collection || typeof mutator !== 'function') {
-      return collection;
-    }
-    const numericIndex = Number(index);
-    const target = Number.isNaN(numericIndex) ? collection[index] : collection[numericIndex];
-    if (target == null) {
-      return collection;
-    }
-    mutator(target, collection, Number.isNaN(numericIndex) ? index : numericIndex);
-    return collection;
-  });
-}
-
-function adjustGlobalNumber(key, delta) {
-  return mutateGlobalValue(key, function(value) {
-    return (value || 0) + delta;
-  });
-}
-
-function mutateGameDataValue(key, mutator) {
-  return stateService.mutateGameData(key, function(current) {
-    if (typeof mutator !== 'function') {
-      return current;
-    }
-    const result = mutator(current);
-    return typeof result === 'undefined' ? current : result;
-  });
-}
-
-function mutatePlayerRoles(mutator) {
-  return mutateGameDataValue('playerRoles', function(playerRoles) {
-    if (playerRoles && typeof mutator === 'function') {
-      mutator(playerRoles);
-    }
-    return playerRoles;
-  });
-}
-
-function mutateMagic(mutator) {
-  return mutateGameDataValue('magic', function(magicData) {
-    if (magicData && typeof mutator === 'function') {
-      mutator(magicData);
-    }
-    return magicData;
-  });
-}
-
-function mutateObjects(mutator) {
-  return mutateGameDataValue('object', function(objects) {
-    if (objects && typeof mutator === 'function') {
-      mutator(objects);
-    }
-    return objects;
-  });
-}
-
-function mutateScenes(mutator) {
-  return mutateGameDataValue('scene', function(scenes) {
-    if (scenes && typeof mutator === 'function') {
-      mutator(scenes);
-    }
-    return scenes;
-  });
-}
-
 function mutateInventory(mutator) {
-  return mutateGlobalValue('inventory', function(inventory) {
+  return worldService.mutateInventory(function(inventory) {
     if (inventory && typeof mutator === 'function') {
       mutator(inventory);
     }
@@ -247,10 +410,16 @@ function mutateExp(mutator) {
 }
 
 function getPartyEntry(index) {
-  if (!Global || !Array.isArray(Global.party)) {
+  const party = worldService.getParty();
+  if (!Array.isArray(party)) {
     return null;
   }
-  return Global.party[index] || null;
+  return party[index] || null;
+}
+
+function getPartyRoleId(index) {
+  const entry = getPartyEntry(index);
+  return entry ? entry.playerRole : null;
 }
 
 function updateUIComponent(patch) {
@@ -1021,7 +1190,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       });
     }
 
-    if (checkPlayers && !Global.autoBattle) {
+    if (checkPlayers && !worldService.getAutoBattle()) {
       for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
         var w = Global.party[i].playerRole;
         var name;
@@ -1056,12 +1225,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
                 GameData.object[name].player.scriptOnFriendDeath,
                 w
               );
-              mutateObjects(function(objects) {
-                var objectEntry = objects && objects[name];
+              worldService.mutateObjectEntry(name, function(objectEntry) {
                 if (objectEntry && objectEntry.player) {
                   objectEntry.player.scriptOnFriendDeath = updatedFriendDeathScript;
                 }
-                return objects;
+                return objectEntry;
               });
 
               battleService.setBattleResult(BattleResult.OnGoing);
@@ -1120,12 +1288,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
                 GameData.object[name].player.scriptOnDying,
                 w
               );
-              mutateObjects(function(objects) {
-                var objectEntry = objects && objects[name];
+              worldService.mutateObjectEntry(name, function(objectEntry) {
                 if (objectEntry && objectEntry.player) {
                   objectEntry.player.scriptOnDying = updatedDyingScript;
                 }
-                return objects;
+                return objectEntry;
               });
 
               battleService.setBattleResult(BattleResult.OnGoing);
@@ -1505,10 +1672,8 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     l += n;
     l += GameData.magic[magicNum].shake;
 
-    var wave = Global.screenWave;
-    mutateGlobalValue('screenWave', function(current) {
-      return (current || 0) + GameData.magic[magicNum].wave;
-    });
+    var wave = worldService.getScreenWave();
+    worldService.adjustScreenWave(GameData.magic[magicNum].wave || 0);
 
     for (i = 0; i < l; i++) {
       var frame;
@@ -1571,7 +1736,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           PAL_XY(x - ~~(frame.width / 2), y - frame.height)
         );
 
-        if (i == l - 1 && Global.screenWave < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
+        if (i == l - 1 && worldService.getScreenWave() < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
           surface.blitRLE(
             frame,
             PAL_XY(x - ~~(frame.width / 2), y - frame.height),
@@ -1596,7 +1761,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             PAL_XY(x - ~~(frame.width / 2), y - frame.height)
           );
 
-          if (i == l - 1 && Global.screenWave < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
+          if (i == l - 1 && worldService.getScreenWave() < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
             surface.blitRLE(
               frame,
               PAL_XY(x - ~~(frame.width / 2), y - frame.height),
@@ -1626,7 +1791,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           PAL_XY(x - ~~(frame.width / 2), y - frame.height)
         );
 
-        if (i == l - 1 && Global.screenWave < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
+        if (i == l - 1 && worldService.getScreenWave() < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
           surface.blitRLE(
             frame,
             PAL_XY(x - ~~(frame.width / 2), y - frame.height),
@@ -1641,7 +1806,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       surface.updateScreen(null);
     }
 
-    setGlobalValue('screenWave', wave);
+    worldService.setScreenWave(wave);
     yield surface.shakeScreen(0, 0);
 
     for (i = 0; i <= BATTLE().maxEnemyIndex; i++) {
@@ -1669,10 +1834,8 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     l += n;
     l += GameData.magic[magicNum].shake;
 
-    var wave = Global.screenWave;
-    mutateGlobalValue('screenWave', function(current) {
-      return (current || 0) + GameData.magic[magicNum].wave;
-    });
+    var wave = worldService.getScreenWave();
+    worldService.adjustScreenWave(GameData.magic[magicNum].wave || 0);
     var x, y;
 
     for (var i = 0; i < l; i++) {
@@ -1726,7 +1889,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           PAL_XY(x - ~~(rle.width / 2), y - rle.height)
         );
 
-        if (i == l - 1 && Global.screenWave < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
+        if (i == l - 1 && worldService.getScreenWave() < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
           surface.blitRLE(
             rle,
             PAL_XY(x - ~~(rle.width / 2), y - rle.height),
@@ -1753,7 +1916,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             PAL_XY(x - ~~(rle.width / 2), y - rle.height)
           );
 
-          if (i == l - 1 && Global.screenWave < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
+          if (i == l - 1 && worldService.getScreenWave() < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
             surface.blitRLE(
               rle,
               PAL_XY(x - ~~(rle.width / 2), y - rle.height),
@@ -1784,7 +1947,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           PAL_XY(x - ~~(rle.width / 2), y - rle.height)
         );
 
-        if (i == l - 1 && Global.screenWave < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
+        if (i == l - 1 && worldService.getScreenWave() < 9 && GameData.magic[magicNum].keepEffect == 0xFFFF) {
           surface.blitRLE(
             rle,
             PAL_XY(x - ~~(rle.width / 2), y - rle.height),
@@ -1802,7 +1965,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       yield sleepByFrame(1);
     }
 
-    setGlobalValue('screenWave', wave);
+    worldService.setScreenWave(wave);
     yield surface.shakeScreen(0, 0);
 
     for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
@@ -2319,10 +2482,10 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           }
 
           (function(roleIndex, delta) {
-            mutatePlayerRoles(function(playerRoles) {
-              playerRoles.HP[roleIndex] -= delta;
-            });
-          })(Global.party[target].playerRole, damage);
+            if (roleIndex !== null && typeof roleIndex !== 'undefined') {
+              worldService.adjustPlayerHP(roleIndex, -delta);
+            }
+          })(getPartyRoleId(target), damage);
 
           setPlayerPosition(target, function(pos) {
             return PAL_XY(PAL_X(pos) - 12, PAL_Y(pos) - 6);
@@ -2412,17 +2575,13 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         }
 
         for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          (function(roleIndex, cost) {
-            mutatePlayerRoles(function(playerRoles) {
-              playerRoles.HP[roleIndex] -= cost;
-            });
-          })(Global.party[i].playerRole, GameData.magic[magicNum].costMP);
-
-          if (SHORT(GameData.playerRoles.HP[Global.party[i].playerRole]) <= 0) {
-            const roleIndex = Global.party[i].playerRole;
-            mutatePlayerRoles(function(playerRoles) {
-              playerRoles.HP[roleIndex] = 1;
-            });
+          var roleId = getPartyRoleId(i);
+          if (roleId === null || typeof roleId === 'undefined') {
+            continue;
+          }
+          worldService.adjustPlayerHP(roleId, -GameData.magic[magicNum].costMP);
+          if (SHORT(worldService.getPlayerHP(roleId)) <= 0) {
+            worldService.setPlayerHP(roleId, 1);
           }
 
           // Reset the time meter for everyone when using coopmagic
@@ -2605,14 +2764,10 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
         yield battle.showPlayerPreMagicAnim(playerIndex, (GameData.magic[magicNum].type == MagicType.Summon));
 
-        if (!Global.autoBattle) {
-          mutatePlayerRoles(function(playerRoles) {
-            playerRoles.MP[playerRole] -= GameData.magic[magicNum].costMP;
-          });
-          if (SHORT(GameData.playerRoles.MP[playerRole]) < 0) {
-            mutatePlayerRoles(function(playerRoles) {
-              playerRoles.MP[playerRole] = 0;
-            });
+        if (!worldService.getAutoBattle()) {
+          worldService.adjustPlayerMP(playerRole, -GameData.magic[magicNum].costMP);
+          if (SHORT(worldService.getPlayerMP(playerRole)) < 0) {
+            worldService.setPlayerMP(playerRole, 0);
           }
         }
 
@@ -2633,12 +2788,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             GameData.object[object].magic.scriptOnUse,
             playerRole
           );
-          mutateObjects(function(objects) {
-            var objectEntry = objects && objects[object];
+          worldService.mutateObjectEntry(object, function(objectEntry) {
             if (objectEntry && objectEntry.magic) {
               objectEntry.magic.scriptOnUse = defensiveUseScript;
             }
-            return objects;
+            return objectEntry;
           });
 
           if (script.scriptSuccess) {
@@ -2648,12 +2802,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
               GameData.object[object].magic.scriptOnSuccess,
               w
             );
-            mutateObjects(function(objects) {
-              var objectEntry = objects && objects[object];
+            worldService.mutateObjectEntry(object, function(objectEntry) {
               if (objectEntry && objectEntry.magic) {
                 objectEntry.magic.scriptOnSuccess = defensiveSuccessScript;
               }
-              return objects;
+              return objectEntry;
             });
 
             if (script.scriptSuccess) {
@@ -2679,12 +2832,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             GameData.object[object].magic.scriptOnUse,
             playerRole
           );
-          mutateObjects(function(objects) {
-            var objectEntry = objects && objects[object];
+          worldService.mutateObjectEntry(object, function(objectEntry) {
             if (objectEntry && objectEntry.magic) {
               objectEntry.magic.scriptOnUse = offensiveUseScript;
             }
-            return objects;
+            return objectEntry;
           });
 
           if (script.scriptSuccess) {
@@ -2698,12 +2850,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
               GameData.object[object].magic.scriptOnSuccess,
               WORD(target)
             );
-            mutateObjects(function(objects) {
-              var objectEntry = objects && objects[object];
+            worldService.mutateObjectEntry(object, function(objectEntry) {
               if (objectEntry && objectEntry.magic) {
                 objectEntry.magic.scriptOnSuccess = offensiveSuccessScript;
               }
-              return objects;
+              return objectEntry;
             });
 
             // Inflict damage to enemies
@@ -2805,12 +2956,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           GameData.object[object].item.scriptOnThrow,
           WORD(target)
         );
-        mutateObjects(function(objects) {
-          var objectEntry = objects && objects[object];
+        worldService.mutateObjectEntry(object, function(objectEntry) {
           if (objectEntry && objectEntry.item) {
             objectEntry.item.scriptOnThrow = updatedThrowScript;
           }
-          return objects;
+          return objectEntry;
         });
 
         // Remove the thrown item from inventory
@@ -2832,14 +2982,13 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         // Run the script
         const updatedItemScript = yield script.runTriggerScript(
           item.scriptOnUse,
-          (target == -1) ? 0xFFFF : Global.party[target].playerRole
+          (target == -1) ? 0xFFFF : getPartyRoleId(target)
         );
-        mutateObjects(function(objects) {
-          var objectEntry = objects && objects[object];
+        worldService.mutateObjectEntry(object, function(objectEntry) {
           if (objectEntry && objectEntry.item) {
             objectEntry.item.scriptOnUse = updatedItemScript;
           }
-          return objects;
+          return objectEntry;
         });
 
         if (item.flags & ItemFlag.Consuming) {
@@ -2997,12 +3146,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         GameData.object[magic].magic.scriptOnUse,
         playerRole
       );
-      mutateObjects(function(objects) {
-        var objectEntry = objects && objects[magic];
+      worldService.mutateObjectEntry(magic, function(objectEntry) {
         if (objectEntry && objectEntry.magic) {
           objectEntry.magic.scriptOnUse = enemyMagicUseScript;
         }
-        return objects;
+        return objectEntry;
       });
 
       if (script.scriptSuccess) {
@@ -3012,12 +3160,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           GameData.object[magic].magic.scriptOnSuccess,
           playerRole
         );
-        mutateObjects(function(objects) {
-          var objectEntry = objects && objects[magic];
+        worldService.mutateObjectEntry(magic, function(objectEntry) {
           if (objectEntry && objectEntry.magic) {
             objectEntry.magic.scriptOnSuccess = enemyMagicSuccessScript;
           }
-          return objects;
+          return objectEntry;
         });
       }
 
@@ -3058,11 +3205,9 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             }
 
             if (!INVINCIBLE) {
-              (function(roleIndex, delta) {
-                mutatePlayerRoles(function(playerRoles) {
-                  playerRoles.HP[roleIndex] -= delta;
-                });
-              })(w, damage);
+              if (w !== null && typeof w !== 'undefined') {
+                worldService.adjustPlayerHP(w, -damage);
+              }
             }
 
             if (GameData.playerRoles.HP[w] == 0) {
@@ -3098,9 +3243,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           }
 
           if (!INVINCIBLE) {
-        mutatePlayerRoles(function(playerRoles) {
-          playerRoles.HP[playerRole] -= damage;
-        });
+            worldService.adjustPlayerHP(playerRole, -damage);
           }
 
           if (GameData.playerRoles.HP[playerRole] == 0) {
@@ -3109,7 +3252,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         }
       }
 
-      if (!Global.autoBattle) {
+      if (!worldService.getAutoBattle()) {
         battle.displayStatChange();
       }
 
@@ -3295,9 +3438,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         }
 
         if (!INVINCIBLE) {
-          mutatePlayerRoles(function(playerRoles) {
-            playerRoles.HP[playerRole] -= damage;
-          });
+          worldService.adjustPlayerHP(playerRole, -damage);
         }
 
         battle.displayStatChange();
@@ -3361,12 +3502,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           GameData.object[i].item.scriptOnUse,
           playerRole
         );
-        mutateObjects(function(objects) {
-          var objectEntry = objects && objects[i];
+        worldService.mutateObjectEntry(i, function(objectEntry) {
           if (objectEntry && objectEntry.item) {
             objectEntry.item.scriptOnUse = attackEquivScript;
           }
-          return objects;
+          return objectEntry;
         });
       }
 
@@ -3440,7 +3580,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             }
             return enemyState;
           });
-          adjustGlobalNumber('cash', c);
+          worldService.adjustCash(c);
           targetEnemy = battleService.getEnemy(target);
 
           if (c > 0) {

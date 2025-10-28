@@ -708,10 +708,7 @@ battle.won = function*() {
     yield input.waitForKey(isBossBattle ? 5500 : 3000);
   }
 
-  stateService.mutateGlobal('cash', function(cash) {
-    cash = cash || 0;
-    return cash + cashGained;
-  });
+  worldService.adjustCash(cashGained);
 
   var party = getParty();
   var maxPartyIndex = getMaxPartyMemberIndex();

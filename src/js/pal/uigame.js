@@ -9,7 +9,6 @@ import RLE from './rle';
 import input from './input';
 import music from './music';
 import resourceService from '../../services/resource-service.js';
-import stateService from '../../services/state-service.js';
 import worldService from '../../services/world-service.js';
 
 function getGlobalObject() {
@@ -54,8 +53,7 @@ function getMaxPartyMemberIndex() {
 }
 
 function getCash() {
-  var cash = stateService.getGlobal('cash');
-  return typeof cash === 'number' ? cash : 0;
+  return worldService.getCash();
 }
 
 function getObjectEntry(objectId) {
@@ -124,12 +122,11 @@ function setObjectScriptOnEquip(objectId, scriptId) {
 }
 
 function getLastUnequippedItem() {
-  var value = stateService.getGlobal('lastUnequippedItem');
-  return typeof value === 'number' ? value : 0;
+  return worldService.getLastUnequippedItem();
 }
 
 function setLastUnequippedItem(value) {
-  stateService.setGlobal('lastUnequippedItem', value);
+  worldService.setLastUnequippedItem(value);
 }
 
 log.trace('uigame module load');
@@ -354,7 +351,7 @@ uigame.showCash = function(cash) {
 };
 
 uigame.systemMenu_onItemChange = function(currentItem) {
-  stateService.setGlobal('curSystemMenuItem', currentItem - 1);
+  worldService.setSystemMenuIndex(currentItem - 1);
 };
 
 /**
@@ -394,7 +391,7 @@ uigame.systemMenu = function*() {
   surface.updateScreen(rect);
 
   // Perform the menu.
-  var curSystemMenuItem = stateService.getGlobal('curSystemMenuItem');
+  var curSystemMenuItem = worldService.getSystemMenuIndex();
   if (typeof curSystemMenuItem !== 'number') {
     curSystemMenuItem = 0;
   }
@@ -425,10 +422,10 @@ uigame.systemMenu = function*() {
   switch(returnValue) {
     case 1:
       // Save Game
-      var slot = yield uigame.saveSlotMenu(stateService.getGlobal('currentSaveSlot') || 1);
+      var slot = yield uigame.saveSlotMenu(worldService.getCurrentSaveSlot() || 1);
       if (slot != ui.MENUITEM_VALUE_CANCELLED) {
         var gameInstance = requireGame();
-        stateService.setGlobal('currentSaveSlot', slot);
+        worldService.setCurrentSaveSlot(slot);
         if (!gameInstance.saveGame(slot)) {
           if (typeof window !== 'undefined' && window.alert) {
             window.alert('保存失败');
@@ -438,7 +435,7 @@ uigame.systemMenu = function*() {
       break;
     case 2:
       // Load Game
-      var slot = yield uigame.saveSlotMenu(stateService.getGlobal('currentSaveSlot') || 1);
+      var slot = yield uigame.saveSlotMenu(worldService.getCurrentSaveSlot() || 1);
       if (slot != ui.MENUITEM_VALUE_CANCELLED) {
         music.play(0, false, 1);
         yield surface.fadeOut(1);
@@ -447,9 +444,9 @@ uigame.systemMenu = function*() {
       break;
     case 3:
       // Music
-      var currentNoMusic = !!stateService.getGlobal('noMusic');
+      var currentNoMusic = worldService.getNoMusicFlag();
       const noMusic = !(yield uigame.switchMenu(!currentNoMusic));
-      stateService.setGlobal('noMusic', noMusic);
+      worldService.setNoMusicFlag(noMusic);
       /*
       g_fNoMusic = !PAL_SwitchMenu(!g_fNoMusic);
       #ifdef PAL_HAS_NATIVEMIDI
@@ -461,7 +458,7 @@ uigame.systemMenu = function*() {
          }
          else
          {
-            PAL_PlayMUS(stateService.getGlobal('wNumMusic') || 0, true, 0);
+            PAL_PlayMUS(worldService.getCurrentMusicTrackId() || 0, true, 0);
          }
       }
       #endif
@@ -469,9 +466,9 @@ uigame.systemMenu = function*() {
       break;
     case 4:
       // Sound
-      var currentNoSound = !!stateService.getGlobal('noSound');
+      var currentNoSound = worldService.getNoSoundFlag();
       const noSound = !(yield uigame.switchMenu(!currentNoSound));
-      stateService.setGlobal('noSound', noSound);
+      worldService.setNoSoundFlag(noSound);
       break;
     case 5:
       if (!PAL_CLASSIC) {
@@ -578,9 +575,9 @@ uigame.inGameMagicMenu = function*() {
         }
       }
 
-      if (stateService.getGlobal('needToFadeIn')) {
-        yield surface.fadeIn(stateService.getGlobal('numPalette'), stateService.getGlobal('nightPalette'), 1);
-        stateService.setGlobal('needToFadeIn', false);
+      if (worldService.getNeedToFadeIn()) {
+        yield surface.fadeIn(worldService.getPaletteId(), worldService.getNightPaletteFlag(), 1);
+        worldService.setNeedToFadeIn(false);
       }
     } else {
       // Need to select which player to use the magic on.
@@ -693,7 +690,7 @@ uigame.inventoryMenu = function*() {
 };
 
 uigame.inGameMenu_onItemChange = function(currentItem) {
-  stateService.setGlobal('curMainMenuItem', currentItem - 1);
+  worldService.setMainMenuIndex(currentItem - 1);
 };
 
 uigame.inGameMenu = function*() {
@@ -715,13 +712,13 @@ uigame.inGameMenu = function*() {
   ];
 
   // Process the menu
-  var curMainMenuItem = stateService.getGlobal('curMainMenuItem');
+  var curMainMenuItem = worldService.getMainMenuIndex();
   if (typeof curMainMenuItem !== 'number') {
     curMainMenuItem = 0;
   }
 
   while (true) {
-    var currentSelection = stateService.getGlobal('curMainMenuItem');
+    var currentSelection = worldService.getMainMenuIndex();
     if (typeof currentSelection !== 'number') {
       currentSelection = curMainMenuItem;
     } else {
@@ -1071,10 +1068,7 @@ uigame.buyMenu = function*(storeNum){
     if (getObjectPrice(result) <= getCash()) {
       if (yield uigame.confirmMenu()) {
         // Player bought an item
-        stateService.mutateGlobal('cash', (cash) => {
-          var currentCash = Number(cash) || 0;
-          return currentCash - getObjectPrice(result);
-        });
+        worldService.adjustCash(-getObjectPrice(result));
         script.addItemToInventory(result, 1);
       }
     }
@@ -1113,10 +1107,7 @@ uigame.sellMenu = function*(){
 
     if (yield uigame.confirmMenu()) {
       if (script.addItemToInventory(w, -1)) {
-        stateService.mutateGlobal('cash', (cash) => {
-          var currentCash = Number(cash) || 0;
-          return currentCash + getObjectPrice(w) / 2;
-        });
+        worldService.adjustCash(getObjectPrice(w) / 2);
       }
     }
   }

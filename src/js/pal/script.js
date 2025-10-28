@@ -50,10 +50,115 @@ function BATTLE() {
 }
 
 function setGlobalValue(key, value) {
-  return stateService.setGlobal(key, value);
+  switch (key) {
+    case 'cash':
+      return worldService.setCash(value);
+    case 'autoBattle':
+      return worldService.setAutoBattle(value);
+    case 'chaseRange':
+      return worldService.setChaseRange(value);
+    case 'chaseSpeedChangeCycles':
+      return worldService.setChaseSpeedChangeCycles(value);
+    case 'collectValue':
+      return worldService.setCollectValue(value);
+    case 'curPlayingRNG':
+      return worldService.setCurPlayingRng(value);
+    case 'frameNum':
+      return worldService.setFrameCount(value);
+    case 'inBattle':
+      return worldService.setInBattle(value);
+    case 'currentSaveSlot':
+      return worldService.setCurrentSaveSlot(value);
+    case 'lastUnequippedItem':
+      return worldService.setLastUnequippedItem(value);
+    case 'maxPartyMemberIndex':
+      return worldService.setMaxPartyMemberIndex(value);
+    case 'enteringScene':
+      return worldService.setEnteringScene(value);
+    case 'musicNum':
+      return worldService.setMusicTrack(value);
+    case 'numBattleMusic':
+      return worldService.setBattleMusicTrack(value);
+    case 'numBattleField':
+      return worldService.setBattleFieldId(value);
+    default:
+      return stateService.setGlobal(key, value);
+  }
 }
 
 function mutateGlobalValue(key, mutator) {
+  if (key === 'cash') {
+    if (typeof mutator !== 'function') {
+      return worldService.getCash();
+    }
+    var current = worldService.getCash();
+    var next = mutator(current);
+    if (typeof next === 'undefined') {
+      return current;
+    }
+    return worldService.setCash(next);
+  }
+  if (key === 'collectValue') {
+    if (typeof mutator !== 'function') {
+      return worldService.getCollectValue();
+    }
+    var currentCollect = worldService.getCollectValue();
+    var updatedCollect = mutator(currentCollect);
+    if (typeof updatedCollect === 'undefined') {
+      return currentCollect;
+    }
+    return worldService.setCollectValue(updatedCollect);
+  }
+  if (key === 'chaseRange') {
+    if (typeof mutator !== 'function') {
+      return worldService.getChaseRange();
+    }
+    var currentRange = worldService.getChaseRange();
+    var nextRange = mutator(currentRange);
+    if (typeof nextRange === 'undefined') {
+      return currentRange;
+    }
+    return worldService.setChaseRange(nextRange);
+  }
+  if (key === 'chaseSpeedChangeCycles') {
+    if (typeof mutator !== 'function') {
+      return worldService.getChaseSpeedChangeCycles();
+    }
+    var currentCycles = worldService.getChaseSpeedChangeCycles();
+    var nextCycles = mutator(currentCycles);
+    if (typeof nextCycles === 'undefined') {
+      return currentCycles;
+    }
+    return worldService.setChaseSpeedChangeCycles(nextCycles);
+  }
+  if (key === 'frameNum') {
+    if (typeof mutator !== 'function') {
+      return worldService.getFrameCount();
+    }
+    var currentFrame = worldService.getFrameCount();
+    var nextFrame = mutator(currentFrame);
+    if (typeof nextFrame === 'undefined') {
+      return currentFrame;
+    }
+    return worldService.setFrameCount(nextFrame);
+  }
+  if (key === 'currentSaveSlot') {
+    if (typeof mutator !== 'function') {
+      return worldService.getCurrentSaveSlot();
+    }
+    var currentSlot = worldService.getCurrentSaveSlot();
+    var nextSlot = mutator(currentSlot);
+    if (typeof nextSlot === 'undefined') {
+      return currentSlot;
+    }
+    return worldService.setCurrentSaveSlot(nextSlot);
+  }
+  if (key === 'party') {
+    return worldService.mutateParty(mutator);
+  }
+  if (key === 'poisonStatus') {
+    return worldService.mutatePoisonStatus(mutator);
+  }
   return stateService.mutateGlobal(key, function(current) {
     if (typeof mutator !== 'function') {
       return current;
@@ -78,6 +183,12 @@ function mutateGlobalEntry(key, index, mutator) {
 }
 
 function adjustGlobalNumber(key, delta) {
+  if (key === 'cash') {
+    return worldService.adjustCash(delta);
+  }
+  if (key === 'collectValue') {
+    return worldService.adjustCollectValue(delta);
+  }
   return mutateGlobalValue(key, function(value) {
     var next = (value || 0) + delta;
     return next;
@@ -373,30 +484,27 @@ function getSceneIdValue() {
 }
 
 function getChaseRangeValue() {
-  var value = stateService.getGlobal('chaseRange');
-  return typeof value === 'number' ? value : 0;
+  return worldService.getChaseRange();
 }
 
 function getCollectValue() {
-  var value = stateService.getGlobal('collectValue');
-  return typeof value === 'number' ? value : 0;
+  return worldService.getCollectValue();
 }
 
 function getCurPlayingRNGValue() {
-  return stateService.getGlobal('curPlayingRNG');
+  return worldService.getCurPlayingRng();
 }
 
 function getFrameCounter() {
-  var value = stateService.getGlobal('frameNum');
-  return typeof value === 'number' ? value : 0;
+  return worldService.getFrameCount();
 }
 
 function isInBattle() {
-  return !!stateService.getGlobal('inBattle');
+  return worldService.isInBattle();
 }
 
 function getCurrentSaveSlot() {
-  return stateService.getGlobal('currentSaveSlot');
+  return worldService.getCurrentSaveSlot();
 }
 
 function getPaletteNumber() {
@@ -484,8 +592,7 @@ function getPartyOffsetY() {
 }
 
 function getCashValue() {
-  var cash = stateService.getGlobal('cash');
-  return typeof cash === 'number' ? cash : 0;
+  return worldService.getCash();
 }
 
 function getPartyDirection() {
@@ -542,39 +649,70 @@ function mutateGameDataEntry(key, index, mutator) {
 }
 
 function mutatePlayerRoles(mutator) {
-  return mutateGameDataValue('playerRoles', function(playerRoles) {
-    if (playerRoles && typeof mutator === 'function') {
-      mutator(playerRoles);
-    }
-    return playerRoles;
-  });
+  return worldService.mutatePlayerRoles(mutator);
 }
 
 function mutateMagic(mutator) {
-  return mutateGameDataValue('magic', function(magicData) {
-    if (magicData && typeof mutator === 'function') {
-      mutator(magicData);
-    }
-    return magicData;
-  });
+  return worldService.mutateMagicTable(mutator);
 }
 
 function mutateObjects(mutator) {
-  return mutateGameDataValue('object', function(objects) {
-    if (objects && typeof mutator === 'function') {
-      mutator(objects);
-    }
-    return objects;
-  });
+  return worldService.mutateObjects(mutator);
 }
 
 function mutateEventObjects(mutator) {
-  return mutateGameDataValue('eventObject', function(eventObjects) {
-    if (eventObjects && typeof mutator === 'function') {
-      mutator(eventObjects);
-    }
-    return eventObjects;
-  });
+  return worldService.mutateEventObjects(mutator);
+}
+
+function getObjectEntry(objectId) {
+  return worldService.getObjectEntry(objectId) || null;
+}
+
+function getEnemyEntry(enemyId) {
+  return typeof enemyId === 'number' ? worldService.getEnemyEntry(enemyId) : null;
+}
+
+function getEnemyIdFromObject(objectId) {
+  var entry = getObjectEntry(objectId);
+  return entry && entry.enemy ? entry.enemy.enemyID : null;
+}
+
+function getObjectEnemyResistance(objectId) {
+  var entry = getObjectEntry(objectId);
+  return entry && entry.enemy ? entry.enemy.resistanceToSorcery : 0;
+}
+
+function getObjectPoisonEnemyScript(objectId) {
+  var entry = getObjectEntry(objectId);
+  return entry && entry.poison ? entry.poison.enemyScript : 0;
+}
+
+function getMagicNumberFromObject(objectId) {
+  var entry = getObjectEntry(objectId);
+  return entry && entry.magic ? entry.magic.magicNumber : 0;
+}
+
+function copyEnemyTemplate(enemyId) {
+  var entry = getEnemyEntry(enemyId);
+  if (!entry) {
+    return null;
+  }
+  if (typeof entry.copy === 'function') {
+    return entry.copy();
+  }
+  try {
+    return JSON.parse(JSON.stringify(entry));
+  } catch (err) {
+    return entry;
+  }
+}
+
+function getStoreItemId(storeId, index) {
+  var storeEntry = worldService.getStoreEntry(storeId);
+  if (!storeEntry || !Array.isArray(storeEntry.items)) {
+    return 0;
+  }
+  return storeEntry.items[index] || 0;
 }
 
 var script = {
@@ -1477,7 +1615,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
           if (!targetEnemy || targetEnemy.objectID === 0) {
             continue;
           }
-          if (randomLong(0, 9) >= GameData.object[targetEnemy.objectID].enemy.resistanceToSorcery) {
+          var resistance = getObjectEnemyResistance(targetEnemy.objectID);
+          if (randomLong(0, 9) >= resistance) {
             for (j = 0; j < Const.MAX_POISONS; j++) {
               if (targetEnemy.poisons[j].poisonID === sc.operand[1]) {
                 break;
@@ -1490,7 +1629,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
                     poison.poisonID = sc.operand[1];
                     return poison;
                   });
-                  var ret = yield script.runTriggerScript(GameData.object[sc.operand[1]].poison.enemyScript, eventObjectID);
+                  var poisonScript = getObjectPoisonEnemyScript(sc.operand[1]);
+                  if (typeof poisonScript === 'undefined' || poisonScript === null) {
+                    poisonScript = 0;
+                  }
+                  var ret = yield script.runTriggerScript(poisonScript, eventObjectID);
                   battleService.setEnemyPoison(i, j, poison => {
                     poison.poisonScript = ret;
                     return poison;
@@ -1505,8 +1648,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         // Apply to one enemy
         var singleEnemy = BATTLE().enemy[eventObjectID];
         if (singleEnemy) {
-          w = singleEnemy.objectID;
-          if (randomLong(0, 9) >= GameData.object[w].enemy.resistanceToSorcery) {
+          var enemyObjectId = singleEnemy.objectID;
+          var singleResistance = getObjectEnemyResistance(enemyObjectId);
+          if (randomLong(0, 9) >= singleResistance) {
             for (j = 0; j < Const.MAX_POISONS; j++) {
               if (singleEnemy.poisons[j].poisonID == sc.operand[1]) {
                 break;
@@ -1519,9 +1663,13 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
                     poison.poisonID = sc.operand[1];
                     return poison;
                   });
-                  var ret = yield script.runTriggerScript(GameData.object[sc.operand[1]].poison.enemyScript, eventObjectID);
+                  var singlePoisonScript = getObjectPoisonEnemyScript(sc.operand[1]);
+                  if (typeof singlePoisonScript === 'undefined' || singlePoisonScript === null) {
+                    singlePoisonScript = 0;
+                  }
+                  var singleRet = yield script.runTriggerScript(singlePoisonScript, eventObjectID);
                   battleService.setEnemyPoison(eventObjectID, j, poison => {
-                    poison.poisonScript = ret;
+                    poison.poisonScript = singleRet;
                     return poison;
                   });
                   break;
@@ -1606,7 +1754,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       } else {
         i = ((sc.operand[0] === PlayerStatus.Slow) ? 14 : 9);
       }
-      if (randomLong(0, i) >= GameData.object[w].enemy.resistanceToSorcery &&
+      var enemyResistance = getObjectEnemyResistance(w);
+      if (randomLong(0, i) >= enemyResistance &&
           BATTLE().enemy[eventObjectID].status[sc.operand[0]] === 0) {
         battleService.setEnemyStatus(eventObjectID, sc.operand[0], sc.operand[1]);
       } else {
@@ -1680,10 +1829,15 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         }
         adjustGlobalNumber('collectValue', -i);
         i--;
-        script.addItemToInventory(GameData.store[0].items[i], 1);
+        var storeItemId = getStoreItemId(0, i);
+        if (storeItemId) {
+          script.addItemToInventory(storeItemId, 1);
+        }
         ui.startDialog(DialogPosition.CenterWindow, 0, 0, false);
         var s = ui.getWord(42);
-        s = s.concat(ui.getWord(GameData.store[0].items[i]));
+        if (storeItemId) {
+          s = s.concat(ui.getWord(storeItemId));
+        }
         ui.showDialogText(s);
       } else {
         scriptEntry = sc.operand[0] - 1;
@@ -1924,7 +2078,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0057:
       script.debug('[SCRIPT] Set the base damage of magic according to MP value'); // 酒神吧大概是
       i = ((sc.operand[1] === 0) ? 8 : sc.operand[1]);
-      j = GameData.object[sc.operand[0]].magic.magicNumber;
+      j = getMagicNumberFromObject(sc.operand[0]);
       var mpValue = worldService.getPlayerMP(eventObjectID);
       mutateMagic(function(magicData) {
         if (magicData && magicData[j]) {
@@ -2018,9 +2172,14 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0064:
       script.debug('[SCRIPT] Jump if enemy\'s HP is more than the specified percentage');
-      i = GameData.object[BATTLE().enemy[eventObjectID].objectID].enemy.enemyID;
-      if (BATTLE().enemy[eventObjectID].e.health * 100 > GameData.enemy[i].health * sc.operand[0]) {
-        scriptEntry = sc.operand[1] - 1;
+      var enemyState = BATTLE().enemy[eventObjectID];
+      if (enemyState) {
+        var enemyId = getEnemyIdFromObject(enemyState.objectID);
+        var enemyTemplate = getEnemyEntry(enemyId);
+        var enemyMaxHealth = enemyTemplate && typeof enemyTemplate.health === 'number' ? enemyTemplate.health : 0;
+        if (enemyMaxHealth > 0 && enemyState.e.health * 100 > enemyMaxHealth * sc.operand[0]) {
+          scriptEntry = sc.operand[1] - 1;
+        }
       }
       break;
     case 0x0065:
@@ -2457,7 +2616,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       var currentCash = getCashValue();
       i = (currentCash > 5000) ? 5000 : currentCash;
       adjustGlobalNumber('cash', -i);
-      j = GameData.object[sc.operand[0]].magic.magicNumber;
+      j = getMagicNumberFromObject(sc.operand[0]);
       mutateMagic(function(magicData) {
         if (magicData && magicData[j]) {
           magicData[j].baseDamage = ~~(i * 2 / 5);
@@ -2774,13 +2933,18 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         var transformingEnemy = battleService.getEnemy(eventObjectID);
         w = transformingEnemy && transformingEnemy.e ? transformingEnemy.e.health : 0;
         battleService.setEnemyObject(eventObjectID, sc.operand[0]);
-        var transformedEnemy = GameData.enemy[GameData.object[sc.operand[0]].enemy.enemyID].copy();
-        transformedEnemy.health = w;
+        var transformEnemyId = getEnemyIdFromObject(sc.operand[0]);
+        var transformedEnemy = copyEnemyTemplate(transformEnemyId);
+        if (transformedEnemy) {
+          transformedEnemy.health = w;
+        }
         battleService.setEnemy(eventObjectID, function(enemyState) {
           if (!enemyState) {
             return enemyState;
           }
-          enemyState.e = transformedEnemy;
+          if (transformedEnemy) {
+            enemyState.e = transformedEnemy;
+          }
           enemyState.wCurrentFrame = 0;
           return enemyState;
         });

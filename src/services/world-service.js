@@ -1072,6 +1072,26 @@ class WorldService extends EventBus {
     return updatedEntry;
   }
 
+  mutateEventObjects(mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    let snapshot = null;
+    stateService.mutateGameData('eventObject', (eventObjects) => {
+      if (!eventObjects) {
+        return eventObjects;
+      }
+      const result = mutator(eventObjects);
+      snapshot = typeof result !== 'undefined' ? result : eventObjects;
+      return snapshot;
+    });
+    if (snapshot) {
+      this.syncEventObjects();
+    }
+    return snapshot;
+  }
+
   getSceneEventObjectRange() {
     this._ensureInitialised();
     const sceneRef = this.getSceneData();
@@ -1165,10 +1185,70 @@ class WorldService extends EventBus {
     return updatedEntry;
   }
 
+  mutateObjects(mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    let snapshot = null;
+    stateService.mutateGameData('object', (objects) => {
+      if (!objects) {
+        return objects;
+      }
+      const result = mutator(objects);
+      snapshot = typeof result !== 'undefined' ? result : objects;
+      return snapshot;
+    });
+    return snapshot;
+  }
+
+  mutateMagicTable(mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    let snapshot = null;
+    stateService.mutateGameData('magic', (magicData) => {
+      if (!magicData) {
+        return magicData;
+      }
+      const result = mutator(magicData);
+      snapshot = typeof result !== 'undefined' ? result : magicData;
+      return snapshot;
+    });
+    return snapshot;
+  }
+
   getPlayerRoles() {
     this._ensureInitialised();
     const store = getGameDataStore();
     return store && store.playerRoles ? store.playerRoles : null;
+  }
+
+  _getPlayerRoleArray(field) {
+    const roles = this.getPlayerRoles();
+    if (!roles) {
+      return null;
+    }
+    return roles[field] || null;
+  }
+
+  _getPlayerRoleArrayValue(field, roleId, fallback = 0) {
+    const arr = this._getPlayerRoleArray(field);
+    if (!arr) {
+      return fallback;
+    }
+    const value = arr[roleId];
+    return typeof value === 'undefined' ? fallback : value;
+  }
+
+  _setPlayerRoleArrayValue(field, roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles[field]) {
+        roles[field][roleId] = value;
+      }
+      return roles;
+    });
   }
 
   getMagicEntry(id) {
@@ -1187,6 +1267,33 @@ class WorldService extends EventBus {
       return null;
     }
     return store.store[id] || null;
+  }
+
+  getEnemyEntry(id) {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    if (!store || !Array.isArray(store.enemy)) {
+      return null;
+    }
+    return store.enemy[id] || null;
+  }
+
+  getBattleFieldEntry(id) {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    if (!store || !Array.isArray(store.battleField)) {
+      return null;
+    }
+    return store.battleField[id] || null;
+  }
+
+  getBattleEffectIndexRow(id) {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    if (!store || !Array.isArray(store.battleEffectIndex)) {
+      return null;
+    }
+    return store.battleEffectIndex[id] || null;
   }
 
   mutatePlayerRoles(mutator) {
@@ -1220,6 +1327,12 @@ class WorldService extends EventBus {
     });
   }
 
+  adjustPlayerHP(roleId, delta) {
+    const adjustment = Number.isFinite(delta) ? delta : 0;
+    const current = this.getPlayerHP(roleId);
+    return this.setPlayerHP(roleId, current + adjustment);
+  }
+
   getPlayerMP(roleId) {
     const roles = this.getPlayerRoles();
     return roles && roles.MP ? roles.MP[roleId] || 0 : 0;
@@ -1232,6 +1345,12 @@ class WorldService extends EventBus {
       }
       return roles;
     });
+  }
+
+  adjustPlayerMP(roleId, delta) {
+    const adjustment = Number.isFinite(delta) ? delta : 0;
+    const current = this.getPlayerMP(roleId);
+    return this.setPlayerMP(roleId, current + adjustment);
   }
 
   getPlayerMaxHP(roleId) {
@@ -1551,6 +1670,50 @@ class WorldService extends EventBus {
     return view.getUint16(offset, false);
   }
 
+  getPlayerCoveredBy(roleId) {
+    return this._getPlayerRoleArrayValue('coveredBy', roleId, 0);
+  }
+
+  getPlayerMagicSound(roleId) {
+    return this._getPlayerRoleArrayValue('magicSound', roleId, 0);
+  }
+
+  getPlayerAttackSound(roleId) {
+    return this._getPlayerRoleArrayValue('attackSound', roleId, 0);
+  }
+
+  getPlayerCriticalSound(roleId) {
+    return this._getPlayerRoleArrayValue('criticalSound', roleId, 0);
+  }
+
+  getPlayerWeaponSound(roleId) {
+    return this._getPlayerRoleArrayValue('weaponSound', roleId, 0);
+  }
+
+  getPlayerCoverSound(roleId) {
+    return this._getPlayerRoleArrayValue('coverSound', roleId, 0);
+  }
+
+  getPlayerDyingSound(roleId) {
+    return this._getPlayerRoleArrayValue('dyingSound', roleId, 0);
+  }
+
+  getPlayerDeathSound(roleId) {
+    return this._getPlayerRoleArrayValue('deathSound', roleId, 0);
+  }
+
+  getPlayerMagicAt(slotIndex, roleId) {
+    const roles = this.getPlayerRoles();
+    if (!roles || !Array.isArray(roles.magic)) {
+      return 0;
+    }
+    const row = roles.magic[slotIndex];
+    if (!row) {
+      return 0;
+    }
+    return row[roleId] || 0;
+  }
+
   _mutatePlayerRoleWord(fieldIndex, roleId, updater) {
     if (typeof fieldIndex !== 'number' || typeof roleId !== 'number' || MAX_PLAYER_ROLES <= 0) {
       return null;
@@ -1734,6 +1897,273 @@ class WorldService extends EventBus {
     const resolved = Number.isFinite(value) ? value | 0 : 0;
     stateService.setGlobal('layer', resolved);
     return resolved;
+  }
+
+  getCash() {
+    this._ensureInitialised();
+    const cash = stateService.getGlobal('cash');
+    return typeof cash === 'number' ? cash : 0;
+  }
+
+  setCash(value) {
+    this._ensureInitialised();
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : 0;
+    stateService.setGlobal('cash', resolved);
+    return resolved;
+  }
+
+  adjustCash(delta) {
+    this._ensureInitialised();
+    const adjustment = Number.isFinite(delta) ? delta : 0;
+    let nextValue = null;
+    stateService.mutateGlobal('cash', (cash) => {
+      const current = typeof cash === 'number' ? cash : 0;
+      const next = Math.trunc(current + adjustment);
+      nextValue = next;
+      return next;
+    });
+    return nextValue;
+  }
+
+  _getNumberGlobal(key, fallback = 0) {
+    this._ensureInitialised();
+    const value = stateService.getGlobal(key);
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  }
+
+  _setNumberGlobal(key, value, fallback = 0) {
+    this._ensureInitialised();
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : fallback;
+    stateService.setGlobal(key, resolved);
+    return resolved;
+  }
+
+  _adjustNumberGlobal(key, delta, fallback = 0) {
+    this._ensureInitialised();
+    const adjustment = Number.isFinite(delta) ? delta : 0;
+    let nextValue = fallback;
+    stateService.mutateGlobal(key, (current) => {
+      const currentValue = typeof current === 'number' && Number.isFinite(current) ? current : fallback;
+      nextValue = Math.trunc(currentValue + adjustment);
+      return nextValue;
+    });
+    return nextValue;
+  }
+
+  _getBooleanGlobal(key, fallback = false) {
+    this._ensureInitialised();
+    const value = stateService.getGlobal(key);
+    if (typeof value === 'boolean') {
+      return value;
+    }
+    if (typeof value === 'number') {
+      return value !== 0;
+    }
+    return fallback;
+  }
+
+  _setBooleanGlobal(key, value) {
+    this._ensureInitialised();
+    const resolved = !!value;
+    stateService.setGlobal(key, resolved);
+    return resolved;
+  }
+
+  _getValueGlobal(key, fallback = null) {
+    this._ensureInitialised();
+    const value = stateService.getGlobal(key);
+    return typeof value === 'undefined' ? fallback : value;
+  }
+
+  _setValueGlobal(key, value) {
+    this._ensureInitialised();
+    stateService.setGlobal(key, value);
+    return value;
+  }
+
+  getObjectDescTable() {
+    return this._getValueGlobal('objectDesc', null);
+  }
+
+  setObjectDescTable(value) {
+    return this._setValueGlobal('objectDesc', value);
+  }
+
+  getInventoryMenuIndex() {
+    return this._getNumberGlobal('curInvMenuItem', 0);
+  }
+
+  setInventoryMenuIndex(value) {
+    return this._setNumberGlobal('curInvMenuItem', value, 0);
+  }
+
+  getSystemMenuIndex() {
+    return this._getNumberGlobal('curSystemMenuItem', 0);
+  }
+
+  setSystemMenuIndex(value) {
+    return this._setNumberGlobal('curSystemMenuItem', value, 0);
+  }
+
+  getMainMenuIndex() {
+    return this._getNumberGlobal('curMainMenuItem', 0);
+  }
+
+  setMainMenuIndex(value) {
+    return this._setNumberGlobal('curMainMenuItem', value, 0);
+  }
+
+  getNoMusicFlag() {
+    return this._getBooleanGlobal('noMusic', false);
+  }
+
+  setNoMusicFlag(value) {
+    return this._setBooleanGlobal('noMusic', value);
+  }
+
+  getNoSoundFlag() {
+    return this._getBooleanGlobal('noSound', false);
+  }
+
+  setNoSoundFlag(value) {
+    return this._setBooleanGlobal('noSound', value);
+  }
+
+  getCurrentMusicTrackId() {
+    return this._getNumberGlobal('wNumMusic', 0);
+  }
+
+  setCurrentMusicTrackId(value) {
+    return this._setNumberGlobal('wNumMusic', value, 0);
+  }
+
+  getAutoBattle() {
+    return this._getBooleanGlobal('autoBattle', false);
+  }
+
+  setAutoBattle(value) {
+    return this._setBooleanGlobal('autoBattle', value);
+  }
+
+  getChaseRange() {
+    return this._getNumberGlobal('chaseRange', 0);
+  }
+
+  setChaseRange(value) {
+    return this._setNumberGlobal('chaseRange', value, 0);
+  }
+
+  adjustChaseRange(delta) {
+    return this._adjustNumberGlobal('chaseRange', delta, 0);
+  }
+
+  getChaseSpeedChangeCycles() {
+    return this._getNumberGlobal('chaseSpeedChangeCycles', 0);
+  }
+
+  setChaseSpeedChangeCycles(value) {
+    return this._setNumberGlobal('chaseSpeedChangeCycles', value, 0);
+  }
+
+  getCollectValue() {
+    return this._getNumberGlobal('collectValue', 0);
+  }
+
+  setCollectValue(value) {
+    return this._setNumberGlobal('collectValue', value, 0);
+  }
+
+  adjustCollectValue(delta) {
+    return this._adjustNumberGlobal('collectValue', delta, 0);
+  }
+
+  getCurPlayingRng() {
+    return this._getValueGlobal('curPlayingRNG', 0);
+  }
+
+  setCurPlayingRng(value) {
+    return this._setValueGlobal('curPlayingRNG', value);
+  }
+
+  getFrameCount() {
+    return this._getNumberGlobal('frameNum', 0);
+  }
+
+  setFrameCount(value) {
+    return this._setNumberGlobal('frameNum', value, 0);
+  }
+
+  incrementFrameCount(delta = 1) {
+    return this._adjustNumberGlobal('frameNum', delta, 0);
+  }
+
+  isInBattle() {
+    return this._getBooleanGlobal('inBattle', false);
+  }
+
+  setInBattle(value) {
+    return this._setBooleanGlobal('inBattle', value);
+  }
+
+  getCurrentSaveSlot() {
+    const slot = this._getNumberGlobal('currentSaveSlot', 1);
+    return slot || 1;
+  }
+
+  setCurrentSaveSlot(value) {
+    return this._setNumberGlobal('currentSaveSlot', value, 1);
+  }
+
+  getLastUnequippedItem() {
+    return this._getNumberGlobal('lastUnequippedItem', 0);
+  }
+
+  setLastUnequippedItem(value) {
+    return this._setNumberGlobal('lastUnequippedItem', value, 0);
+  }
+
+  setMaxPartyMemberIndex(value) {
+    return this._setNumberGlobal('maxPartyMemberIndex', value, 0);
+  }
+
+  isEnteringScene() {
+    return this._getBooleanGlobal('enteringScene', false);
+  }
+
+  setEnteringScene(value) {
+    return this._setBooleanGlobal('enteringScene', value);
+  }
+
+  getMusicTrack() {
+    return this._getNumberGlobal('musicNum', 0);
+  }
+
+  setMusicTrack(value) {
+    return this._setNumberGlobal('musicNum', value, 0);
+  }
+
+  getBattleMusicTrack() {
+    return this._getNumberGlobal('numBattleMusic', 0);
+  }
+
+  setBattleMusicTrack(value) {
+    return this._setNumberGlobal('numBattleMusic', value, 0);
+  }
+
+  getBattleFieldId() {
+    return this._getNumberGlobal('numBattleField', 0);
+  }
+
+  setBattleFieldId(value) {
+    return this._setNumberGlobal('numBattleField', value, 0);
+  }
+
+  isGameStart() {
+    return this._getBooleanGlobal('gameStart', false);
+  }
+
+  setGameStart(value) {
+    return this._setBooleanGlobal('gameStart', value);
   }
 
   _handleGlobalChanged(event) {

@@ -324,7 +324,7 @@ game.getSaveSlotMeta = function(slot) {
 };
 
 game.saveGame = function(slot) {
-  slot = slot || stateService.getGlobal('currentSaveSlot') || 1;
+  slot = slot || worldService.getCurrentSaveSlot() || 1;
   var existing = readStorageSlot(slot);
   var saveData = game._saveGame();
   var nextSavedTimes = (existing ? existing.savedTimes : (saveData.savedTimes || 0)) + 1;
@@ -340,7 +340,7 @@ game.saveGame = function(slot) {
 game.initGameData = function*(slot) {
   yield game.initGlobalGameData();
 
-  stateService.setGlobal('currentSaveSlot', slot);
+  worldService.setCurrentSaveSlot(slot);
 
   // try loading from the saved game file.
   if (slot == 0 || !(yield game.loadGame(slot))) {
@@ -348,7 +348,7 @@ game.initGameData = function*(slot) {
     yield game.loadDefaultGame();
   }
 
-  stateService.setGlobal('gameStart', true);
+  worldService.setGameStart(true);
   updateGlobalValues({
     needToFadeIn: false,
     curInvMenuItem: 0,
@@ -365,7 +365,7 @@ game._initGameData = function*(s) {
 
   game._loadGame(s);
 
-  stateService.setGlobal('gameStart', true);
+  worldService.setGameStart(true);
   updateGlobalValues({
     needToFadeIn: false,
     curInvMenuItem: 0,
@@ -400,13 +400,13 @@ game.start = function*() {
 game.main = function*() {
   var slot = yield uigame.openingMenu(); // 主菜单
   //var slot = 5;
-  stateService.setGlobal('currentSaveSlot', slot);
+  worldService.setCurrentSaveSlot(slot);
   yield game.initGameData(slot); // 加载游戏
 
   while (true) {
-    if (stateService.getGlobal('gameStart')) {
+    if (worldService.isGameStart()) {
       yield game.start();
-      stateService.setGlobal('gameStart', false);
+      worldService.setGameStart(false);
     }
     yield res.loadResources();
     input.clear();

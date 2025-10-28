@@ -9,6 +9,7 @@ import input from './input';
 import uigame from './uigame';
 import battleServiceDefault from '../../services/battle-service.js';
 import stateService from '../../services/state-service.js';
+import worldService from '../../services/world-service.js';
 
 log.trace('uibattle module load');
 
@@ -199,7 +200,7 @@ function runUIUpdate(mutator, context) {
   });
 
   if (typeof nextAutoBattle !== 'undefined' && typeof stateService.setGlobal === 'function') {
-    stateService.setGlobal('autoBattle', !!nextAutoBattle);
+    worldService.setAutoBattle(nextAutoBattle);
   }
 
   if (typeof battleService.syncUIComponent === 'function') {
@@ -308,7 +309,7 @@ function getAutoBattle(component) {
     return uiComponent.autoBattle;
   }
   if (typeof stateService.getGlobal === 'function') {
-    var autoBattle = stateService.getGlobal('autoBattle');
+    var autoBattle = worldService.getAutoBattle();
     if (typeof autoBattle !== 'undefined') {
       return !!autoBattle;
     }
@@ -341,7 +342,7 @@ function getUIProp(prop, fallback, component) {
       return uiComponent.autoBattle;
     }
     if (typeof stateService.getGlobal === 'function') {
-      var autoBattle = stateService.getGlobal('autoBattle');
+      var autoBattle = worldService.getAutoBattle();
       if (typeof autoBattle !== 'undefined') {
         return !!autoBattle;
       }
@@ -900,7 +901,7 @@ uibattle.update = function*() {
     );
 
     if (input.isKeyPressed(Key.Menu) || input.isKeyPressed(Key.Search)) {
-      stateService.setGlobal('autoBattle', false);
+      worldService.setAutoBattle(false);
       mutateUI(function(uiState) {
         uiState.autoAttack = false;
       });
