@@ -1225,6 +1225,14 @@ class WorldService extends EventBus {
     return store && store.playerRoles ? store.playerRoles : null;
   }
 
+  getPlayerBattleSpriteNum(roleId) {
+    const roles = this.getPlayerRoles();
+    if (roles && roles.spriteNumInBattle) {
+      return roles.spriteNumInBattle[roleId] || 0;
+    }
+    return 0;
+  }
+
   _getPlayerRoleArray(field) {
     const roles = this.getPlayerRoles();
     if (!roles) {
@@ -1260,6 +1268,15 @@ class WorldService extends EventBus {
     return store.magic[id] || null;
   }
 
+  getLevelUpMagicTable() {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    if (!store || !Array.isArray(store.levelUpMagic)) {
+      return [];
+    }
+    return store.levelUpMagic;
+  }
+
   getStoreEntry(id) {
     this._ensureInitialised();
     const store = getGameDataStore();
@@ -1276,6 +1293,40 @@ class WorldService extends EventBus {
       return null;
     }
     return store.enemy[id] || null;
+  }
+
+  copyEnemyTemplate(enemyId) {
+    const entry = this.getEnemyEntry(enemyId);
+    if (!entry) {
+      return null;
+    }
+    if (typeof entry.copy === 'function') {
+      return entry.copy();
+    }
+    try {
+      return JSON.parse(JSON.stringify(entry));
+    } catch (err) {
+      return { ...entry };
+    }
+  }
+
+  getEnemyTeamEntry(id) {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    if (!store || !Array.isArray(store.enemyTeam)) {
+      return null;
+    }
+    return store.enemyTeam[id] || null;
+  }
+
+  getEnemyFormationPosition(index, maxEnemyIndex) {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    const enemyPos = store && store.enemyPos && store.enemyPos.pos ? store.enemyPos.pos : null;
+    if (!enemyPos || !enemyPos[index]) {
+      return null;
+    }
+    return enemyPos[index][maxEnemyIndex] || null;
   }
 
   getBattleFieldEntry(id) {
@@ -2103,6 +2154,12 @@ class WorldService extends EventBus {
 
   setInBattle(value) {
     return this._setBooleanGlobal('inBattle', value);
+  }
+
+  getBattleState() {
+    this._ensureInitialised();
+    const battle = stateService.getGlobal('battle');
+    return battle || null;
   }
 
   getCurrentSaveSlot() {

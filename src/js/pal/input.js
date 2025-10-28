@@ -6,6 +6,7 @@
 
 import utils from './utils';
 import config from './config';
+import worldService from '../../services/world-service.js';
 
 console.trace('input module load');
 
@@ -152,7 +153,7 @@ function pressKey(palKey) {
   input.keyPress |= palKey;
   if (palKey in PalKeysToPalDirs) {
     if (input.dir !== PalKeysToPalDirs[palKey]) {
-      input.prevDir = (Global.inBattle ? Direction.Unknown : input.dir);
+      input.prevDir = (worldService.isInBattle() ? Direction.Unknown : input.dir);
       input.dir = PalKeysToPalDirs[palKey];
       log.trace('[INPUT] turn from %d to %d', input.prevDir, input.dir);
     }

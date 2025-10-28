@@ -1,4 +1,5 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import worldService from '../src/services/world-service.js';
 
 vi.mock('../src/js/pal/script-extras.js', () => ({
   default: {
@@ -31,7 +32,8 @@ vi.mock('../src/js/pal/sound.js', () => ({
 
 vi.mock('../src/js/pal/scene.js', () => ({
   default: {
-    applyWave: vi.fn()
+    applyWave: vi.fn(),
+    checkObstacle: vi.fn(() => false)
   }
 }));
 
@@ -444,7 +446,8 @@ let script;
 describe('script utility behaviour', () => {
   beforeAll(async () => {
     const module = await import('../src/js/pal/script.js');
-   script = module.default;
+    script = module.default;
+    worldService.init();
   });
 
   beforeEach(() => {
@@ -456,6 +459,11 @@ describe('script utility behaviour', () => {
     GameData.enemy = [];
     GameData.playerRoles.HP = [];
     GameData.playerRoles.maxHP = [];
+    GameData.playerRoles.MP = [];
+    GameData.playerRoles.maxMP = [];
+    GameData.playerRoles.spriteNumInBattle = [];
+    GameData.playerRoles.magic = Array.from({ length: Const.MAX_PLAYER_MAGICS }, () => []);
+    GameData.magic = [];
     GameData.playerRoles.equipment = Array.from({ length: Const.MAX_PLAYER_EQUIPMENTS }, () => []);
     script.runTriggerScript = function* () { return 0; };
     GameData.eventObject = [
@@ -513,6 +521,66 @@ describe('script utility behaviour', () => {
     expect(firstCall[0]).toBe(0);
     expect(firstCall[1]).toBe(0);
     expect(typeof firstCall[2]).toBe('function');
+  });
+
+  it('scales magic base damage based on current MP (opcode 0x0057)', async () => {
+    const magicObjectId = 6;
+    const magicNumber = 3;
+    GameData.object[magicObjectId] = { magic: { magicNumber } };
+    GameData.magic[magicNumber] = { costMP: 5, baseDamage: 10 };
+    GameData.playerRoles.MP[0] = 20;
+    GameData.playerRoles.maxMP[0] = 30;
+
+    await runInstruction(0x0057, [magicObjectId, 2], { eventObjectID: 0 });
+
+    expect(GameData.magic[magicNumber].baseDamage).toBe(40);
+    expect(worldService.getPlayerMP(0)).toBe(0);
+  });
+
+  it('scales magic base damage based on current cash (opcode 0x0088)', async () => {
+    const magicObjectId = 7;
+    const magicNumber = 4;
+    GameData.object[magicObjectId] = { magic: { magicNumber } };
+    GameData.magic[magicNumber] = { costMP: 1, baseDamage: 0 };
+    worldService.setCash(3000);
+
+    await runInstruction(0x0088, [magicObjectId, 0, 0]);
+
+    expect(GameData.magic[magicNumber].baseDamage).toBe(1200);
+    expect(worldService.getCash()).toBe(0);
+  });
+
+  it('transforms enemy while preserving health (opcode 0x009F)', async () => {
+    const transformObjectId = 8;
+    const newEnemyId = 5;
+    battleState.enemy[0] = createEnemy({
+      objectID: 2,
+      e: { health: 80, collectValue: 0, magic: 0, magicRate: 10 }
+    });
+    GameData.object[transformObjectId] = {
+      enemy: {
+        enemyID: newEnemyId,
+        scriptOnTurnStart: 12,
+        scriptOnBattleEnd: 13,
+        scriptOnReady: 14
+      }
+    };
+    GameData.object[2] = { enemy: { enemyID: 1, scriptOnTurnStart: 0, scriptOnBattleEnd: 0, scriptOnReady: 0 } };
+    GameData.enemy[newEnemyId] = {
+      health: 200,
+      collectValue: 10,
+      magic: 3,
+      magicRate: 20,
+      copy() {
+        return { ...this };
+      }
+    };
+
+    await runInstruction(0x009F, [transformObjectId, 0, 0], { eventObjectID: 0 });
+
+    expect(battleServiceMock.setEnemyObject).toHaveBeenCalledWith(0, transformObjectId);
+    expect(battleState.enemy[0].objectID).toBe(transformObjectId);
+    expect(battleState.enemy[0].e.health).toBe(80);
   });
 
   it('clears enemy poison through battle service helper', async () => {

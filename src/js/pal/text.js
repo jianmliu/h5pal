@@ -6,6 +6,7 @@ import Sprite from './sprite';
 import Palette from './palette';
 import input from './input';
 import resourceService from '../../services/resource-service.js';
+import worldService from '../../services/world-service.js';
 
 log.trace('text module load');
 
@@ -227,7 +228,7 @@ text.init = function*(surf, _ui) {
     log.trace('[TEXT] startDialog(%d, %d, %d, %d)', location, color, charFaceNum, playingRNG);
     var rect = RECT(0, 0, 0, 0);
 
-    if (Global.inBattle && !text.updatedInBattle) {
+    if (worldService.isInBattle() && !text.updatedInBattle) {
       // Update the screen in battle, or the graphics may seem messed up
       surface.updateScreen(null);
       text.updatedInBattle = true;
@@ -308,8 +309,9 @@ text.init = function*(surf, _ui) {
   ui.dialogWaitForKey = function*() {
     log.trace('[TEXT] dialogWaitForKey');
     // get the current palette
-    //var palette = utils.arrClone(Global.palette);
-    var palette = utils.arrClone(Palette.get(Global.numPalette, Global.nightPalette));
+    var paletteId = worldService.getPaletteId();
+    var nightPalette = worldService.getNightPaletteFlag();
+    var palette = utils.arrClone(Palette.get(paletteId, nightPalette));
     var isCenter = (textLib.dialogPosition !== DialogPosition.CenterWindow &&
                     textLib.dialogPosition !== DialogPosition.Center);
 
@@ -352,7 +354,7 @@ text.init = function*(surf, _ui) {
 
     if (textLib.dialogPosition !== DialogPosition.CenterWindow &&
         textLib.dialogPosition !== DialogPosition.Center) {
-      surface.setPalette(Palette.get(Global.numPalette, Global.nightPalette));
+      surface.setPalette(Palette.get(paletteId, nightPalette));
     }
     input.clear();
     textLib.userSkip = false;
@@ -370,7 +372,7 @@ text.init = function*(surf, _ui) {
     input.clear();
     textLib.icon = 0;
 
-    if (Global.inBattle && !text.updatedInBattle) {
+    if (worldService.isInBattle() && !text.updatedInBattle) {
       // Update the screen in battle, or the graphics may seem messed up
       //VIDEO_UpdateScreen(NULL);
       surface.updateScreen(null);
@@ -392,7 +394,8 @@ text.init = function*(surf, _ui) {
     if (textLib.dialogPosition == DialogPosition.CenterWindow) {
       // The text should be shown in a small window at the center of the screen
       if (PAL_CLASSIC) {
-        if (Global.inBattle && Global.battle.battleResult == BattleResult.OnGoing) {
+        var battleState = worldService.getBattleState();
+        if (worldService.isInBattle() && battleState && battleState.battleResult == BattleResult.OnGoing) {
           // uibattle.showText(buf, 1400);
         }
       }

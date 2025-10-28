@@ -3,7 +3,6 @@
  * @module res
  * 由于资源加载已经都放在用时了，这里似乎没用了
  */
-import stateService from '../../services/state-service.js';
 import worldService from '../../services/world-service.js';
 
 var res = {
@@ -22,11 +21,9 @@ var res = {
    */
   loadResources: function*() {
     if (res.loadFlag & LoadFlag.Scene) {
-      if (Global.enteringScene) {
-        stateService.updateGlobal({
-          screenWave: 0,
-          waveProgression: 0
-        });
+      if (worldService.isEnteringScene()) {
+        worldService.setScreenWave(0);
+        worldService.setWaveProgression(0);
       }
       // Free previous loaded scene (sprites and map)
       // Load map

@@ -34,11 +34,55 @@ function BATTLE() {
 }
 
 function getGlobalValue(key, defaultValue) {
+  switch (key) {
+    case 'screenWave':
+      return worldService.getScreenWave();
+    case 'waveProgression':
+      return worldService.getWaveProgression();
+    case 'numBattleField':
+      return worldService.getBattleFieldId();
+    case 'numBattleMusic':
+      return worldService.getBattleMusicTrack();
+    case 'numPalette':
+      return worldService.getPaletteId();
+    case 'nightPalette':
+      return worldService.getNightPaletteFlag();
+    case 'needToFadeIn':
+      return worldService.getNeedToFadeIn();
+    case 'autoBattle':
+      return worldService.getAutoBattle();
+    case 'numMusic':
+      return worldService.getMusicTrack();
+    default:
+      break;
+  }
   var value = stateService.getGlobal(key);
   return typeof value !== 'undefined' ? value : defaultValue;
 }
 
 function setGlobalValue(key, value) {
+  switch (key) {
+    case 'screenWave':
+      return worldService.setScreenWave(value);
+    case 'waveProgression':
+      return worldService.setWaveProgression(value);
+    case 'numBattleField':
+      return worldService.setBattleFieldId(value);
+    case 'numBattleMusic':
+      return worldService.setBattleMusicTrack(value);
+    case 'numPalette':
+      return worldService.setPaletteId(value);
+    case 'nightPalette':
+      return worldService.setNightPaletteFlag(value);
+    case 'needToFadeIn':
+      return worldService.setNeedToFadeIn(value);
+    case 'autoBattle':
+      return worldService.setAutoBattle(value);
+    case 'numMusic':
+      return worldService.setMusicTrack(value);
+    default:
+      break;
+  }
   return stateService.setGlobal(key, value);
 }
 
@@ -487,7 +531,10 @@ battle.freeBattleSprites = function() {
  */
 battle.getPlayerBattleSprite = function(playerRole) {
   log.trace(['[BATTLE] getPlayerBattleSprite', playerRole].join(' '));
-  var w = GameData.playerRoles.spriteNumInBattle[playerRole];
+  var w = worldService.getPlayerBattleSpriteNum(playerRole);
+  if (typeof w !== 'number') {
+    w = worldService.getPlayerSpriteNum(playerRole) || 0;
+  }
 
   var equipmentEffects = getEquipmentEffects();
   var limit = Math.min(
@@ -499,7 +546,10 @@ battle.getPlayerBattleSprite = function(playerRole) {
     if (!effect || !effect.spriteNumInBattle) {
       continue;
     }
-    var overrideSprite = effect.spriteNumInBattle[playerRole];
+    var overrideSource = effect.spriteNumInBattle;
+    var overrideSprite = overrideSource && overrideSource[playerRole] !== undefined
+      ? overrideSource[playerRole]
+      : 0;
     if (overrideSprite) {
       w = overrideSprite;
     }
@@ -550,13 +600,16 @@ battle.loadBattleSprites = function() {
         continue;
       }
 
-      var enemyID = GameData.object[enemyState.objectID].enemy.enemyID;
+      var enemyDefinition = worldService.getObjectEntry(enemyState.objectID);
+      var enemyConfig = enemyDefinition && enemyDefinition.enemy ? enemyDefinition.enemy : null;
+      var enemyID = enemyConfig ? enemyConfig.enemyID : 0;
       enemyState.sprite = new Sprite(Files.ABC.decompressChunk(enemyID));
 
       // Set the default position for this enemy
-      var enemyPos = GameData.enemyPos.pos[enemyIndex][state.maxEnemyIndex];
-      var posX = enemyPos.x;
-      var posY = enemyPos.y + (enemyState.e ? enemyState.e.yPosOffset : 0);
+      var formationPos = worldService.getEnemyFormationPosition(enemyIndex, state.maxEnemyIndex);
+      var posX = formationPos ? formationPos.x : 0;
+      var posYBase = formationPos ? formationPos.y : 0;
+      var posY = posYBase + (enemyState.e ? enemyState.e.yPosOffset : 0);
       var enemyPosition = PAL_XY(posX, posY);
 
       enemyState.originalPos = enemyPosition;
@@ -622,11 +675,19 @@ battle.spawnEnemy = function(targetIndex, objectID, options) {
     enemy.objectID = objectID;
 
     if (objectID && objectID !== 0xFFFF) {
-      var objectEnemy = GameData.object[objectID].enemy;
-      enemy.e = GameData.enemy[objectEnemy.enemyID].copy();
-      enemy.scriptOnTurnStart = objectEnemy.scriptOnTurnStart;
-      enemy.scriptOnBattleEnd = objectEnemy.scriptOnBattleEnd;
-      enemy.scriptOnReady = objectEnemy.scriptOnReady;
+      var objectEntry = worldService.getObjectEntry(objectID);
+      var objectEnemy = objectEntry && objectEntry.enemy ? objectEntry.enemy : null;
+      if (objectEnemy) {
+        enemy.e = worldService.copyEnemyTemplate(objectEnemy.enemyID);
+        enemy.scriptOnTurnStart = objectEnemy.scriptOnTurnStart;
+        enemy.scriptOnBattleEnd = objectEnemy.scriptOnBattleEnd;
+        enemy.scriptOnReady = objectEnemy.scriptOnReady;
+      } else {
+        enemy.e = null;
+        enemy.scriptOnTurnStart = 0;
+        enemy.scriptOnBattleEnd = 0;
+        enemy.scriptOnReady = 0;
+      }
     } else {
       enemy.e = null;
       enemy.scriptOnTurnStart = 0;
@@ -727,7 +788,7 @@ battle.won = function*() {
     awardSummaries[awardMember.playerRole] = battleService.awardExp(awardMember.playerRole, expGained);
   }
 
-  var levelUpMagicTable = stateService.getGameData('levelUpMagic') || (typeof GameData !== 'undefined' && GameData.levelUpMagic ? GameData.levelUpMagic : []);
+  var levelUpMagicTable = worldService.getLevelUpMagicTable() || [];
 
   function* showHiddenIncrease(afterStats, labelId, delta) {
     if (!delta || delta <= 0) {
@@ -924,7 +985,7 @@ battle.playerEscape = function*() {
     }
     playerRole = escapeMember.playerRole;
 
-    if (GameData.playerRoles.HP[playerRole] > 0) {
+    if (worldService.getPlayerHP(playerRole) > 0) {
       battleService.setPlayer(i, function(playerState) {
         if (!playerState) return playerState;
         playerState.currentFrame = 0;
@@ -942,7 +1003,7 @@ battle.playerEscape = function*() {
       playerRole = movingMember.playerRole;
       var player = battleState.player[j];
 
-      if (GameData.playerRoles.HP[playerRole] > 0) {
+      if (worldService.getPlayerHP(playerRole) > 0) {
         // TODO: This is still not the same as the original game
         switch (j) {
           case 0:
@@ -998,7 +1059,7 @@ battle.start = function*(enemyTeam, isBoss) {
 
   setGlobalValue('waveProgression', 0);
   var battleFieldIndex = getGlobalValue('numBattleField', 0);
-  var battleFieldConfig = GameData.battleField[battleFieldIndex];
+  var battleFieldConfig = worldService.getBattleFieldEntry(battleFieldIndex);
   setGlobalValue('screenWave', battleFieldConfig ? battleFieldConfig.screenWave : 0);
 
   var party = getParty();
@@ -1014,18 +1075,13 @@ battle.start = function*(enemyTeam, isBoss) {
     var w = partyMember.playerRole;
     var roleIndex = w;
 
-    if (GameData.playerRoles.HP[w] == 0) {
-      stateService.mutateGameData('playerRoles', function(playerRoles) {
-        if (playerRoles && playerRoles.HP) {
-          playerRoles.HP[roleIndex] = 1;
+    if (worldService.getPlayerHP(w) === 0) {
+      worldService.setPlayerHP(w, 1);
+      worldService.mutatePlayerStatusEntry(w, function(row) {
+        if (row) {
+          row[PlayerStatus.Puppet] = 0;
         }
-        return playerRoles;
-      });
-      stateService.mutateGlobal('playerStatus', function(status) {
-        if (status && status[roleIndex]) {
-          status[roleIndex][PlayerStatus.Puppet] = 0;
-        }
-        return status;
+        return row;
       });
     }
 
@@ -1062,7 +1118,16 @@ battle.start = function*(enemyTeam, isBoss) {
     }
 
     var computedMaxEnemyIndex = -1;
-    var enemyTeamConfig = GameData.enemyTeam[enemyTeam].enemy;
+    var enemyTeamEntry = worldService.getEnemyTeamEntry(enemyTeam);
+    var rawEnemyTeam = enemyTeamEntry ? enemyTeamEntry.enemy : null;
+    var enemyTeamConfig;
+    if (Array.isArray(rawEnemyTeam)) {
+      enemyTeamConfig = rawEnemyTeam;
+    } else if (rawEnemyTeam && ArrayBuffer.isView(rawEnemyTeam)) {
+      enemyTeamConfig = Array.prototype.slice.call(rawEnemyTeam);
+    } else {
+      enemyTeamConfig = [];
+    }
 
     for (var enemyIndex = 0; enemyIndex < Const.MAX_ENEMIES_IN_TEAM; enemyIndex++) {
       var enemyState = state.enemy && state.enemy[enemyIndex];
@@ -1073,17 +1138,18 @@ battle.start = function*(enemyTeam, isBoss) {
       enemyState.reset();
       var enemyObjectId = enemyTeamConfig[enemyIndex];
 
-      if (enemyObjectId === 0xFFFF) {
+      if (typeof enemyObjectId === 'undefined' || enemyObjectId === 0 || enemyObjectId === 0xFFFF) {
         break;
       }
 
-      var enemyDefinition = GameData.object[enemyObjectId].enemy;
-      enemyState.e = GameData.enemy[enemyDefinition.enemyID].copy();
+      var objectEntry = worldService.getObjectEntry(enemyObjectId);
+      var enemyDefinition = objectEntry && objectEntry.enemy ? objectEntry.enemy : null;
+      enemyState.e = enemyDefinition ? worldService.copyEnemyTemplate(enemyDefinition.enemyID) : null;
       enemyState.objectID = enemyObjectId;
       enemyState.state = FighterState.Wait;
-      enemyState.scriptOnTurnStart = enemyDefinition.scriptOnTurnStart;
-      enemyState.scriptOnBattleEnd = enemyDefinition.scriptOnBattleEnd;
-      enemyState.scriptOnReady = enemyDefinition.scriptOnReady;
+      enemyState.scriptOnTurnStart = enemyDefinition ? enemyDefinition.scriptOnTurnStart : 0;
+      enemyState.scriptOnBattleEnd = enemyDefinition ? enemyDefinition.scriptOnBattleEnd : 0;
+      enemyState.scriptOnReady = enemyDefinition ? enemyDefinition.scriptOnReady : 0;
       enemyState.colorShift = 0;
 
       computedMaxEnemyIndex = enemyIndex;

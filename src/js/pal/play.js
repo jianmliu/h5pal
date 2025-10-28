@@ -44,12 +44,12 @@ play.update = function*(trigger) {
         : 0;
       var nextScriptOnEnter = yield script.runTriggerScript(scriptOnEnter, 0xFFFF);
 
-      if (sceneData && typeof nextScriptOnEnter === 'number') {
-        stateService.mutateGameData('scene', function(scenes) {
-          if (Array.isArray(scenes) && currentSceneId > 0 && scenes[currentSceneId - 1]) {
-            scenes[currentSceneId - 1].scriptOnEnter = nextScriptOnEnter;
+      if (sceneData && typeof nextScriptOnEnter === 'number' && currentSceneId > 0) {
+        worldService.mutateSceneEntry(currentSceneId, function(entry) {
+          if (entry) {
+            entry.scriptOnEnter = nextScriptOnEnter;
           }
-          return scenes;
+          return entry;
         });
       }
 
@@ -61,7 +61,7 @@ play.update = function*(trigger) {
       yield scene.makeScene();
     }
 
-    stateService.mutateGameData('eventObject', function(objects) {
+    worldService.mutateEventObjects(function(objects) {
       if (!Array.isArray(objects)) {
         return objects;
       }
@@ -392,7 +392,7 @@ play.startFrame = function*() {
   // Run the game logic of one frame
   yield play.update(true);
 
-  if (Global.enteringScene){
+  if (worldService.isEnteringScene()){
     return;
   }
 

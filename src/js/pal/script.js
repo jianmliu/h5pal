@@ -693,18 +693,7 @@ function getMagicNumberFromObject(objectId) {
 }
 
 function copyEnemyTemplate(enemyId) {
-  var entry = getEnemyEntry(enemyId);
-  if (!entry) {
-    return null;
-  }
-  if (typeof entry.copy === 'function') {
-    return entry.copy();
-  }
-  try {
-    return JSON.parse(JSON.stringify(entry));
-  } catch (err) {
-    return entry;
-  }
+  return worldService.copyEnemyTemplate(enemyId);
 }
 
 function getStoreItemId(storeId, index) {
