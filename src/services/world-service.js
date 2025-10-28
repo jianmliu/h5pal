@@ -1638,6 +1638,104 @@ class WorldService extends EventBus {
     return resolved;
   }
 
+  getFollowerCount() {
+    this._ensureInitialised();
+    const count = stateService.getGlobal('numFollower');
+    return typeof count === 'number' ? count : 0;
+  }
+
+  setFollowerCount(value) {
+    this._ensureInitialised();
+    const resolved = Number.isFinite(value) ? Math.max(0, value | 0) : 0;
+    stateService.setGlobal('numFollower', resolved);
+    return resolved;
+  }
+
+  getScreenWave() {
+    this._ensureInitialised();
+    const wave = stateService.getGlobal('screenWave');
+    return typeof wave === 'number' ? wave : 0;
+  }
+
+  setScreenWave(value) {
+    this._ensureInitialised();
+    const resolved = Number.isFinite(value) ? value | 0 : 0;
+    stateService.setGlobal('screenWave', resolved);
+    return resolved;
+  }
+
+  adjustScreenWave(delta) {
+    this._ensureInitialised();
+    const current = this.getScreenWave();
+    const adjustment = Number.isFinite(delta) ? delta : 0;
+    const next = (current + adjustment) | 0;
+    stateService.setGlobal('screenWave', next);
+    return next;
+  }
+
+  getWaveProgression() {
+    this._ensureInitialised();
+    const value = stateService.getGlobal('waveProgression');
+    return typeof value === 'number' ? value : 0;
+  }
+
+  setWaveProgression(value) {
+    this._ensureInitialised();
+    const resolved = Number.isFinite(value) ? value | 0 : 0;
+    stateService.setGlobal('waveProgression', resolved);
+    return resolved;
+  }
+
+  getNeedToFadeIn() {
+    this._ensureInitialised();
+    return !!stateService.getGlobal('needToFadeIn');
+  }
+
+  setNeedToFadeIn(value) {
+    this._ensureInitialised();
+    const resolved = !!value;
+    stateService.setGlobal('needToFadeIn', resolved);
+    return resolved;
+  }
+
+  getPaletteId() {
+    this._ensureInitialised();
+    const value = stateService.getGlobal('numPalette');
+    return typeof value === 'number' ? value : 0;
+  }
+
+  setPaletteId(value) {
+    this._ensureInitialised();
+    const resolved = Number.isFinite(value) ? value | 0 : 0;
+    stateService.setGlobal('numPalette', resolved);
+    return resolved;
+  }
+
+  getNightPaletteFlag() {
+    this._ensureInitialised();
+    return !!stateService.getGlobal('nightPalette');
+  }
+
+  setNightPaletteFlag(value) {
+    this._ensureInitialised();
+    const resolved = !!value;
+    stateService.setGlobal('nightPalette', resolved);
+    return resolved;
+  }
+
+  getLayer() {
+    this._ensureInitialised();
+    const layer = stateService.getGlobal('layer');
+    return typeof layer === 'number' ? layer : 0;
+  }
+
+  setLayer(value) {
+    this._ensureInitialised();
+    const resolved = Number.isFinite(value) ? value | 0 : 0;
+    stateService.setGlobal('layer', resolved);
+    return resolved;
+  }
+
   _handleGlobalChanged(event) {
     const payload = event && typeof event === 'object'
       ? (event.data && typeof event.data === 'object' ? event.data : event)

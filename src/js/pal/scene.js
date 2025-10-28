@@ -88,7 +88,7 @@ scene.getPlayerSprite = function(i) {
   var playerID = player.playerRole;
   var spriteNum;
   var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
-  var followerCount = stateService.getGlobal('numFollower') || 0;
+  var followerCount = worldService.getFollowerCount();
   if (i > maxPartyMemberIndex && followerCount > 0) {
     // 如果是跟随者，那么spriteNum就是它的ID
     spriteNum = playerID;
@@ -126,7 +126,7 @@ scene.updateParty = function() {
     var xTarget = xSource + xOffset;
     var yTarget = ySource + yOffset;
 
-    stateService.setGlobal('partyDirection', input.dir);
+    worldService.setPartyDirection(input.dir);
 
     if (!scene.checkObstacle(PAL_XY(xTarget, yTarget), true, 0)) {
       worldService.mutateTrail(function(trailState) {
@@ -166,8 +166,8 @@ scene.updatePartyGestures = function(walking) {
   var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
   var viewport = worldService.getViewport();
   var partyOffset = worldService.getPartyOffset();
-  var partyDirection = stateService.getGlobal('partyDirection') || Direction.South;
-  var followerCount = stateService.getGlobal('numFollower') || 0;
+  var partyDirection = worldService.getPartyDirection();
+  var followerCount = worldService.getFollowerCount();
 
   if (!party.length || !trail.length) {
     return;
@@ -346,27 +346,24 @@ scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
     options,
     collisionContext
   );
-  if (blocked == null) {
-    return legacyCheckObstacle(pos, checkEventObjects, selfObject);
+  if (blocked === false) {
+    return false;
   }
-  if (blocked) {
-    return true;
+  if (blocked === true) {
+    return legacyCheckObstacle(pos, checkEventObjects, selfObject);
   }
   return legacyCheckObstacle(pos, checkEventObjects, selfObject);
 };
 
 scene.applyWave = function(buffer) {
   var wave = new Array(32);
-  stateService.setGlobal(
-    'screenWave',
-    (stateService.getGlobal('screenWave') || 0) + (stateService.getGlobal('waveProgression') || 0)
-  );
-  var screenWave = stateService.getGlobal('screenWave') || 0;
+  worldService.adjustScreenWave(worldService.getWaveProgression());
+  var screenWave = worldService.getScreenWave();
   var buf = new Uint8Array(320);
   if (screenWave === 0 || screenWave >= 256) {
     // No need to wave the screen
-    stateService.setGlobal('screenWave', 0);
-    stateService.setGlobal('waveProgression', 0);
+    worldService.setScreenWave(0);
+    worldService.setWaveProgression(0);
     return;
   }
 
@@ -608,10 +605,10 @@ utils.extend(Scene.prototype, {
     var party = worldService.getParty();
     var drawList = this.drawList || (this.drawList = []);
     var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
-    var followerCount = stateService.getGlobal('numFollower') || 0;
+    var followerCount = worldService.getFollowerCount();
 
     // Players
-    var layer = stateService.getGlobal('layer') || 0;
+    var layer = worldService.getLayer();
     for (var i = 0; i <= maxPartyMemberIndex + followerCount; ++i) {
       var player = party[i];
       if (!player) {
@@ -676,13 +673,13 @@ utils.extend(Scene.prototype, {
     //surface.__debugClear(0, 0, 320, 200);
     this.renderSprites();
     // Check if we need to fade in.
-    var needToFadeIn = stateService.getGlobal('needToFadeIn');
+    var needToFadeIn = worldService.getNeedToFadeIn();
     if (needToFadeIn) {
-      var paletteId = stateService.getGlobal('numPalette');
-      var useNightPalette = stateService.getGlobal('nightPalette');
+      var paletteId = worldService.getPaletteId();
+      var useNightPalette = worldService.getNightPaletteFlag();
       //surface.refresh();
       yield surface.fadeIn(paletteId, useNightPalette, 1);
-      stateService.setGlobal('needToFadeIn', false);
+      worldService.setNeedToFadeIn(false);
     }
   }
 });

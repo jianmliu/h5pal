@@ -400,12 +400,11 @@ function getCurrentSaveSlot() {
 }
 
 function getPaletteNumber() {
-  var value = stateService.getGlobal('numPalette');
-  return typeof value === 'number' ? value : 0;
+  return worldService.getPaletteId();
 }
 
 function getNightPaletteFlag() {
-  return !!stateService.getGlobal('nightPalette');
+  return worldService.getNightPaletteFlag();
 }
 
 function warnLog(message) {
@@ -490,11 +489,11 @@ function getCashValue() {
 }
 
 function getPartyDirection() {
-  return stateService.getGlobal('partyDirection') || Direction.South;
+  return worldService.getPartyDirection();
 }
 
 function setPartyDirection(value) {
-  return stateService.setGlobal('partyDirection', value);
+  return worldService.setPartyDirection(value);
 }
 
 function forEachPartyMember(callback) {
@@ -637,6 +636,9 @@ script.NPCWalkOneStep = function(eventObjectID, speed) {
   var dx = ((direction === Direction.West || direction === Direction.South) ? -2 : 2) * moveSpeed;
   var dy = ((direction === Direction.West || direction === Direction.North) ? -1 : 1) * moveSpeed;
 
+  var prevX = evtObj.x;
+  var prevY = evtObj.y;
+
   worldService.enqueueMoveRequest({
     eventObjectId: eventObjectID,
     eventIndex: eventIndex,
@@ -654,6 +656,31 @@ script.NPCWalkOneStep = function(eventObjectID, speed) {
     Files: typeof Files !== 'undefined' ? Files : null,
     viewportComponent: worldService.getViewportComponent()
   });
+
+  var movedState = getEventObjectById(eventObjectID);
+  if (movedState && movedState.x === prevX && movedState.y === prevY) {
+    // ECS move did not apply; fallback to legacy immediate movement
+    var targetPos = PAL_XY(prevX + dx, prevY + dy);
+    if (!scene.checkObstacle(targetPos, true, eventObjectID)) {
+      mutateEventObjectById(eventObjectID, function(current) {
+        if (!current) {
+          return current;
+        }
+        current.x = prevX + dx;
+        current.y = prevY + dy;
+        current.direction = direction;
+        var spriteFrames = current.spriteFrames || evtObj.spriteFrames || 0;
+        var spriteFramesAuto = current.spriteFramesAuto || evtObj.spriteFramesAuto || 0;
+        if (spriteFrames > 0) {
+          var cycle = spriteFrames === 3 ? 4 : spriteFrames;
+          current.currentFrameNum = (current.currentFrameNum + 1) % cycle;
+        } else if (spriteFramesAuto > 0) {
+          current.currentFrameNum = (current.currentFrameNum + 1) % spriteFramesAuto;
+        }
+        return current;
+      });
+    }
+  }
 };
 
 /**
@@ -747,7 +774,7 @@ script.partyWalkTo = function*(x, y, h, speed) {
   var offsetY = (y * 16 + h * 8) - PAL_Y(viewport) - PAL_Y(partyOffset);
 
   while (offsetX !== 0 || offsetY !== 0) {
-    var currentDirection = stateService.getGlobal('partyDirection');
+    var currentDirection = getPartyDirection();
     mutateTrailValue(function(trailState) {
       if (!Array.isArray(trailState) || trailState.length === 0) {
         return trailState;
@@ -762,11 +789,10 @@ script.partyWalkTo = function*(x, y, h, speed) {
       return trailState;
     });
 
-    var previousDirection = stateService.getGlobal('partyDirection');
     var nextDirection = (offsetY < 0)
       ? (offsetX < 0 ? Direction.West : Direction.North)
       : (offsetX < 0 ? Direction.South : Direction.East);
-    setGlobalValue('partyDirection', nextDirection);
+    setPartyDirection(nextDirection);
 
     var dx = PAL_X(viewport);
     var dy = PAL_Y(viewport);
@@ -829,11 +855,10 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
   var offsetY = targetY - currentEvent.y;
 
   while (offsetX !== 0 || offsetY !== 0) {
-    var previousDirection = stateService.getGlobal('partyDirection');
     var nextDirection = (offsetY < 0)
       ? (offsetX < 0 ? Direction.West : Direction.North)
       : (offsetX < 0 ? Direction.South : Direction.East);
-    setGlobalValue('partyDirection', nextDirection);
+    setPartyDirection(nextDirection);
 
     var dx;
     var dy;
@@ -849,6 +874,7 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
     }
 
     // Store trail
+    var previousDirection = getPartyDirection();
     mutateTrailValue(function(trailState) {
       if (!Array.isArray(trailState) || trailState.length === 0) {
         return trailState;
@@ -1158,7 +1184,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0015:
       script.debug('[SCRIPT] Set the direction and gesture for a party member');
       var partyDirection = sc.operand[0];
-      setGlobalValue('partyDirection', partyDirection);
+      setPartyDirection(partyDirection);
       mutateGlobalEntry('party', sc.operand[2], function(member) {
         member.frame = partyDirection * 3 + sc.operand[1];
       });
@@ -1853,14 +1879,14 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] screen fade out');
       surface.updateScreen(null);
       yield surface.fadeOut((sc.operand[0] ? sc.operand[0] : 1));
-      setGlobalValue('needToFadeIn', true);
+      worldService.setNeedToFadeIn(true);
       break;
     case 0x0051:
       script.debug('[SCRIPT] screen fade in')
       surface.updateScreen(null);
       var time = SHORT(sc.operand[0]);
       yield surface.fadeIn(getPaletteNumber(), getNightPaletteFlag(), (time > 0 ? time : 1));
-      setGlobalValue('needToFadeIn', false);
+      worldService.setNeedToFadeIn(false);
       break;
     case 0x0052:
       script.debug('[SCRIPT] hide the event object for a while, default 800 frames');
@@ -1869,11 +1895,11 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0053:
       script.debug('[SCRIPT] use the day palette');
-      setGlobalValue('nightPalette', false);
+      worldService.setNightPaletteFlag(false);
       break;
     case 0x0054:
       script.debug('[SCRIPT] use the night palette');
-      setGlobalValue('nightPalette', true);
+      worldService.setNightPaletteFlag(true);
       break;
     case 0x0055:
       script.debug('[SCRIPT] Add magic to a player');
@@ -1920,7 +1946,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         setGlobalValue('numScene', sc.operand[0]);
         res.setLoadFlags(LoadFlag.Scene);
         setGlobalValue('enteringScene', true);
-        setGlobalValue('layer', 0);
+        worldService.setLayer(0);
       }
       break;
     case 0x005A:
@@ -2071,7 +2097,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Move the player to the specified position in one step');
       var currentViewport = getViewportValue();
       var partyOffset = getPartyOffsetValue();
-      var currentDirection = stateService.getGlobal('partyDirection');
+      var currentDirection = getPartyDirection();
       mutateTrailValue(function(trail) {
         if (!Array.isArray(trail) || trail.length === 0) {
           return trail;
@@ -2090,7 +2116,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         PAL_Y(currentViewport) + SHORT(sc.operand[1])
       );
       setViewportValue(newViewport);
-      setGlobalValue('layer', sc.operand[2] * 8);
+      worldService.setLayer(sc.operand[2] * 8);
       if (sc.operand[0] !== 0 || sc.operand[1] !== 0){
         scene.updatePartyGestures(true);
       }
@@ -2107,8 +2133,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0071:
       script.debug('[SCRIPT] Wave the screen');
-      setGlobalValue('screenWave', sc.operand[0]);
-      setGlobalValue('waveProgression', SHORT(sc.operand[1]));
+      worldService.setScreenWave(sc.operand[0]);
+      worldService.setWaveProgression(SHORT(sc.operand[1]));
       break;
     case 0x0072:
       script.debug('[SCRIPT] unknown 0x0072');
@@ -2448,8 +2474,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x008B:
       script.debug('[SCRIPT] change the current palette');
-      setGlobalValue('numPalette', sc.operand[0]);
-      if (!stateService.getGlobal('needToFadeIn')) {
+      worldService.setPaletteId(sc.operand[0]);
+      if (!worldService.getNeedToFadeIn()) {
         var palette = Palette.get(getPaletteNumber(), false);
         surface.setPalette(palette);
       }
@@ -2457,7 +2483,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x008C:
       script.debug('[SCRIPT] Fade from/to color');
       yield surface.colorFade(sc.operand[1], sc.operand[0], sc.operand[2]); // WARNING param normalize
-      setGlobalValue('needToFadeIn', false);
+      worldService.setNeedToFadeIn(false);
       break;
     case 0x008D:
       script.debug('[SCRIPT] Increase player\'s level');
@@ -2521,7 +2547,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Fade the screen. Update scene in the process.');
       var time = SHORT(sc.operand[0]);
       yield surface.fadeIn(getPaletteNumber(), getNightPaletteFlag(), (time > 0 ? time : 1));
-      setGlobalValue('needToFadeIn', (SHORT(sc.operand[0]) < 0));
+      worldService.setNeedToFadeIn((SHORT(sc.operand[0]) < 0));
       break;
     case 0x0094:
       script.debug('[SCRIPT] Jump if the state of event object is the specified one');
@@ -2546,7 +2572,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0098:
       script.debug('[SCRIPT] Set follower of the party');
       if (sc.operand[0] > 0) {
-        setGlobalValue('numFollower', 1);
+        worldService.setFollowerCount(1);
         var followerIndex = getMaxPartyMemberIndex() + 1;
         mutateGlobalEntry('party', followerIndex, function(member) {
           if (member) {
@@ -2570,7 +2596,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
           member.frame = followerTrail.direction * 3;
         });
       } else {
-        setGlobalValue('numFollower', 0);
+        worldService.setFollowerCount(0);
       }
       break;
     case 0x0099:
@@ -2779,7 +2805,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Set the positions of all party members to the same as the first one');
       var leader = getPartyMember(0);
       if (leader) {
-        var partyDirection = stateService.getGlobal('partyDirection');
+        var partyDirection = getPartyDirection();
         var viewport = getViewportValue();
         var viewportX = PAL_X(viewport);
         var viewportY = PAL_Y(viewport);
