@@ -906,6 +906,166 @@ class WorldService extends EventBus {
     return updatedEntry;
   }
 
+  getPlayerRoles() {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    return store && store.playerRoles ? store.playerRoles : null;
+  }
+
+  mutatePlayerRoles(mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    let snapshot = null;
+    stateService.mutateGameData('playerRoles', (playerRoles) => {
+      if (!playerRoles) {
+        return playerRoles;
+      }
+      const result = mutator(playerRoles);
+      snapshot = typeof result !== 'undefined' ? result : playerRoles;
+      return snapshot;
+    });
+    return snapshot;
+  }
+
+  getPlayerHP(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.HP ? roles.HP[roleId] || 0 : 0;
+  }
+
+  setPlayerHP(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.HP) {
+        roles.HP[roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  getPlayerMP(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.MP ? roles.MP[roleId] || 0 : 0;
+  }
+
+  setPlayerMP(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.MP) {
+        roles.MP[roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  getPlayerMaxHP(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.maxHP ? roles.maxHP[roleId] || 0 : 0;
+  }
+
+  getPlayerMaxMP(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.maxMP ? roles.maxMP[roleId] || 0 : 0;
+  }
+
+  getPlayerLevel(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.level ? roles.level[roleId] || 0 : 0;
+  }
+
+  setPlayerLevel(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.level) {
+        roles.level[roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  getPlayerAttackStrength(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.attackStrength ? roles.attackStrength[roleId] || 0 : 0;
+  }
+
+  setPlayerAttackStrength(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.attackStrength) {
+        roles.attackStrength[roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  getPlayerMagicStrength(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.magicStrength ? roles.magicStrength[roleId] || 0 : 0;
+  }
+
+  setPlayerMagicStrength(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.magicStrength) {
+        roles.magicStrength[roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  getPlayerDefense(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.defense ? roles.defense[roleId] || 0 : 0;
+  }
+
+  setPlayerDefense(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.defense) {
+        roles.defense[roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  getPlayerDexterity(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.dexterity ? roles.dexterity[roleId] || 0 : 0;
+  }
+
+  setPlayerDexterity(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.dexterity) {
+        roles.dexterity[roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  getPlayerFleeRate(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.fleeRate ? roles.fleeRate[roleId] || 0 : 0;
+  }
+
+  setPlayerFleeRate(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.fleeRate) {
+        roles.fleeRate[roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  getExpState() {
+    this._ensureInitialised();
+    return stateService.getGlobal('exp');
+  }
+
+  mutateExpState(mutator) {
+    this._ensureInitialised();
+    return stateService.mutateGlobal('exp', (exp) => {
+      if (exp && typeof mutator === 'function') {
+        mutator(exp);
+      }
+      return exp;
+    });
+  }
+
   getPartyDirection() {
     this._ensureInitialised();
     const dir = stateService.getGlobal('partyDirection');

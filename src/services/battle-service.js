@@ -1,5 +1,7 @@
 import EventBus from './event-bus.js';
 import stateService from './state-service.js';
+import worldService from './world-service.js';
+import scriptService from './script-service.js';
 import {
   createEntityRegistry,
   BattleComponents,
@@ -909,6 +911,270 @@ class BattleService extends EventBus {
       player.colorShift = typeof value === 'function' ? value(player.colorShift) : value;
       return player;
     }, options);
+  }
+
+  getExpState() {
+    return worldService.getExpState();
+  }
+
+  mutateExpState(mutator) {
+    return worldService.mutateExpState(mutator);
+  }
+
+  getPlayerRoles() {
+    return worldService.getPlayerRoles();
+  }
+
+  mutatePlayerRoles(mutator) {
+    return worldService.mutatePlayerRoles(mutator);
+  }
+
+  getPlayerHP(roleId) {
+    return worldService.getPlayerHP(roleId);
+  }
+
+  setPlayerHP(roleId, value) {
+    return worldService.setPlayerHP(roleId, value);
+  }
+
+  getPlayerMP(roleId) {
+    return worldService.getPlayerMP(roleId);
+  }
+
+  setPlayerMP(roleId, value) {
+    return worldService.setPlayerMP(roleId, value);
+  }
+
+  getPlayerLevel(roleId) {
+    return worldService.getPlayerLevel(roleId);
+  }
+
+  setPlayerLevel(roleId, value) {
+    return worldService.setPlayerLevel(roleId, value);
+  }
+
+  getPlayerMaxHP(roleId) {
+    return worldService.getPlayerMaxHP(roleId);
+  }
+
+  getPlayerMaxMP(roleId) {
+    return worldService.getPlayerMaxMP(roleId);
+  }
+
+  getPlayerAttackStrength(roleId) {
+    return worldService.getPlayerAttackStrength(roleId);
+  }
+
+  setPlayerAttackStrength(roleId, value) {
+    return worldService.setPlayerAttackStrength(roleId, value);
+  }
+
+  getPlayerMagicStrength(roleId) {
+    return worldService.getPlayerMagicStrength(roleId);
+  }
+
+  setPlayerMagicStrength(roleId, value) {
+    return worldService.setPlayerMagicStrength(roleId, value);
+  }
+
+  getPlayerDefense(roleId) {
+    return worldService.getPlayerDefense(roleId);
+  }
+
+  setPlayerDefense(roleId, value) {
+    return worldService.setPlayerDefense(roleId, value);
+  }
+
+  getPlayerDexterity(roleId) {
+    return worldService.getPlayerDexterity(roleId);
+  }
+
+  setPlayerDexterity(roleId, value) {
+    return worldService.setPlayerDexterity(roleId, value);
+  }
+
+  getPlayerFleeRate(roleId) {
+    return worldService.getPlayerFleeRate(roleId);
+  }
+
+  setPlayerFleeRate(roleId, value) {
+    return worldService.setPlayerFleeRate(roleId, value);
+  }
+
+  getPlayerSnapshot(roleId) {
+    const roles = this.getPlayerRoles();
+    if (!roles) {
+      return null;
+    }
+    return {
+      roleId: roleId,
+      nameId: roles.name ? roles.name[roleId] : 0,
+      level: roles.level ? roles.level[roleId] || 0 : 0,
+      hp: roles.HP ? roles.HP[roleId] || 0 : 0,
+      maxHP: roles.maxHP ? roles.maxHP[roleId] || 0 : 0,
+      mp: roles.MP ? roles.MP[roleId] || 0 : 0,
+      maxMP: roles.maxMP ? roles.maxMP[roleId] || 0 : 0,
+      attackStrength: this.getPlayerAttackStrength(roleId),
+      magicStrength: this.getPlayerMagicStrength(roleId),
+      defense: this.getPlayerDefense(roleId),
+      dexterity: this.getPlayerDexterity(roleId),
+      fleeRate: this.getPlayerFleeRate(roleId)
+    };
+  }
+
+  awardExp(roleId, expGained) {
+    const before = this.getPlayerSnapshot(roleId);
+    if (!before) {
+      return { roleId, before: null, after: null, levelUp: false, expApplied: 0 };
+    }
+    if (!expGained || expGained <= 0 || before.hp <= 0) {
+      return { roleId, before, after: before, levelUp: false, expApplied: 0 };
+    }
+
+    const maxLevel = typeof Const !== 'undefined' && Const && typeof Const.MAX_LEVELS === 'number'
+      ? Const.MAX_LEVELS
+      : 99;
+    const levelUpExpTable = stateService.getGameData('levelUpExp') || (typeof GameData !== 'undefined' && GameData.levelUpExp ? GameData.levelUpExp : []);
+
+    const bucketNames = ['primaryExp', 'attackExp', 'defenseExp', 'dexterityExp', 'fleeExp', 'healthExp', 'magicExp', 'magicPowerExp'];
+    this.mutateExpState((expState) => {
+      if (!expState) {
+        return expState;
+      }
+      bucketNames.forEach((name) => {
+        if (!expState[name]) {
+          expState[name] = [];
+        }
+        if (!expState[name][roleId]) {
+          expState[name][roleId] = { exp: 0, level: 0, count: 0 };
+        }
+      });
+      return expState;
+    });
+
+    let expState = this.getExpState() || {};
+    const threshold = (lvl) => {
+      if (!levelUpExpTable || typeof levelUpExpTable[lvl] === 'undefined' || levelUpExpTable[lvl] === null) {
+        return Infinity;
+      }
+      return levelUpExpTable[lvl];
+    };
+
+    let currentLevel = before.level;
+    let expValue = (expState.primaryExp && expState.primaryExp[roleId] ? expState.primaryExp[roleId].exp || 0 : 0) + expGained;
+    let levelUpOccurred = false;
+
+    if (currentLevel > maxLevel) {
+      currentLevel = maxLevel;
+      this.setPlayerLevel(roleId, currentLevel);
+    }
+
+    while (currentLevel < maxLevel && expValue >= threshold(currentLevel)) {
+      expValue -= threshold(currentLevel);
+      currentLevel++;
+      levelUpOccurred = true;
+      this.setPlayerLevel(roleId, currentLevel);
+      if (scriptService && typeof scriptService.playerLevelUp === 'function') {
+        scriptService.playerLevelUp(roleId, 1);
+      }
+      const maxHP = this.getPlayerMaxHP(roleId);
+      const maxMP = this.getPlayerMaxMP(roleId);
+      this.setPlayerHP(roleId, maxHP);
+      this.setPlayerMP(roleId, maxMP);
+    }
+
+    this.mutateExpState((state) => {
+      if (state && state.primaryExp && state.primaryExp[roleId]) {
+        state.primaryExp[roleId].exp = expValue;
+      }
+      return state;
+    });
+
+    expState = this.getExpState() || {};
+    const hiddenBuckets = [
+      { bucket: 'healthExp', stat: 'maxHP' },
+      { bucket: 'magicExp', stat: 'maxMP' },
+      { bucket: 'attackExp', stat: 'attackStrength' },
+      { bucket: 'magicPowerExp', stat: 'magicStrength' },
+      { bucket: 'defenseExp', stat: 'defense' },
+      { bucket: 'dexterityExp', stat: 'dexterity' },
+      { bucket: 'fleeExp', stat: 'fleeRate' }
+    ];
+    let totalCount = 0;
+    hiddenBuckets.forEach(({ bucket }) => {
+      const entry = expState[bucket] && expState[bucket][roleId];
+      if (entry && typeof entry.count === 'number') {
+        totalCount += entry.count;
+      }
+    });
+
+    const rand = (min, max) => {
+      if (typeof randomLong === 'function') {
+        return randomLong(min, max);
+      }
+      return Math.floor(Math.random() * (max - min + 1)) + min;
+    };
+
+    if (totalCount > 0) {
+      hiddenBuckets.forEach(({ bucket, stat }) => {
+        let entry = expState[bucket] && expState[bucket][roleId];
+        if (!entry) {
+          return;
+        }
+        let bucketLevel = entry.level != null ? entry.level : 0;
+        if (bucketLevel > maxLevel) {
+          bucketLevel = maxLevel;
+          this.mutateExpState((state) => {
+            if (state && state[bucket] && state[bucket][roleId]) {
+              state[bucket][roleId].level = bucketLevel;
+            }
+            return state;
+          });
+          expState = this.getExpState() || {};
+          entry = expState[bucket] && expState[bucket][roleId];
+        }
+
+        let hiddenExp = expGained * (entry.count || 0);
+        hiddenExp /= totalCount;
+        hiddenExp *= 2;
+        hiddenExp += entry.exp || 0;
+
+        while (bucketLevel < maxLevel && hiddenExp >= threshold(bucketLevel)) {
+          hiddenExp -= threshold(bucketLevel);
+          const increment = rand(1, 2);
+          this.mutatePlayerRoles((roles) => {
+            if (roles && roles[stat]) {
+              roles[stat][roleId] += increment;
+            }
+            return roles;
+          });
+          bucketLevel++;
+          this.mutateExpState((state) => {
+            if (state && state[bucket] && state[bucket][roleId]) {
+              state[bucket][roleId].level = bucketLevel;
+            }
+            return state;
+          });
+        }
+
+        this.mutateExpState((state) => {
+          if (state && state[bucket] && state[bucket][roleId]) {
+            state[bucket][roleId].exp = hiddenExp;
+          }
+          return state;
+        });
+        expState = this.getExpState() || {};
+      });
+    }
+
+    const after = this.getPlayerSnapshot(roleId) || before;
+    return {
+      roleId,
+      before,
+      after,
+      levelUp: after.level > before.level,
+      expApplied: expGained
+    };
   }
 }
 

@@ -9,6 +9,7 @@ import battleService from '../../services/battle-service.js';
 import { recomputeTimeChargingUnit } from '../../services/battle-systems.js';
 import { BattleComponents } from '../../ecs/index.js';
 import stateService from '../../services/state-service.js';
+import worldService from '../../services/world-service.js';
 
 log.trace('fight module load');
 
@@ -37,6 +38,64 @@ function mutatePlayer(index, mutator) {
     mutator(player);
     return player;
   });
+}
+
+function getPartyEntries() {
+  const party = worldService.getParty();
+  return Array.isArray(party) ? party : [];
+}
+
+function getMaxPartyIndex() {
+  const maxIndex = worldService.getMaxPartyMemberIndex();
+  if (typeof maxIndex === 'number' && maxIndex >= 0) {
+    return maxIndex;
+  }
+  const party = getPartyEntries();
+  return party.length > 0 ? party.length - 1 : -1;
+}
+
+function getPlayerRolesData() {
+  const data = stateService.getGameData('playerRoles');
+  if (data) {
+    return data;
+  }
+  if (typeof GameData !== 'undefined' && GameData && GameData.playerRoles) {
+    return GameData.playerRoles;
+  }
+  return null;
+}
+
+function getPlayerStatusMatrix() {
+  const status = stateService.getGlobal('playerStatus');
+  if (status) {
+    return status;
+  }
+  if (typeof Global !== 'undefined' && Global && Global.playerStatus) {
+    return Global.playerStatus;
+  }
+  return [];
+}
+
+function getPlayerStatusRow(roleId) {
+  const matrix = getPlayerStatusMatrix();
+  return matrix && matrix[roleId] ? matrix[roleId] : [];
+}
+
+function getPlayerHP(roleId) {
+  const roles = getPlayerRolesData();
+  if (roles && roles.HP) {
+    const value = roles.HP[roleId];
+    if (typeof value === 'number') {
+      return value;
+    }
+  }
+  if (typeof GameData !== 'undefined' && GameData && GameData.playerRoles && GameData.playerRoles.HP) {
+    const fallback = GameData.playerRoles.HP[roleId];
+    if (typeof fallback === 'number') {
+      return fallback;
+    }
+  }
+  return 0;
 }
 
 function mutateEnemy(index, mutator) {
@@ -179,7 +238,7 @@ function mutateInventory(mutator) {
 }
 
 function mutateExp(mutator) {
-  return mutateGlobalValue('exp', function(exp) {
+  return battleService.mutateExpState(function(exp) {
     if (exp && typeof mutator === 'function') {
       mutator(exp);
     }
@@ -416,36 +475,23 @@ fight.init = function*(surf, _battle) {
     var sceneBuf = battleState.sceneBuf;
     var screen = surface.byteBuffer;
 
-    var party = stateService.getGlobal('party');
-    if (!Array.isArray(party) && Global && Array.isArray(Global.party)) {
-      party = Global.party;
-    }
-    party = Array.isArray(party) ? party : [];
-    var maxPartyIndex = stateService.getGlobal('maxPartyMemberIndex');
-    if (typeof maxPartyIndex !== 'number') {
-      if (Global && typeof Global.maxPartyMemberIndex === 'number') {
-        maxPartyIndex = Global.maxPartyMemberIndex;
-      } else {
-        maxPartyIndex = party.length > 0 ? party.length - 1 : -1;
-      }
-    }
-    var playerStatus = stateService.getGlobal('playerStatus') || [];
-
+    var partyEntries = getPartyEntries();
+    var maxPartyIndex = getMaxPartyIndex();
     var onlyPuppet = true;
     var ended = true;
 
     for (var partyIndex = 0; partyIndex <= maxPartyIndex; partyIndex++) {
-      var partyEntry = party && party[partyIndex] ? party[partyIndex] : null;
+      var partyEntry = partyEntries[partyIndex];
       if (!partyEntry) {
         continue;
       }
       var roleId = partyEntry.playerRole;
-      if (GameData.playerRoles.HP[roleId] !== 0) {
+      if (getPlayerHP(roleId) !== 0) {
         onlyPuppet = false;
         ended = false;
         break;
       }
-      var statusRow = playerStatus[roleId] || [];
+      var statusRow = getPlayerStatusRow(roleId);
       if (statusRow[PlayerStatus.Puppet] !== 0) {
         ended = false;
       }
@@ -475,33 +521,21 @@ fight.init = function*(surf, _battle) {
     }
 
     // Re-check defeat conditions in case actions resolved this frame.
-    party = stateService.getGlobal('party');
-    if (!Array.isArray(party) && Global && Array.isArray(Global.party)) {
-      party = Global.party;
-    }
-    party = Array.isArray(party) ? party : [];
-    maxPartyIndex = stateService.getGlobal('maxPartyMemberIndex');
-    if (typeof maxPartyIndex !== 'number') {
-      if (Global && typeof Global.maxPartyMemberIndex === 'number') {
-        maxPartyIndex = Global.maxPartyMemberIndex;
-      } else {
-        maxPartyIndex = party.length > 0 ? party.length - 1 : -1;
-      }
-    }
-    playerStatus = stateService.getGlobal('playerStatus') || [];
+    partyEntries = getPartyEntries();
+    maxPartyIndex = getMaxPartyIndex();
 
     var everyoneDown = true;
     for (var checkIndex = 0; checkIndex <= maxPartyIndex; checkIndex++) {
-      var checkEntry = party && party[checkIndex] ? party[checkIndex] : null;
+      var checkEntry = partyEntries[checkIndex];
       if (!checkEntry) {
         continue;
       }
       var checkRole = checkEntry.playerRole;
-      if (GameData.playerRoles.HP[checkRole] !== 0) {
+      if (getPlayerHP(checkRole) !== 0) {
         everyoneDown = false;
         break;
       }
-      var checkStatus = playerStatus[checkRole] || [];
+      var checkStatus = getPlayerStatusRow(checkRole);
       if (checkStatus[PlayerStatus.Puppet] !== 0) {
         everyoneDown = false;
       }

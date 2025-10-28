@@ -68,11 +68,11 @@ function getEquipmentEffect(index) {
 }
 
 function getExpState() {
-  return getGlobalValue('exp', null);
+  return battleService.getExpState() || {};
 }
 
 function mutatePlayerRoles(mutator) {
-  return stateService.mutateGameData('playerRoles', function(playerRoles) {
+  return battleService.mutatePlayerRoles(function(playerRoles) {
     if (playerRoles && typeof mutator === 'function') {
       mutator(playerRoles);
     }
@@ -81,7 +81,7 @@ function mutatePlayerRoles(mutator) {
 }
 
 function mutateExp(mutator) {
-  return stateService.mutateGlobal('exp', function(exp) {
+  return battleService.mutateExpState(function(exp) {
     if (exp && typeof mutator === 'function') {
       mutator(exp);
     }
@@ -684,26 +684,16 @@ battle.won = function*() {
   var rect = new RECT(65, 60, 200, 100);
   var rect1 = new RECT(80, 0, 180, 200);
 
-  // Backup the initial player stats
-  var origplayerRoles = GameData.playerRoles.copy();
-
-  var battleState = battleService.getState() ||
-    stateService.getGlobal('battle') ||
-    (typeof Global !== 'undefined' && Global && Global.battle) ||
-    {};
-  var expGained = battleState && typeof battleState.expGained === 'number' && !isNaN(battleState.expGained)
-    ? battleState.expGained
-    : 0;
-  var cashGained = battleState && typeof battleState.cashGained === 'number' && !isNaN(battleState.cashGained)
-    ? battleState.cashGained
-    : 0;
-  var isBossBattle = !!(battleState && battleState.isBoss);
+  var battleState = battleService.getState() || {};
+  var expGained = Number(battleState.expGained) || 0;
+  var cashGained = Number(battleState.cashGained) || 0;
+  battleService.set(['expGained'], expGained);
+  battleService.set(['cashGained'], cashGained);
+  var isBossBattle = !!battleState.isBoss;
 
   if (expGained > 0 || cashGained > 0) {
-    // Play the "battle win" music
     music.play(isBossBattle ? 2 : 3, false, 0);
 
-    // Show the message about the total number of exp. and cash gained
     ui.createSingleLineBox(PAL_XY(83, 60), 8, false);
     ui.createSingleLineBox(PAL_XY(65, 105), 10, false);
 
@@ -718,71 +708,66 @@ battle.won = function*() {
     yield input.waitForKey(isBossBattle ? 5500 : 3000);
   }
 
-  // Add the cash value
   stateService.mutateGlobal('cash', function(cash) {
     cash = cash || 0;
     return cash + cashGained;
   });
 
-  // Add the experience points for each players
   var party = getParty();
   var maxPartyIndex = getMaxPartyMemberIndex();
-  var expState = getExpState() || {};
+  var snapshots = {};
 
   for (var i = 0; i <= maxPartyIndex; i++) {
-    var levelUp = false;
+    var initialMember = party[i];
+    if (!initialMember) continue;
+    snapshots[initialMember.playerRole] = battleService.getPlayerSnapshot(initialMember.playerRole);
+  }
 
-    var partyMember = party[i];
-    if (!partyMember) {
+  var awardSummaries = {};
+  for (var awardIndex = 0; awardIndex <= maxPartyIndex; awardIndex++) {
+    var awardMember = party[awardIndex];
+    if (!awardMember) continue;
+    awardSummaries[awardMember.playerRole] = battleService.awardExp(awardMember.playerRole, expGained);
+  }
+
+  var levelUpMagicTable = stateService.getGameData('levelUpMagic') || (typeof GameData !== 'undefined' && GameData.levelUpMagic ? GameData.levelUpMagic : []);
+
+  function* showHiddenIncrease(afterStats, labelId, delta) {
+    if (!delta || delta <= 0) {
+      return;
+    }
+    ui.createSingleLineBox(PAL_XY(83, 60), 8, false);
+    ui.drawText(ui.getWord(afterStats.nameId || 0), PAL_XY(95, 70), 0, false, false);
+    ui.drawText(ui.getWord(labelId), PAL_XY(143, 70), 0, false, false);
+    ui.drawText(ui.getWord(ui.BATTLEWIN_LEVELUP_LABEL), PAL_XY(175, 70), 0, false, false);
+    ui.drawNumber(delta, 5, PAL_XY(188, 74), NumColor.Yellow, NumAlign.Right);
+    surface.updateScreen(rect);
+    yield input.waitForKey(3000);
+  }
+
+  for (var partyIndex = 0; partyIndex <= maxPartyIndex; partyIndex++) {
+    var partyMember = party[partyIndex];
+    if (!partyMember) continue;
+
+    var roleId = partyMember.playerRole;
+    var summary = awardSummaries[roleId] || { before: snapshots[roleId], after: snapshots[roleId], levelUp: false };
+    var beforeStats = summary.before || snapshots[roleId] || battleService.getPlayerSnapshot(roleId);
+    var afterStats = summary.after || battleService.getPlayerSnapshot(roleId);
+    if (!beforeStats || !afterStats) {
       continue;
     }
 
-    var w = partyMember.playerRole;
-    if (GameData.playerRoles.HP[w] === 0) {
-      continue; // don't care about dead players
-    }
-
-    var primaryExpBucket = expState.primaryExp && expState.primaryExp[w] ? expState.primaryExp[w] : { exp: 0 };
-    var exp = (primaryExpBucket.exp || 0);
-    exp += expGained;
-
-    if (GameData.playerRoles.level[w] > Const.MAX_LEVELS) {
-      mutatePlayerRoles(function(playerRoles) {
-        playerRoles.level[w] = Const.MAX_LEVELS;
-      });
-    }
-
-    while (exp >= GameData.levelUpExp[GameData.playerRoles.level[w]]) {
-      exp -= GameData.levelUpExp[GameData.playerRoles.level[w]];
-
-      if (GameData.playerRoles.level[w] < Const.MAX_LEVELS) {
-        levelUp = true;
-        script.playerLevelUp(w, 1);
-
-        mutatePlayerRoles(function(playerRoles) {
-          playerRoles.HP[w] = playerRoles.maxHP[w];
-          playerRoles.MP[w] = playerRoles.maxMP[w];
-        });
-      }
-    }
-
-    mutateExp(function(expState) {
-      expState.primaryExp[w].exp = WORD(exp);
-    });
-    expState = getExpState() || {};
-
-    if (levelUp) {
-      // Player has gained a level. Show the message
+    if (summary.levelUp) {
       ui.createSingleLineBox(PAL_XY(80, 0), 10, false);
       ui.createBox(PAL_XY(82, 32), 7, 8, 1, false);
 
-      ui.drawText(ui.getWord(GameData.playerRoles.name[w]), PAL_XY(110, 10), 0, false, false);
+      ui.drawText(ui.getWord(afterStats.nameId || 0), PAL_XY(110, 10), 0, false, false);
       ui.drawText(ui.getWord(ui.STATUS_LABEL_LEVEL), PAL_XY(110 + 16 * 3, 10), 0, false, false);
       ui.drawText(ui.getWord(ui.BATTLEWIN_LEVELUP_LABEL), PAL_XY(110 + 16 * 5, 10), 0, false, false);
 
-      for (var j = 0; j < 8; j++) {
-        var frame = ui.sprite.getFrame(ui.SPRITENUM_ARROW);
-        surface.blitRLE(frame, PAL_XY(183, 48 + 18 * j))
+      for (var arrowIndex = 0; arrowIndex < 8; arrowIndex++) {
+        var arrowFrame = ui.sprite.getFrame(ui.SPRITENUM_ARROW);
+        surface.blitRLE(arrowFrame, PAL_XY(183, 48 + 18 * arrowIndex));
       }
 
       ui.drawText(ui.getWord(ui.STATUS_LABEL_LEVEL), PAL_XY(100, 44), ui.BATTLEWIN_LEVELUP_LABEL_COLOR, true, false);
@@ -794,169 +779,90 @@ battle.won = function*() {
       ui.drawText(ui.getWord(ui.STATUS_LABEL_DEXTERITY), PAL_XY(100, 152), ui.BATTLEWIN_LEVELUP_LABEL_COLOR, true, false);
       ui.drawText(ui.getWord(ui.STATUS_LABEL_FLEERATE), PAL_XY(100, 170), ui.BATTLEWIN_LEVELUP_LABEL_COLOR, true, false);
 
-      // Draw the original stats and stats after level up
-      ui.drawNumber(origplayerRoles.level[w], 4, PAL_XY(133, 47), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(GameData.playerRoles.level[w], 4, PAL_XY(195, 47), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(beforeStats.level, 4, PAL_XY(133, 47), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(afterStats.level, 4, PAL_XY(195, 47), NumColor.Yellow, NumAlign.Right);
 
-      ui.drawNumber(origplayerRoles.HP[w], 4, PAL_XY(133, 64), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(origplayerRoles.maxHP[w], 4, PAL_XY(154, 68), NumColor.Blue, NumAlign.Right);
+      ui.drawNumber(beforeStats.hp, 4, PAL_XY(133, 64), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(beforeStats.maxHP, 4, PAL_XY(154, 68), NumColor.Blue, NumAlign.Right);
       surface.blitRLE(ui.sprite.getFrame(ui.SPRITENUM_SLASH), PAL_XY(156, 66));
-      ui.drawNumber(GameData.playerRoles.HP[w], 4, PAL_XY(195, 64), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(GameData.playerRoles.maxHP[w], 4, PAL_XY(216, 68), NumColor.Blue, NumAlign.Right);
+      ui.drawNumber(afterStats.hp, 4, PAL_XY(195, 64), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(afterStats.maxHP, 4, PAL_XY(216, 68), NumColor.Blue, NumAlign.Right);
       surface.blitRLE(ui.sprite.getFrame(ui.SPRITENUM_SLASH), PAL_XY(218, 66));
 
-      ui.drawNumber(origplayerRoles.MP[w], 4, PAL_XY(133, 82), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(origplayerRoles.maxMP[w], 4, PAL_XY(154, 86), NumColor.Blue, NumAlign.Right);
+      ui.drawNumber(beforeStats.mp, 4, PAL_XY(133, 82), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(beforeStats.maxMP, 4, PAL_XY(154, 86), NumColor.Blue, NumAlign.Right);
       surface.blitRLE(ui.sprite.getFrame(ui.SPRITENUM_SLASH), PAL_XY(156, 84));
-      ui.drawNumber(GameData.playerRoles.MP[w], 4, PAL_XY(195, 82), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(GameData.playerRoles.maxMP[w], 4, PAL_XY(216, 86), NumColor.Blue, NumAlign.Right);
+      ui.drawNumber(afterStats.mp, 4, PAL_XY(195, 82), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(afterStats.maxMP, 4, PAL_XY(216, 86), NumColor.Blue, NumAlign.Right);
       surface.blitRLE(ui.sprite.getFrame(ui.SPRITENUM_SLASH), PAL_XY(218, 84));
 
-      ui.drawNumber(origplayerRoles.attackStrength[w] + script.getPlayerAttackStrength(w) - GameData.playerRoles.attackStrength[w],
-        4, PAL_XY(133, 101), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(script.getPlayerAttackStrength(w), 4, PAL_XY(195, 101), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(beforeStats.attackStrength, 4, PAL_XY(133, 101), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(afterStats.attackStrength, 4, PAL_XY(195, 101), NumColor.Yellow, NumAlign.Right);
 
-      ui.drawNumber(origplayerRoles.magicStrength[w] + script.getPlayerMagicStrength(w) - GameData.playerRoles.magicStrength[w],
-        4, PAL_XY(133, 119), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(script.getPlayerMagicStrength(w), 4, PAL_XY(195, 119), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(beforeStats.magicStrength, 4, PAL_XY(133, 119), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(afterStats.magicStrength, 4, PAL_XY(195, 119), NumColor.Yellow, NumAlign.Right);
 
-      ui.drawNumber(origplayerRoles.defense[w] + script.getPlayerDefense(w) - GameData.playerRoles.defense[w],
-        4, PAL_XY(133, 137), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(script.getPlayerDefense(w), 4, PAL_XY(195, 137), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(beforeStats.defense, 4, PAL_XY(133, 137), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(afterStats.defense, 4, PAL_XY(195, 137), NumColor.Yellow, NumAlign.Right);
 
-      ui.drawNumber(origplayerRoles.dexterity[w] + script.getPlayerDexterity(w) - GameData.playerRoles.dexterity[w],
-        4, PAL_XY(133, 155), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(script.getPlayerDexterity(w), 4, PAL_XY(195, 155), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(beforeStats.dexterity, 4, PAL_XY(133, 155), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(afterStats.dexterity, 4, PAL_XY(195, 155), NumColor.Yellow, NumAlign.Right);
 
-      ui.drawNumber(origplayerRoles.fleeRate[w] + script.getPlayerFleeRate(w) - GameData.playerRoles.fleeRate[w],
-        4, PAL_XY(133, 173), NumColor.Yellow, NumAlign.Right);
-      ui.drawNumber(script.getPlayerFleeRate(w), 4, PAL_XY(195, 173), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(beforeStats.fleeRate, 4, PAL_XY(133, 173), NumColor.Yellow, NumAlign.Right);
+      ui.drawNumber(afterStats.fleeRate, 4, PAL_XY(195, 173), NumColor.Yellow, NumAlign.Right);
 
-      // Update the screen and wait for key
       surface.updateScreen(rect1);
       yield input.waitForKey(3000);
-
-      origplayerRoles = GameData.playerRoles.copy();
     }
 
-    // Increasing of other hidden levels
-    var totalCount = 0;
-    var expBuckets = ['attackExp', 'defenseExp', 'dexterityExp', 'fleeExp', 'healthExp', 'magicExp', 'magicPowerExp'];
-    for (var bucketIndex = 0; bucketIndex < expBuckets.length; bucketIndex++) {
-      var bucketName = expBuckets[bucketIndex];
-      var bucket = expState[bucketName] && expState[bucketName][w];
-      if (bucket && typeof bucket.count === 'number') {
-        totalCount += bucket.count;
-      }
-    }
+    yield* showHiddenIncrease(afterStats, ui.STATUS_LABEL_HP, afterStats.maxHP - beforeStats.maxHP);
+    yield* showHiddenIncrease(afterStats, ui.STATUS_LABEL_MP, afterStats.maxMP - beforeStats.maxMP);
+    yield* showHiddenIncrease(afterStats, ui.STATUS_LABEL_ATTACKPOWER, afterStats.attackStrength - beforeStats.attackStrength);
+    yield* showHiddenIncrease(afterStats, ui.STATUS_LABEL_MAGICPOWER, afterStats.magicStrength - beforeStats.magicStrength);
+    yield* showHiddenIncrease(afterStats, ui.STATUS_LABEL_RESISTANCE, afterStats.defense - beforeStats.defense);
+    yield* showHiddenIncrease(afterStats, ui.STATUS_LABEL_DEXTERITY, afterStats.dexterity - beforeStats.dexterity);
+    yield* showHiddenIncrease(afterStats, ui.STATUS_LABEL_FLEERATE, afterStats.fleeRate - beforeStats.fleeRate);
 
-    if (totalCount > 0) {
-      function* checkHiddenExp(expname, statname, label) {
-        var bucket = expState[expname] && expState[expname][w];
-        if (!bucket) {
-          return;
-        }
-
-        var expValue = expGained;
-        expValue *= bucket.count;
-        expValue /= totalCount;
-        expValue *= 2;
-
-        expValue += bucket.exp;
-
-        if (bucket.level > Const.MAX_LEVELS) {
-          mutateExp(function(expState) {
-            expState[expname][w].level = Const.MAX_LEVELS;
-          });
-          expState = getExpState() || {};
-          bucket = expState[expname] && expState[expname][w];
-        }
-
-        while (bucket && expValue >= GameData.levelUpExp[bucket.level]) {
-          expValue -= GameData.levelUpExp[bucket.level];
-          var increment = randomLong(1, 2);
-          mutatePlayerRoles(function(playerRoles) {
-            playerRoles[statname][w] += increment;
-          });
-          mutateExp(function(expState) {
-            if (expState[expname][w].level < Const.MAX_LEVELS) {
-              expState[expname][w].level++;
-            }
-          });
-          expState = getExpState() || {};
-          bucket = expState[expname] && expState[expname][w];
-        }
-
-        mutateExp(function(expState) {
-          expState[expname][w].exp = WORD(expValue);
-        });
-        expState = getExpState() || {};
-
-        if (GameData.playerRoles[statname][w] != origplayerRoles[statname][w]) {
-          ui.createSingleLineBox(PAL_XY(83, 60), 8, false);
-          ui.drawText(ui.getWord(GameData.playerRoles.name[w]), PAL_XY(95, 70), 0, false, false);
-          ui.drawText(ui.getWord(label), PAL_XY(143, 70), 0, false, false);
-          ui.drawText(ui.getWord(ui.BATTLEWIN_LEVELUP_LABEL), PAL_XY(175, 70), 0, false, false);
-          ui.drawNumber(GameData.playerRoles[statname][w] - origplayerRoles[statname][w], 5, PAL_XY(188, 74), NumColor.Yellow, NumAlign.Right);
-
-          surface.updateScreen(rect);
-          yield input.waitForKey(3000);
-        }
-      }
-
-      yield checkHiddenExp('healthExp', 'maxHP', ui.STATUS_LABEL_HP);
-      yield checkHiddenExp('magicExp', 'maxMP', ui.STATUS_LABEL_MP);
-      yield checkHiddenExp('attackExp', 'attackStrength', ui.STATUS_LABEL_ATTACKPOWER);
-      yield checkHiddenExp('magicPowerExp', 'magicStrength', ui.STATUS_LABEL_MAGICPOWER);
-      yield checkHiddenExp('defenseExp', 'defense', ui.STATUS_LABEL_RESISTANCE);
-      yield checkHiddenExp('dexterityExp', 'dexterity', ui.STATUS_LABEL_DEXTERITY);
-      yield checkHiddenExp('fleeExp', 'fleeRate', ui.STATUS_LABEL_FLEERATE);
-    }
-
-    // Learn all magics at the current level
-    for (var j = 0; j < GameData.levelUpMagic.length; ++j) {
-      var level = GameData.levelUpMagic[j].m[w].level;
-      var magic = GameData.levelUpMagic[j].m[w].magic
-      if (magic == 0 || level > GameData.playerRoles.level[w]) {
+    for (var magicIndex = 0; magicIndex < levelUpMagicTable.length; ++magicIndex) {
+      var levelEntry = levelUpMagicTable[magicIndex].m[roleId];
+      if (!levelEntry) {
         continue;
       }
-
-      if (script.addMagic(w, magic)) {
+      var requiredLevel = levelEntry.level;
+      var magicId = levelEntry.magic;
+      if (!magicId || requiredLevel > afterStats.level) {
+        continue;
+      }
+      if (script.addMagic(roleId, magicId)) {
         ui.createSingleLineBox(PAL_XY(65, 105), 10, false);
-
-        ui.drawText(ui.getWord(GameData.playerRoles.name[w]), PAL_XY(75, 115), 0, false, false);
+        ui.drawText(ui.getWord(afterStats.nameId || 0), PAL_XY(75, 115), 0, false, false);
         ui.drawText(ui.getWord(ui.BATTLEWIN_ADDMAGIC_LABEL), PAL_XY(75 + 16 * 3, 115), 0, false, false);
-        ui.drawText(ui.getWord(magic), PAL_XY(75 + 16 * 5, 115), 0x1B, false, false);
-
+        ui.drawText(ui.getWord(magicId), PAL_XY(75 + 16 * 5, 115), 0x1B, false, false);
         surface.updateScreen(rect);
-        yield input.waitForKey(3000)
+        yield input.waitForKey(3000);
       }
     }
   }
 
-  var battleState = BATTLE();
-  for (var i = 0; i <= battleState.maxEnemyIndex; i++) {
-    yield script.runTriggerScript(battleState.enemy[i].scriptOnBattleEnd, i);
+  battleState = BATTLE();
+  for (var enemyIndex = 0; enemyIndex <= battleState.maxEnemyIndex; enemyIndex++) {
+    yield script.runTriggerScript(battleState.enemy[enemyIndex].scriptOnBattleEnd, enemyIndex);
   }
 
-  // Recover automatically after each battle
   var postBattleParty = getParty();
   var postBattleMaxIndex = getMaxPartyMemberIndex();
-  for (var i = 0; i <= postBattleMaxIndex; i++) {
-    var partyEntry = postBattleParty[i];
-    if (!partyEntry) {
-      continue;
-    }
-    var w = partyEntry.playerRole;
-
-    var hpDelta = ~~((GameData.playerRoles.maxHP[w] - GameData.playerRoles.HP[w]) / 2);
-    var mpDelta = ~~((GameData.playerRoles.maxMP[w] - GameData.playerRoles.MP[w]) / 2);
-    if (hpDelta || mpDelta) {
-      mutatePlayerRoles(function(playerRoles) {
-        playerRoles.HP[w] += hpDelta;
-        playerRoles.MP[w] += mpDelta;
-      });
-    }
+  for (var recoverIndex = 0; recoverIndex <= postBattleMaxIndex; recoverIndex++) {
+    var recoverEntry = postBattleParty[recoverIndex];
+    if (!recoverEntry) continue;
+    var recoverRole = recoverEntry.playerRole;
+    var stats = battleService.getPlayerSnapshot(recoverRole);
+    if (!stats) continue;
+    var newHP = stats.hp + Math.floor((stats.maxHP - stats.hp) / 2);
+    var newMP = stats.mp + Math.floor((stats.maxMP - stats.mp) / 2);
+    newHP = Math.min(newHP, stats.maxHP);
+    newMP = Math.min(newMP, stats.maxMP);
+    battleService.setPlayerHP(recoverRole, newHP);
+    battleService.setPlayerMP(recoverRole, newMP);
   }
 };
 
@@ -1126,7 +1032,7 @@ battle.start = function*(enemyTeam, isBoss) {
       });
     }
 
-    stateService.mutateGlobal('exp', function(exp) {
+    battleService.mutateExpState(function(exp) {
       if (!exp) return exp;
       exp.healthExp[roleIndex].count = 0;
       exp.magicExp[roleIndex].count = 0;

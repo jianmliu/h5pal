@@ -8,6 +8,7 @@ import res from './res';
 import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';
 import stateService from '../../services/state-service.js';
+import worldService from '../../services/world-service.js';
 
 log.trace('game module load');
 
@@ -32,7 +33,7 @@ function mutateGlobalValue(key, mutator) {
 }
 
 function mutateExp(mutator) {
-  return mutateGlobalValue('exp', function(exp) {
+  return worldService.mutateExpState(function(exp) {
     if (exp && typeof mutator === 'function') {
       mutator(exp);
     }

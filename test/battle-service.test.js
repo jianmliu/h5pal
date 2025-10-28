@@ -1,5 +1,8 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { BattleComponents } from '../src/ecs/index.js';
+import worldService from '../src/services/world-service.js';
+import stateService from '../src/services/state-service.js';
+import scriptService from '../src/services/script-service.js';
 
 const initMock = vi.fn(function* (...args) {
   yield { type: 'initStep', args };
@@ -52,6 +55,31 @@ describe('BattleService', () => {
     root.Global.playerStatus = [];
     root.Global.poisonStatus = [];
     battleService.bindModule(battleModuleMock);
+    worldService.dispose();
+    scriptService.playerLevelUp = vi.fn();
+  });
+
+  afterEach(() => {
+    worldService.dispose();
+    stateService.updateGlobal({
+      cash: undefined,
+      party: undefined,
+      maxPartyMemberIndex: undefined,
+      playerStatus: undefined,
+      exp: undefined,
+      viewport: undefined,
+      partyOffset: undefined,
+      trail: undefined,
+      numScene: undefined
+    });
+    stateService.updateGameData({
+      playerRoles: undefined,
+      levelUpExp: undefined,
+      levelUpMagic: undefined
+    });
+    delete root.GameData;
+    delete root.Const;
+    delete root.randomLong;
   });
 
   it('proxies module properties', () => {
@@ -352,5 +380,115 @@ describe('BattleService', () => {
     const updatedComponent = battleService.getUIComponent();
     expect(updatedComponent.menuState).toBe(4);
     expect(battleService.getUI().menuState).toBe(4);
+  });
+
+  it('awardExp updates exp state, player stats, and ECS components', () => {
+    const root = globalThis;
+    root.Const = { MAX_LEVELS: 5 };
+    root.randomLong = vi.fn(() => 1);
+
+    const expState = {
+      primaryExp: [{ exp: 0, level: 1, count: 0 }],
+      attackExp: [{ exp: 0, level: 0, count: 1 }],
+      defenseExp: [{ exp: 0, level: 0, count: 1 }],
+      dexterityExp: [{ exp: 0, level: 0, count: 1 }],
+      fleeExp: [{ exp: 0, level: 0, count: 1 }],
+      healthExp: [{ exp: 0, level: 0, count: 1 }],
+      magicExp: [{ exp: 0, level: 0, count: 1 }],
+      magicPowerExp: [{ exp: 0, level: 0, count: 1 }]
+    };
+
+    const playerRoles = {
+      name: [123],
+      level: [1],
+      HP: [50],
+      maxHP: [60],
+      MP: [20],
+      maxMP: [30],
+      attackStrength: [10],
+      magicStrength: [12],
+      defense: [8],
+      dexterity: [9],
+      fleeRate: [7]
+    };
+
+    stateService.setGlobal('cash', 100);
+    stateService.setGlobal('party', [{ playerRole: 0 }]);
+    stateService.setGlobal('maxPartyMemberIndex', 0);
+    stateService.setGlobal('playerStatus', [new Array(9).fill(0)]);
+    stateService.setGlobal('trail', []);
+    stateService.setGlobal('viewport', 0);
+    stateService.setGlobal('partyOffset', 0);
+    stateService.setGlobal('numScene', 1);
+    stateService.setGlobal('exp', expState);
+
+    stateService.setGameData('playerRoles', playerRoles);
+    stateService.setGameData('levelUpExp', [5, 10, 20, 30, 40, 50]);
+    stateService.setGameData('levelUpMagic', [{ m: [{ level: 2, magic: 500 }] }]);
+
+    root.GameData = {
+      playerRoles: stateService.getGameData('playerRoles'),
+      levelUpExp: stateService.getGameData('levelUpExp'),
+      levelUpMagic: stateService.getGameData('levelUpMagic'),
+      scene: [
+        { eventObjectIndex: 0, mapNum: 0, scriptOnEnter: 0 },
+        { eventObjectIndex: 0, mapNum: 0, scriptOnEnter: 0 }
+      ],
+      eventObject: [],
+      map: [{}, {}],
+      object: [{ enemy: { enemyID: 0 } }],
+      enemy: []
+    };
+
+    worldService.init();
+    worldService.syncAll();
+
+    const battleState = {
+      player: [
+        {
+          timeMeter: 0,
+          timeSpeedModifier: 1,
+          action: {},
+          pos: 0,
+          originalPos: 0,
+          currentFrame: 0,
+          sprite: { id: 'p0' },
+          colorShift: 0
+        }
+      ],
+      enemy: [],
+      maxEnemyIndex: -1,
+      actionQueue: [],
+      UI: {}
+    };
+
+    battleService.replaceState(battleState);
+    root.Global.maxPartyMemberIndex = 0;
+    root.Global.party = [{ playerRole: 0 }];
+    root.Global.autoBattle = false;
+    root.Global.playerStatus[0] = new Array(9).fill(0);
+    battleService.initialiseBattleEntities();
+
+    const beforeSnapshot = battleService.getPlayerSnapshot(0);
+
+    const summary = battleService.awardExp(0, 30);
+    expect(summary.roleId).toBe(0);
+    expect(summary.levelUp).toBe(true);
+    expect(worldService.getPlayerLevel(0)).toBe(3);
+    expect(worldService.getPlayerHP(0)).toBeLessThanOrEqual(worldService.getPlayerMaxHP(0));
+    expect(worldService.getPlayerHP(0)).toBeGreaterThanOrEqual(beforeSnapshot.hp);
+    expect(worldService.getPlayerAttackStrength(0)).toBeGreaterThan(beforeSnapshot.attackStrength);
+
+    const updatedExpState = worldService.getExpState();
+    expect(updatedExpState.primaryExp[0].exp).toBe(0);
+
+    battleService.syncActorComponents();
+    const registry = battleService.getRegistry();
+    const statsComp = registry.getComponent(battleService.getPlayerEntity(0), BattleComponents.Stats);
+    expect(statsComp).toBeTruthy();
+    expect(statsComp.statsRef.hp[0]).toBe(worldService.getPlayerHP(0));
+
+    stateService.mutateGlobal('cash', (cash) => (cash || 0) + 50);
+    expect(stateService.getGlobal('cash')).toBe(150);
   });
 });
