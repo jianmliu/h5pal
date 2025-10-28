@@ -38,6 +38,48 @@ function getGameDataStore() {
   return null;
 }
 
+function getGlobalObject(name) {
+  if (typeof globalThis !== 'undefined' && globalThis[name]) {
+    return globalThis[name];
+  }
+  if (typeof global !== 'undefined' && global[name]) {
+    return global[name];
+  }
+  return null;
+}
+
+function getGlobalFunction(name, fallback) {
+  const obj = getGlobalObject(name);
+  if (obj && typeof obj === 'function') {
+    return obj;
+  }
+  return fallback;
+}
+
+function getConstValue(key, fallback) {
+  const constRef = getGlobalObject('Const');
+  if (constRef && typeof constRef[key] === 'number') {
+    return constRef[key];
+  }
+  return fallback;
+}
+
+const MAX_PLAYER_ROLES = getConstValue('MAX_PLAYER_ROLES', 0);
+const MAX_PLAYER_EQUIPMENTS = getConstValue('MAX_PLAYER_EQUIPMENTS', 0);
+const MAX_PLAYER_MAGICS = getConstValue('MAX_PLAYER_MAGICS', 0);
+const MAX_INVENTORY = getConstValue('MAX_INVENTORY', 0);
+const MAX_POISONS = getConstValue('MAX_POISONS', 0);
+
+const toSignedWord = getGlobalFunction('SHORT', function(value) {
+  const result = value & 0xFFFF;
+  return (result & 0x8000) ? result - 0x10000 : result;
+});
+
+function toUnsignedWord(value) {
+  const normalized = ((value % 0x10000) + 0x10000) & 0xFFFF;
+  return normalized;
+}
+
 function resolveDirectionDefault() {
   let directionTable = null;
   if (typeof globalThis !== 'undefined' && globalThis.Direction) {
@@ -367,63 +409,13 @@ class WorldService extends EventBus {
 
   syncEventObjects() {
     this._ensureInitialised();
-    const registry = this.registry;
     const gameData = getGameDataStore();
     const eventObjects = gameData && gameData.eventObject ? gameData.eventObject : [];
     const sceneId = stateService.getGlobal('numScene');
     const visited = new Set();
     for (let i = 0; i < eventObjects.length; i++) {
       const eventObject = eventObjects[i];
-      let entityId = this.entityMaps.eventObject.get(i);
-      if (!entityId) {
-        entityId = registry.createEntity();
-        registry.addComponent(entityId, WorldComponents.EventObject, createEventObjectComponent({
-          id: i,
-          stateRef: eventObject,
-          sceneId,
-          aiState: eventObject ? {
-            triggerMode: eventObject.triggerMode,
-            state: eventObject.state,
-            autoScript: eventObject.autoScript
-          } : null
-        }));
-        this.entityMaps.eventObject.set(i, entityId);
-      } else {
-        const component = registry.getComponent(entityId, WorldComponents.EventObject);
-        if (component) {
-          component.id = i;
-          component.stateRef = eventObject;
-          component.sceneId = sceneId;
-          component.aiState = eventObject ? {
-            triggerMode: eventObject.triggerMode,
-            state: eventObject.state,
-            autoScript: eventObject.autoScript
-          } : null;
-        }
-      }
-      const npcPayload = {
-        id: i,
-        sceneId,
-        stateRef: eventObject,
-        position: eventObject ? { x: eventObject.x, y: eventObject.y, layer: eventObject.layer } : null,
-        direction: eventObject ? eventObject.direction : null,
-        currentFrame: eventObject ? eventObject.currentFrameNum : null,
-        state: eventObject ? eventObject.state : null,
-        vanishTime: eventObject ? eventObject.vanishTime : null
-      };
-      const npcComponent = registry.getComponent(entityId, WorldComponents.NpcState);
-      if (npcComponent) {
-        npcComponent.id = npcPayload.id;
-        npcComponent.sceneId = npcPayload.sceneId;
-        npcComponent.stateRef = npcPayload.stateRef;
-        npcComponent.position = npcPayload.position;
-        npcComponent.direction = npcPayload.direction;
-        npcComponent.currentFrame = npcPayload.currentFrame;
-        npcComponent.state = npcPayload.state;
-        npcComponent.vanishTime = npcPayload.vanishTime;
-      } else {
-        registry.addComponent(entityId, WorldComponents.NpcState, createNpcStateComponent(npcPayload));
-      }
+      this._syncEventObjectEntity(i, eventObject, sceneId);
       visited.add(i);
     }
 
@@ -440,6 +432,63 @@ class WorldService extends EventBus {
     this.fire('npcStatesSynced', { count: eventObjects.length, sceneId });
     this._collisionState = null;
     this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
+  }
+
+  _syncEventObjectEntity(index, eventObject, sceneId = stateService.getGlobal('numScene')) {
+    this._ensureInitialised();
+    const registry = this.registry;
+    let entityId = this.entityMaps.eventObject.get(index);
+    if (!entityId) {
+      entityId = registry.createEntity();
+      registry.addComponent(entityId, WorldComponents.EventObject, createEventObjectComponent({
+        id: index,
+        stateRef: eventObject,
+        sceneId,
+        aiState: eventObject ? {
+          triggerMode: eventObject.triggerMode,
+          state: eventObject.state,
+          autoScript: eventObject.autoScript
+        } : null
+      }));
+      registry.addComponent(entityId, WorldComponents.NpcState, createNpcStateComponent({
+        id: index,
+        sceneId,
+        stateRef: eventObject,
+        position: eventObject ? { x: eventObject.x, y: eventObject.y, layer: eventObject.layer } : null,
+        direction: eventObject ? eventObject.direction : null,
+        currentFrame: eventObject ? eventObject.currentFrameNum : null,
+        state: eventObject ? eventObject.state : null,
+        vanishTime: eventObject ? eventObject.vanishTime : null
+      }));
+      this.entityMaps.eventObject.set(index, entityId);
+      return entityId;
+    }
+
+    const eventComponent = registry.getComponent(entityId, WorldComponents.EventObject);
+    if (eventComponent) {
+      eventComponent.id = index;
+      eventComponent.stateRef = eventObject;
+      eventComponent.sceneId = sceneId;
+      eventComponent.aiState = eventObject ? {
+        triggerMode: eventObject.triggerMode,
+        state: eventObject.state,
+        autoScript: eventObject.autoScript
+      } : null;
+    }
+
+    const npcComponent = registry.getComponent(entityId, WorldComponents.NpcState);
+    if (npcComponent) {
+      npcComponent.id = index;
+      npcComponent.sceneId = sceneId;
+      npcComponent.stateRef = eventObject;
+      npcComponent.position = eventObject ? { x: eventObject.x, y: eventObject.y, layer: eventObject.layer } : null;
+      npcComponent.direction = eventObject ? eventObject.direction : null;
+      npcComponent.currentFrame = eventObject ? eventObject.currentFrameNum : null;
+      npcComponent.state = eventObject ? eventObject.state : null;
+      npcComponent.vanishTime = eventObject ? eventObject.vanishTime : null;
+    }
+
+    return entityId;
   }
 
   syncScriptRegisters() {
@@ -548,6 +597,19 @@ class WorldService extends EventBus {
     return typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0;
   }
 
+  getScriptEntry(entry) {
+    this._ensureInitialised();
+    const registry = this.registry;
+    if (!this.entityMaps.scriptRegister) {
+      return null;
+    }
+    const component = registry.getComponent(this.entityMaps.scriptRegister, WorldComponents.ScriptRegister);
+    if (!component || !Array.isArray(component.entries)) {
+      return null;
+    }
+    return component.entries[entry] || null;
+  }
+
   getViewport() {
     this._ensureInitialised();
     return stateService.getGlobal('viewport') || 0;
@@ -633,6 +695,147 @@ class WorldService extends EventBus {
     return party.length > 0 ? party.length - 1 : -1;
   }
 
+  mutateParty(mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    return stateService.mutateGlobal('party', (party) => {
+      const current = Array.isArray(party) ? party : [];
+      const result = mutator(current);
+      return typeof result === 'undefined' ? current : result;
+    });
+  }
+
+  getInventory() {
+    this._ensureInitialised();
+    const inventory = stateService.getGlobal('inventory');
+    return Array.isArray(inventory) ? inventory : [];
+  }
+
+  mutateInventory(mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    return stateService.mutateGlobal('inventory', (inventory) => {
+      const current = Array.isArray(inventory) ? inventory : [];
+      const result = mutator(current);
+      return typeof result === 'undefined' ? current : result;
+    });
+  }
+
+  getInventorySlot(index) {
+    const inventory = this.getInventory();
+    if (index < 0 || index >= inventory.length) {
+      return null;
+    }
+    return inventory[index] || null;
+  }
+
+  getInventoryCapacity() {
+    return MAX_INVENTORY || this.getInventory().length;
+  }
+
+  getPlayerStatusMatrix() {
+    this._ensureInitialised();
+    const status = stateService.getGlobal('playerStatus');
+    return Array.isArray(status) ? status : [];
+  }
+
+  mutatePlayerStatus(mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    return stateService.mutateGlobal('playerStatus', (status) => {
+      const current = Array.isArray(status) ? status : [];
+      const result = mutator(current);
+      return typeof result === 'undefined' ? current : result;
+    });
+  }
+
+  mutatePlayerStatusEntry(roleId, mutator) {
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    let result = null;
+    this.mutatePlayerStatus((matrix) => {
+      const row = matrix[roleId];
+      if (!row) {
+        return matrix;
+      }
+      const next = mutator(row);
+      if (typeof next !== 'undefined' && next !== row) {
+        matrix[roleId] = next;
+        result = next;
+      } else {
+        result = row;
+      }
+      return matrix;
+    });
+    return result;
+  }
+
+  getPlayerStatus(roleId) {
+    const matrix = this.getPlayerStatusMatrix();
+    return matrix[roleId] || null;
+  }
+
+  getPoisonStatusMatrix() {
+    this._ensureInitialised();
+    const status = stateService.getGlobal('poisonStatus');
+    return Array.isArray(status) ? status : [];
+  }
+
+  mutatePoisonStatus(mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    return stateService.mutateGlobal('poisonStatus', (status) => {
+      const current = Array.isArray(status) ? status : [];
+      const result = mutator(current);
+      return typeof result === 'undefined' ? current : result;
+    });
+  }
+
+  getPlayerMagicSlots(roleId) {
+    const roles = this.getPlayerRoles();
+    if (!roles || !Array.isArray(roles.magic)) {
+      return [];
+    }
+    const result = [];
+    for (let slot = 0; slot < roles.magic.length; slot++) {
+      const row = roles.magic[slot];
+      result.push(row ? row[roleId] || 0 : 0);
+    }
+    return result;
+  }
+
+  setPlayerMagicSlot(roleId, slotIndex, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && Array.isArray(roles.magic) && roles.magic[slotIndex]) {
+        roles.magic[slotIndex][roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  findPlayerMagicSlot(roleId, magicId) {
+    const slots = this.getPlayerMagicSlots(roleId);
+    for (let i = 0; i < slots.length; i++) {
+      if (slots[i] === magicId) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  clearPlayerMagicSlot(roleId, slotIndex) {
+    return this.setPlayerMagicSlot(roleId, slotIndex, 0);
+  }
+
   getTrail() {
     this._ensureInitialised();
     const trail = stateService.getGlobal('trail');
@@ -650,6 +853,53 @@ class WorldService extends EventBus {
   getSceneData() {
     const component = this.getSceneComponent();
     return component ? component.sceneRef : null;
+  }
+
+  getSceneEntry(sceneId) {
+    this._ensureInitialised();
+    if (typeof sceneId !== 'number' || sceneId <= 0) {
+      sceneId = this.getSceneId();
+    }
+    const currentId = this.getSceneId();
+    if (sceneId === currentId) {
+      const component = this.getSceneComponent();
+      return component ? component.sceneRef : null;
+    }
+    const store = getGameDataStore();
+    const scenes = store && Array.isArray(store.scene) ? store.scene : [];
+    const index = sceneId - 1;
+    if (index < 0 || index >= scenes.length) {
+      return null;
+    }
+    return scenes[index];
+  }
+
+  mutateSceneEntry(sceneId, mutator) {
+    this._ensureInitialised();
+    if (typeof sceneId !== 'number' || typeof mutator !== 'function') {
+      return null;
+    }
+    let result = null;
+    stateService.mutateGameData('scene', (scenes) => {
+      if (!Array.isArray(scenes)) {
+        return scenes;
+      }
+      const index = sceneId - 1;
+      const entry = scenes[index];
+      if (!entry) {
+        return scenes;
+      }
+      const next = mutator(entry);
+      if (typeof next !== 'undefined' && next !== entry) {
+        scenes[index] = next;
+        result = next;
+      } else {
+        result = entry;
+      }
+      return scenes;
+    });
+    this.syncScene();
+    return result;
   }
 
   getNextSceneData() {
@@ -735,8 +985,13 @@ class WorldService extends EventBus {
 
   setCollisionState(payload) {
     const component = this._ensureCollisionStateEntity();
-    component.mapId = typeof payload.mapId === 'number' ? payload.mapId : component.mapId;
-    component.state = payload.state || null;
+    const directState = payload && typeof payload.isBlocked === 'function' ? payload : null;
+    const resolvedState = directState || (payload && payload.state) || null;
+    const resolvedMapId = typeof payload.mapId === 'number'
+      ? payload.mapId
+      : (resolvedState && typeof resolvedState.mapId === 'number' ? resolvedState.mapId : component.mapId);
+    component.mapId = resolvedMapId;
+    component.state = resolvedState;
     component.version = (typeof component.version === 'number' ? component.version : 0) + 1;
     this._collisionState = component.state;
   }
@@ -809,8 +1064,12 @@ class WorldService extends EventBus {
     if (typeof result !== 'undefined' && result !== target) {
       gameData.eventObject[id] = result;
     }
-    this.syncEventObjects();
-    return typeof result !== 'undefined' ? result : target;
+    const updatedEntry = typeof result !== 'undefined' ? result : target;
+    this._syncEventObjectEntity(id, updatedEntry, stateService.getGlobal('numScene'));
+    this._collisionState = null;
+    this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
+    this.fire('eventObjectMutated', { id, sceneId: stateService.getGlobal('numScene'), state: updatedEntry });
+    return updatedEntry;
   }
 
   getSceneEventObjectRange() {
@@ -912,6 +1171,24 @@ class WorldService extends EventBus {
     return store && store.playerRoles ? store.playerRoles : null;
   }
 
+  getMagicEntry(id) {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    if (!store || !Array.isArray(store.magic)) {
+      return null;
+    }
+    return store.magic[id] || null;
+  }
+
+  getStoreEntry(id) {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    if (!store || !Array.isArray(store.store)) {
+      return null;
+    }
+    return store.store[id] || null;
+  }
+
   mutatePlayerRoles(mutator) {
     this._ensureInitialised();
     if (typeof mutator !== 'function') {
@@ -962,9 +1239,27 @@ class WorldService extends EventBus {
     return roles && roles.maxHP ? roles.maxHP[roleId] || 0 : 0;
   }
 
+  setPlayerMaxHP(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.maxHP) {
+        roles.maxHP[roleId] = value;
+      }
+      return roles;
+    });
+  }
+
   getPlayerMaxMP(roleId) {
     const roles = this.getPlayerRoles();
     return roles && roles.maxMP ? roles.maxMP[roleId] || 0 : 0;
+  }
+
+  setPlayerMaxMP(roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && roles.maxMP) {
+        roles.maxMP[roleId] = value;
+      }
+      return roles;
+    });
   }
 
   getPlayerLevel(roleId) {
@@ -979,6 +1274,26 @@ class WorldService extends EventBus {
       }
       return roles;
     });
+  }
+
+  getPlayerNameId(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.name ? roles.name[roleId] || 0 : 0;
+  }
+
+  getPlayerSpriteNum(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.spriteNum ? roles.spriteNum[roleId] || 0 : 0;
+  }
+
+  getPlayerWalkFrames(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.walkFrames ? roles.walkFrames[roleId] || 0 : 0;
+  }
+
+  getPlayerAvatarId(roleId) {
+    const roles = this.getPlayerRoles();
+    return roles && roles.avatar ? roles.avatar[roleId] || 0 : 0;
   }
 
   getPlayerAttackStrength(roleId) {
@@ -1051,6 +1366,231 @@ class WorldService extends EventBus {
     });
   }
 
+  getPlayerEquipment(slot, roleId) {
+    const roles = this.getPlayerRoles();
+    if (!roles || !Array.isArray(roles.equipment)) {
+      return 0;
+    }
+    const equipmentRow = roles.equipment[slot];
+    if (!equipmentRow) {
+      return 0;
+    }
+    return equipmentRow[roleId] || 0;
+  }
+
+  setPlayerEquipment(slot, roleId, value) {
+    return this.mutatePlayerRoles((roles) => {
+      if (roles && Array.isArray(roles.equipment) && roles.equipment[slot]) {
+        roles.equipment[slot][roleId] = value;
+      }
+      return roles;
+    });
+  }
+
+  _getEquipmentEffects() {
+    const store = getGlobalStore();
+    return store && store.equipmentEffect ? store.equipmentEffect : null;
+  }
+
+  getEquipmentEffect(part) {
+    this._ensureInitialised();
+    if (typeof part !== 'number') {
+      return null;
+    }
+    const effects = this._getEquipmentEffects();
+    if (!effects) {
+      return null;
+    }
+    if (part < 0 || part >= effects.length) {
+      return null;
+    }
+    return effects[part] || null;
+  }
+
+  resetEquipmentEffects() {
+    this._ensureInitialised();
+    const effects = this._getEquipmentEffects();
+    if (!effects) {
+      return;
+    }
+    if (effects.uint8Array) {
+      effects.uint8Array.fill(0);
+      return;
+    }
+    for (let idx = 0; idx < effects.length; idx++) {
+      const entry = effects[idx];
+      if (entry && entry.uint8Array) {
+        entry.uint8Array.fill(0);
+      }
+    }
+  }
+
+  mutateEquipmentEffect(part, mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    const effects = this._getEquipmentEffects();
+    if (!effects || typeof part !== 'number' || part < 0 || part >= effects.length) {
+      return null;
+    }
+    const entry = effects[part];
+    if (!entry) {
+      return null;
+    }
+    const result = mutator(entry);
+    return typeof result === 'undefined' ? entry : result;
+  }
+
+  _mutateEquipmentEffectWord(part, fieldIndex, roleId, updater) {
+    if (typeof part !== 'number' || typeof fieldIndex !== 'number' || typeof roleId !== 'number' || MAX_PLAYER_ROLES <= 0) {
+      return null;
+    }
+    const effect = this.getEquipmentEffect(part);
+    if (!effect || !effect.uint8Array) {
+      return null;
+    }
+    const buffer = effect.uint8Array;
+    const offset = (fieldIndex * MAX_PLAYER_ROLES + roleId) * 2;
+    if (offset < 0 || offset + 2 > buffer.length) {
+      return null;
+    }
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    const current = view.getUint16(offset, false);
+    const nextValue = typeof updater === 'function' ? updater(current) : updater;
+    if (typeof nextValue === 'number' && !Number.isNaN(nextValue)) {
+      const normalized = toUnsignedWord(nextValue);
+      view.setUint16(offset, normalized, false);
+      return normalized;
+    }
+    return current;
+  }
+
+  setEquipmentEffectWord(part, fieldIndex, roleId, value) {
+    return this._mutateEquipmentEffectWord(part, fieldIndex, roleId, value);
+  }
+
+  adjustEquipmentEffectWord(part, fieldIndex, roleId, delta) {
+    return this._mutateEquipmentEffectWord(part, fieldIndex, roleId, (current) => {
+      const signedCurrent = toSignedWord(current);
+      const signedDelta = toSignedWord(delta);
+      const next = signedCurrent + signedDelta;
+      return toUnsignedWord(next);
+    });
+  }
+
+  clearEquipmentEffect(part, roleId) {
+    if (MAX_PLAYER_ROLES <= 0) {
+      return;
+    }
+    const effect = this.getEquipmentEffect(part);
+    if (!effect || !effect.uint8Array) {
+      return;
+    }
+    const buffer = effect.uint8Array;
+    const totalWords = buffer.length / 2;
+    if (totalWords <= 0) {
+      return;
+    }
+    const fields = Math.floor(totalWords / MAX_PLAYER_ROLES);
+    for (let field = 0; field < fields; field++) {
+      this._mutateEquipmentEffectWord(part, field, roleId, 0);
+    }
+  }
+
+  adjustPlayerMaxHP(roleId, delta) {
+    const current = this.getPlayerMaxHP(roleId);
+    return this.setPlayerMaxHP(roleId, current + delta);
+  }
+
+  adjustPlayerMaxMP(roleId, delta) {
+    const current = this.getPlayerMaxMP(roleId);
+    return this.setPlayerMaxMP(roleId, current + delta);
+  }
+
+  adjustPlayerAttackStrength(roleId, delta) {
+    const current = this.getPlayerAttackStrength(roleId);
+    return this.setPlayerAttackStrength(roleId, current + delta);
+  }
+
+  adjustPlayerMagicStrength(roleId, delta) {
+    const current = this.getPlayerMagicStrength(roleId);
+    return this.setPlayerMagicStrength(roleId, current + delta);
+  }
+
+  adjustPlayerDefense(roleId, delta) {
+    const current = this.getPlayerDefense(roleId);
+    return this.setPlayerDefense(roleId, current + delta);
+  }
+
+  adjustPlayerDexterity(roleId, delta) {
+    const current = this.getPlayerDexterity(roleId);
+    return this.setPlayerDexterity(roleId, current + delta);
+  }
+
+  adjustPlayerFleeRate(roleId, delta) {
+    const current = this.getPlayerFleeRate(roleId);
+    return this.setPlayerFleeRate(roleId, current + delta);
+  }
+
+  getPlayerRoleWord(fieldIndex, roleId) {
+    if (typeof fieldIndex !== 'number' || typeof roleId !== 'number' || MAX_PLAYER_ROLES <= 0) {
+      return null;
+    }
+    const store = getGameDataStore();
+    const playerRoles = store && store.playerRoles;
+    if (!playerRoles || !playerRoles.uint8Array) {
+      return null;
+    }
+    const buffer = playerRoles.uint8Array;
+    const offset = (fieldIndex * MAX_PLAYER_ROLES + roleId) * 2;
+    if (offset < 0 || offset + 2 > buffer.byteLength) {
+      return null;
+    }
+    const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+    return view.getUint16(offset, false);
+  }
+
+  _mutatePlayerRoleWord(fieldIndex, roleId, updater) {
+    if (typeof fieldIndex !== 'number' || typeof roleId !== 'number' || MAX_PLAYER_ROLES <= 0) {
+      return null;
+    }
+    let result = null;
+    stateService.mutateGameData('playerRoles', (playerRoles) => {
+      if (!playerRoles || !playerRoles.uint8Array) {
+        return playerRoles;
+      }
+      const buffer = playerRoles.uint8Array;
+      const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+      const offset = (fieldIndex * MAX_PLAYER_ROLES + roleId) * 2;
+      if (offset < 0 || offset + 2 > buffer.byteLength) {
+        return playerRoles;
+      }
+      const current = view.getUint16(offset, false);
+      const nextValue = typeof updater === 'function' ? updater(current) : updater;
+      if (typeof nextValue === 'number' && !Number.isNaN(nextValue)) {
+        const normalized = toUnsignedWord(nextValue);
+        view.setUint16(offset, normalized, false);
+        result = normalized;
+      }
+      return playerRoles;
+    });
+    return result;
+  }
+
+  adjustPlayerRoleWord(fieldIndex, roleId, delta) {
+    return this._mutatePlayerRoleWord(fieldIndex, roleId, (current) => {
+      const signedCurrent = toSignedWord(current);
+      const signedDelta = toSignedWord(delta);
+      const next = signedCurrent + signedDelta;
+      return toUnsignedWord(next);
+    });
+  }
+
+  setPlayerRoleWord(fieldIndex, roleId, value) {
+    return this._mutatePlayerRoleWord(fieldIndex, roleId, value);
+  }
+
   getExpState() {
     this._ensureInitialised();
     return stateService.getGlobal('exp');
@@ -1064,6 +1604,25 @@ class WorldService extends EventBus {
       }
       return exp;
     });
+  }
+
+  getLevelUpExp(level) {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    const table = store && Array.isArray(store.levelUpExp) ? store.levelUpExp : [];
+    if (typeof level !== 'number') {
+      return 0;
+    }
+    if (level < 0 || level >= table.length) {
+      return table[level] || 0;
+    }
+    return table[level] || 0;
+  }
+
+  getLevelUpExpTable() {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    return store && Array.isArray(store.levelUpExp) ? store.levelUpExp : [];
   }
 
   getPartyDirection() {

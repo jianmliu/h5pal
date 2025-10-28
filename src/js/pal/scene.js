@@ -67,10 +67,7 @@ scene.init = function*(surf) {
 
 scene.makeScene = function*() {
   var sceneId = worldService.getSceneId() || stateService.getGlobal('numScene');
-  var activeScene = null;
-  if (sceneId && sceneId > 0 && GameData.scene) {
-    activeScene = GameData.scene[sceneId - 1];
-  }
+  var activeScene = sceneId ? worldService.getSceneEntry(sceneId) : null;
   if (!activeScene) return;
   if (scene.currentSceneId !== sceneId) {
     scene.currentSceneId = sceneId;
@@ -96,8 +93,8 @@ scene.getPlayerSprite = function(i) {
     // 如果是跟随者，那么spriteNum就是它的ID
     spriteNum = playerID;
   } else {
-    // 否则从GameData.playerRoles里获取spriteNum（我也不知道为虾米要这么搞……）
-    spriteNum = GameData.playerRoles.spriteNum[playerID];
+    // 否则从 worldService 的 playerRoles 数据里获取 spriteNum（我也不知道为虾米要这么搞……）
+    spriteNum = worldService.getPlayerSpriteNum(playerID);
   }
   if (typeof spriteNum === 'undefined') {
     return null;
@@ -165,7 +162,7 @@ scene.updatePartyGestures = function(walking) {
   //log.trace('[Scene] updatePartyGestures ' + walking);
   var party = worldService.getParty();
   var trail = worldService.getTrail();
-  var playerRoles = GameData.playerRoles;
+  var playerRoles = worldService.getPlayerRoles();
   var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
   var viewport = worldService.getViewport();
   var partyOffset = worldService.getPartyOffset();
@@ -298,10 +295,9 @@ function legacyCheckObstacle(pos, checkEventObjects, selfObject) {
     }
   }
 
-  var scenes = GameData.scene;
   var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
-  var sc = scenes && numScene ? scenes[numScene - 1] : null;
-  if (!sc) {
+  var sc = numScene ? worldService.getSceneEntry(numScene) : null;
+  if (!sc || typeof sc.getMap !== 'function') {
     return true;
   }
 
@@ -311,17 +307,16 @@ function legacyCheckObstacle(pos, checkEventObjects, selfObject) {
   }
 
   if (checkEventObjects) {
-    var eventObjects = GameData.eventObject;
-    var nextScene = scenes ? scenes[numScene] : null;
-    var startIndex = sc && typeof sc.eventObjectIndex === 'number' ? sc.eventObjectIndex : 0;
-    var endIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
-      ? nextScene.eventObjectIndex
-      : eventObjects.length;
-    for (var i = startIndex; i < endIndex; i++) {
-      if (i === selfObject - 1) {
+    var eventEntries = worldService.getEventObjectsInCurrentScene();
+    for (var idx = 0; idx < eventEntries.length; idx++) {
+      var entry = eventEntries[idx];
+      if (!entry || !entry.state) {
         continue;
       }
-      var p = eventObjects[i];
+      if (entry.index === selfObject - 1) {
+        continue;
+      }
+      var p = entry.state;
       if (p.state >= ObjectState.Blocker) {
         if (abs(p.x - PAL_X(pos)) + abs(p.y - PAL_Y(pos)) * 2 < 16) {
           return true;
@@ -412,36 +407,33 @@ scene.applyWave = function(buffer) {
 
 utils.extend(Scene.prototype, {
   loadEventObjectSpites: function(version) {
-    var scenes = GameData.scene;
-    var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
-    var eventObjects = GameData.eventObject;
-    if (!numScene || !scenes || !scenes.length) {
+    var entries = worldService.getEventObjectsInCurrentScene();
+    if (!entries || !entries.length) {
+      this.eventObjectSprite = [];
+      this._eventSpriteVersion = version;
       return;
     }
-    var currentScene = scenes[numScene - 1];
-    var nextScene = scenes[numScene];
-    if (!currentScene) {
-      return;
-    }
-    var index = currentScene.eventObjectIndex;
-    var nextEventIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
-      ? nextScene.eventObjectIndex
-      : eventObjects.length;
-    var num = nextEventIndex - index;
     var MGO = Files.MGO;
-    var array = this.eventObjectSprite = new Array(num);
+    var array = this.eventObjectSprite = new Array(entries.length);
 
-    for (var i = 0; i < num; ++i, ++index) {
-      var n = eventObjects[index].spriteNum;
-      if (n == 0) {
-        array[i] = null;
-        continue;
+    entries.forEach(function(entry, localIndex) {
+      var state = entry && entry.state ? entry.state : null;
+      var spriteNum = state && typeof state.spriteNum === 'number' ? state.spriteNum : 0;
+      if (!spriteNum) {
+        array[localIndex] = null;
+        return;
       }
-
-      var sprite = array[i] = new Sprite(MGO.decompressChunk(n));
-      sprite.__paletteSpriteNum = n;
-      eventObjects[index].spriteFramesAuto = sprite.frameCount;
-    }
+      var chunk = MGO.decompressChunk(spriteNum);
+      var sprite = new Sprite(chunk);
+      sprite.__paletteSpriteNum = spriteNum;
+      array[localIndex] = sprite;
+      worldService.mutateEventObject(entry.index, function(eventState) {
+        if (eventState) {
+          eventState.spriteFramesAuto = sprite.frameCount;
+        }
+        return eventState;
+      });
+    });
     this._eventSpriteVersion = version;
     worldService.setPartyOffset(PAL_XY(160, 112));
   },
@@ -453,33 +445,25 @@ utils.extend(Scene.prototype, {
       this.loadEventObjectSpites(version);
     }
 
-    var scenes = GameData.scene;
-    var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
-    var eventObjects = GameData.eventObject;
-    var currentScene = scenes && numScene ? scenes[numScene - 1] : null;
-    if (!currentScene) {
+    var range = typeof worldService.getSceneEventObjectRange === 'function'
+      ? worldService.getSceneEventObjectRange()
+      : { start: 0, end: 0 };
+    var targetIndex = eventObjectID - 1;
+    if (targetIndex < range.start || targetIndex >= range.end) {
       return null;
     }
-    eventObjectID -= currentScene.eventObjectIndex;
-    eventObjectID--;
-    if (eventObjectID < 0) {
-      return null;
-    }
-
-    if (eventObjectID >= this.eventObjectSprite.length) {
+    var localIndex = targetIndex - range.start;
+    if (localIndex < 0 || localIndex >= this.eventObjectSprite.length) {
       return null;
     }
 
-    var globalIndex = currentScene.eventObjectIndex + eventObjectID;
-    var state = eventObjects && globalIndex >= 0 && globalIndex < eventObjects.length
-      ? eventObjects[globalIndex]
-      : null;
+    var state = worldService.getEventObject(targetIndex);
     var spriteNum = state && typeof state.spriteNum === 'number' ? state.spriteNum : 0;
-    var cached = this.eventObjectSprite[eventObjectID];
+    var cached = this.eventObjectSprite[localIndex];
 
     if (spriteNum <= 0) {
       if (cached) {
-        this.eventObjectSprite[eventObjectID] = null;
+        this.eventObjectSprite[localIndex] = null;
       }
       return null;
     }
@@ -488,9 +472,14 @@ utils.extend(Scene.prototype, {
       var chunk = Files.MGO.decompressChunk(spriteNum);
       var sprite = new Sprite(chunk);
       sprite.__paletteSpriteNum = spriteNum;
-      this.eventObjectSprite[eventObjectID] = sprite;
+      this.eventObjectSprite[localIndex] = sprite;
       if (state) {
-        state.spriteFramesAuto = sprite.frameCount;
+        worldService.mutateEventObject(targetIndex, function(eventState) {
+          if (eventState) {
+            eventState.spriteFramesAuto = sprite.frameCount;
+          }
+          return eventState;
+        });
       }
       return sprite;
     }

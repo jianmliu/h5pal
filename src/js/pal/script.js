@@ -13,10 +13,40 @@ import worldService from '../../services/world-service.js';
 log.trace('script module load');
 
 function BATTLE() {
-  const state = battleService.getState();
-  if (state) return state;
+  if (battleService) {
+    if (typeof battleService.getState === 'function') {
+      const proxyState = battleService.getState();
+      if (proxyState) {
+        battleService.rawState = proxyState.__raw__ || proxyState;
+        battleService.state = proxyState;
+        return proxyState;
+      }
+    }
+    if (!battleService.state && battleService.rawState) {
+      if (typeof battleService._wrapState === 'function') {
+        battleService.state = battleService._wrapState(battleService.rawState);
+      } else {
+        battleService.state = battleService.rawState;
+      }
+    }
+    if (battleService.state) {
+      return battleService.state;
+    }
+  }
   const fallback = stateService.getGlobal('battle');
-  return fallback || {};
+  if (fallback) {
+    if (battleService) {
+      battleService.rawState = fallback.__raw__ || fallback;
+      if (typeof battleService._wrapState === 'function') {
+        battleService.state = battleService._wrapState(battleService.rawState);
+      } else {
+        battleService.state = battleService.rawState;
+      }
+      return battleService.state;
+    }
+    return fallback;
+  }
+  return {};
 }
 
 function setGlobalValue(key, value) {
@@ -78,6 +108,254 @@ function getTrailValue() {
   return worldService.getTrail();
 }
 
+function getPlayerEquipmentValue(slot, roleId) {
+  return worldService.getPlayerEquipment(slot, roleId);
+}
+
+function setPlayerEquipmentValue(slot, roleId, value) {
+  return worldService.setPlayerEquipment(slot, roleId, value);
+}
+
+function adjustPlayerRoleWordValue(fieldIndex, roleId, delta) {
+  return worldService.adjustPlayerRoleWord(fieldIndex, roleId, delta);
+}
+
+function setPlayerRoleWordValue(fieldIndex, roleId, value) {
+  return worldService.setPlayerRoleWord(fieldIndex, roleId, value);
+}
+
+function setEquipmentEffectWordValue(part, fieldIndex, roleId, value) {
+  return worldService.setEquipmentEffectWord(part, fieldIndex, roleId, value);
+}
+
+function setEnemyMagicValue(enemyIndex, value, options) {
+  if (typeof battleService.setEnemyMagic === 'function') {
+    return battleService.setEnemyMagic(enemyIndex, value, options);
+  }
+  if (typeof battleService.updateEnemy === 'function') {
+    return battleService.updateEnemy(enemyIndex, function(enemy) {
+      if (!enemy || !enemy.e) {
+        return enemy;
+      }
+      enemy.e.magic = typeof value === 'function' ? value(enemy.e.magic) : value;
+      return enemy;
+    }, options);
+  }
+  const battleState = BATTLE();
+  if (battleState && Array.isArray(battleState.enemy) && battleState.enemy[enemyIndex] && battleState.enemy[enemyIndex].e) {
+    const enemy = battleState.enemy[enemyIndex];
+    enemy.e.magic = typeof value === 'function' ? value(enemy.e.magic) : value;
+    if (typeof battleService.emitStateChanged === 'function') {
+      battleService.emitStateChanged({
+        segments: [['enemy', enemyIndex, 'e', 'magic']]
+      });
+    }
+    return enemy;
+  }
+  return null;
+}
+
+function setEnemyMagicRateValue(enemyIndex, value, options) {
+  if (typeof battleService.setEnemyMagicRate === 'function') {
+    return battleService.setEnemyMagicRate(enemyIndex, value, options);
+  }
+  if (typeof battleService.updateEnemy === 'function') {
+    return battleService.updateEnemy(enemyIndex, function(enemy) {
+      if (!enemy || !enemy.e) {
+        return enemy;
+      }
+      enemy.e.magicRate = typeof value === 'function' ? value(enemy.e.magicRate) : value;
+      return enemy;
+    }, options);
+  }
+  const battleState = BATTLE();
+  if (battleState && Array.isArray(battleState.enemy) && battleState.enemy[enemyIndex] && battleState.enemy[enemyIndex].e) {
+    const enemy = battleState.enemy[enemyIndex];
+    enemy.e.magicRate = typeof value === 'function' ? value(enemy.e.magicRate) : value;
+    if (typeof battleService.emitStateChanged === 'function') {
+      battleService.emitStateChanged({
+        segments: [['enemy', enemyIndex, 'e', 'magicRate']]
+      });
+    }
+    return enemy;
+  }
+  return null;
+}
+
+function normalizeEventIndex(eventId) {
+  var numericId = Number(eventId);
+  if (!isFinite(numericId) || numericId <= 0) {
+    return null;
+  }
+  var index = numericId - 1;
+  return index >= 0 ? index : null;
+}
+
+function getEventObjectById(eventId) {
+  var index = normalizeEventIndex(eventId);
+  if (index == null) {
+    return null;
+  }
+  var entries = worldService.getEventObjectsInCurrentScene();
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i];
+    if (!entry || !entry.state) {
+      continue;
+    }
+    if (entry.id === eventId || entry.index === index) {
+      return entry.state;
+    }
+  }
+  return worldService.getEventObject(index);
+}
+
+function mutateEventObjectById(eventId, mutator) {
+  var index = normalizeEventIndex(eventId);
+  if (index == null || typeof mutator !== 'function') {
+    return null;
+  }
+  return worldService.mutateEventObject(index, mutator);
+}
+
+function resolveEventTarget(operand, fallbackId) {
+  if (typeof operand !== 'number' || operand === 0 || operand === 0xFFFF || operand < 0) {
+    var fallbackResolved = (typeof fallbackId === 'number' && fallbackId > 0) ? fallbackId : null;
+    return {
+      id: fallbackResolved,
+      object: fallbackResolved ? getEventObjectById(fallbackResolved) : null
+    };
+  }
+  var targetId = operand;
+  var index = targetId - 1;
+  if (index > 0x9000) {
+    index -= 0x9000;
+    targetId = index + 1;
+  }
+  if (index < 0) {
+    return {
+      id: null,
+      object: null
+    };
+  }
+  var resolvedObject = getEventObjectById(targetId);
+  return {
+    id: resolvedObject ? targetId : null,
+    object: resolvedObject
+  };
+}
+
+function setPlayerActionTypeSafe(index, actionType, options) {
+  if (!battleService) {
+    return null;
+  }
+  var previousAction = null;
+  if (typeof battleService.getPlayer === 'function') {
+    var playerState = battleService.getPlayer(index);
+    previousAction = playerState && playerState.action ? playerState.action : null;
+  }
+  if (!previousAction && typeof BATTLE === 'function') {
+    var battleSnapshot = BATTLE();
+    var snapshotPlayer = battleSnapshot && battleSnapshot.player ? battleSnapshot.player[index] : null;
+    previousAction = snapshotPlayer && snapshotPlayer.action ? snapshotPlayer.action : null;
+  }
+  var previousActionType = previousAction ? previousAction.actionType : undefined;
+  var resolvedActionType = typeof actionType === 'function' ? actionType(previousActionType) : actionType;
+  var ensureAction = function(player) {
+    if (!player) {
+      return player;
+    }
+    if (!player.action) {
+      if (previousAction) {
+        player.action = Object.assign({}, previousAction);
+      } else {
+        player.action = {
+          actionType: typeof resolvedActionType !== 'undefined' ? resolvedActionType : 0,
+          actionID: 0,
+          target: -1
+        };
+      }
+    }
+    if (typeof resolvedActionType !== 'undefined') {
+      player.action.actionType = resolvedActionType;
+    }
+    return player;
+  };
+  if (typeof battleService.setPlayer === 'function') {
+    battleService.setPlayer(index, ensureAction, options);
+  } else if (typeof battleService.updatePlayer === 'function') {
+    battleService.updatePlayer(index, ensureAction, options);
+  } else {
+    var legacyBattle = typeof BATTLE === 'function' ? BATTLE() : null;
+    if (legacyBattle && legacyBattle.player && legacyBattle.player[index]) {
+      legacyBattle.player[index] = ensureAction(legacyBattle.player[index]);
+    }
+  }
+  if (typeof battleService.setPlayerActionType === 'function') {
+    return battleService.setPlayerActionType(index, resolvedActionType, options);
+  }
+  if (typeof battleService.emitStateChanged === 'function') {
+    battleService.emitStateChanged({
+      segments: [['player', index, 'action', 'actionType']]
+    });
+  }
+  return resolvedActionType;
+}
+
+function getSceneEventObjects() {
+  var party = getPartyState();
+  if (!party || !party.length) {
+    return [];
+  }
+  var range = getSceneEventRange();
+  var eventObjects = worldService.getEventObjectsInCurrentScene();
+  return eventObjects.filter(function(entry) {
+    return entry.index >= range.startIndex && entry.index < range.endIndex;
+  });
+}
+
+function getEventObjectPosition(id) {
+  var eventObject = getEventObjectById(id);
+  if (!eventObject) {
+    return null;
+  }
+  return {
+    x: eventObject.x,
+    y: eventObject.y,
+    layer: eventObject.layer
+  };
+}
+
+function setSpritePosition(sprite, pos) {
+  if (!sprite) {
+    return;
+  }
+  var target = sprite.sprite;
+  if (!target) {
+    target = sprite.sprite = {};
+  }
+  target.pos = pos;
+}
+
+function getEventObjectMapObject(eventObjectId) {
+  var targetId = eventObjectId > 0 ? eventObjectId : stateService.getGlobal('lastEventObjectId');
+  var resolvedObject = getEventObjectById(targetId);
+  return resolvedObject || null;
+}
+
+function cloneEventObjectById(targetId, index) {
+  if (index < 0) {
+    return {
+      id: null,
+      object: null
+    };
+  }
+  var resolvedObject = getEventObjectById(targetId);
+  return {
+    id: resolvedObject ? targetId : null,
+    object: resolvedObject
+  };
+}
+
 function getPartyState() {
   return worldService.getParty();
 }
@@ -130,14 +408,32 @@ function getNightPaletteFlag() {
   return !!stateService.getGlobal('nightPalette');
 }
 
+function warnLog(message) {
+  if (log && typeof log.warning === 'function') {
+    log.warning(message);
+    return;
+  }
+  if (log && typeof log.warn === 'function') {
+    log.warn(message);
+    return;
+  }
+  if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+    console.warn(message);
+  }
+}
+
 function getScriptEntrySafe(scriptEntry, eventObjectID, context) {
-  var sc = GameData.scriptEntry[scriptEntry];
+  var sc = worldService.getScriptEntry(scriptEntry);
   if (!sc) {
-    log.warning(
-      '[SCRIPT] ' + (context || 'script') +
+    var scriptTable = stateService.getGameData('scriptEntry');
+    if (Array.isArray(scriptTable)) {
+      sc = scriptTable[scriptEntry] || null;
+    }
+  }
+  if (!sc) {
+    warnLog('[SCRIPT] ' + (context || 'script') +
       ' missing script entry ' + scriptEntry +
-      ' (event ' + (eventObjectID || 0) + ')'
-    );
+      ' (event ' + (eventObjectID || 0) + ')');
     script.scriptSuccess = false;
     return null;
   }
@@ -145,11 +441,9 @@ function getScriptEntrySafe(scriptEntry, eventObjectID, context) {
     sc.operand = [0, 0, 0, 0];
   }
   if (typeof sc.operation !== 'number') {
-    log.warning(
-      '[SCRIPT] ' + (context || 'script') +
+    warnLog('[SCRIPT] ' + (context || 'script') +
       ' invalid operation at entry ' + scriptEntry +
-      ' (event ' + (eventObjectID || 0) + ')'
-    );
+      ' (event ' + (eventObjectID || 0) + ')');
     script.scriptSuccess = false;
     return null;
   }
@@ -158,16 +452,15 @@ function getScriptEntrySafe(scriptEntry, eventObjectID, context) {
 
 function getSceneEventRange() {
   var sceneId = getSceneIdValue();
-  var scenes = GameData.scene;
-  var eventObjects = GameData.eventObject;
-  var currentScene = scenes && sceneId ? scenes[sceneId - 1] : null;
-  var nextScene = scenes ? scenes[sceneId] : null;
+  var currentScene = worldService.getSceneEntry(sceneId);
+  var nextScene = worldService.getSceneEntry(sceneId + 1);
   var startIndex = currentScene && typeof currentScene.eventObjectIndex === 'number'
     ? currentScene.eventObjectIndex
     : 0;
+  var totalObjects = worldService.getEventObjectIds().length;
   var endIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
     ? nextScene.eventObjectIndex
-    : (eventObjects ? eventObjects.length : 0);
+    : totalObjects;
   return {
     sceneId: sceneId,
     startIndex: startIndex,
@@ -194,10 +487,6 @@ function getPartyOffsetY() {
 function getCashValue() {
   var cash = stateService.getGlobal('cash');
   return typeof cash === 'number' ? cash : 0;
-}
-
-function getEquipmentEffects() {
-  return stateService.getGlobal('equipmentEffect') || [];
 }
 
 function getPartyDirection() {
@@ -280,15 +569,6 @@ function mutateObjects(mutator) {
   });
 }
 
-function mutateScenes(mutator) {
-  return mutateGameDataValue('scene', function(scenes) {
-    if (scenes && typeof mutator === 'function') {
-      mutator(scenes);
-    }
-    return scenes;
-  });
-}
-
 function mutateEventObjects(mutator) {
   return mutateGameDataValue('eventObject', function(eventObjects) {
     if (eventObjects && typeof mutator === 'function') {
@@ -339,28 +619,33 @@ script.init = function*(surf) {
  * @param {Number} speed         speed of the movement.
  */
 script.NPCWalkOneStep = function(eventObjectID, speed) {
-  var eventObjects = GameData.eventObject;
-  // Check for invalid parameters
-  if (eventObjectID == 0 || eventObjectID > eventObjects.length) {
+  var eventIndex = normalizeEventIndex(eventObjectID);
+  if (eventIndex == null) {
+    return;
+  }
+  var evtObj = getEventObjectById(eventObjectID);
+  if (!evtObj) {
     return;
   }
 
-  var p = eventObjects[eventObjectID - 1];
   var moveSpeed = (typeof speed === 'number' && isFinite(speed) && speed !== 0)
     ? Math.abs(speed)
     : 1;
-  var dx = ((p.direction === Direction.West || p.direction === Direction.South) ? -2 : 2) * moveSpeed;
-  var dy = ((p.direction === Direction.West || p.direction === Direction.North) ? -1 : 1) * moveSpeed;
+  var direction = typeof evtObj.direction === 'number'
+    ? evtObj.direction
+    : Direction.South;
+  var dx = ((direction === Direction.West || direction === Direction.South) ? -2 : 2) * moveSpeed;
+  var dy = ((direction === Direction.West || direction === Direction.North) ? -1 : 1) * moveSpeed;
 
   worldService.enqueueMoveRequest({
     eventObjectId: eventObjectID,
-    eventIndex: eventObjectID - 1,
+    eventIndex: eventIndex,
     dx: dx,
     dy: dy,
-    direction: p.direction,
+    direction: direction,
     speed: moveSpeed,
-    spriteFrames: p.spriteFrames,
-    spriteFramesAuto: p.spriteFramesAuto,
+    spriteFrames: evtObj.spriteFrames,
+    spriteFramesAuto: evtObj.spriteFramesAuto,
     origin: 'script'
   });
 
@@ -385,27 +670,56 @@ script.NPCWalkOneStep = function(eventObjectID, speed) {
  */
 script.NPCWalkTo = function(eventObjectID, x, y, h, speed) {
   log.trace('[SCRIPT] NPCWalkTo(%d, %d, %d, %d)', eventObjectID, x, y, speed);
-  var evtObj = GameData.eventObject[eventObjectID - 1],
-      offsetX = (x * 32 + h * 16) - evtObj.x,
-      offsetY = (y * 16 + h * 8) - evtObj.y;
+  var eventIndex = normalizeEventIndex(eventObjectID);
+  if (eventIndex == null) {
+    return false;
+  }
+  var evtObj = getEventObjectById(eventObjectID);
+  if (!evtObj) {
+    return false;
+  }
+  var targetX = x * 32 + h * 16;
+  var targetY = y * 16 + h * 8;
+  var offsetX = targetX - evtObj.x;
+  var offsetY = targetY - evtObj.y;
   var moveSpeed = (typeof speed === 'number' && isFinite(speed) && speed !== 0)
     ? Math.abs(speed)
     : 1;
-  if (offsetY < 0) {
-    evtObj.direction = (offsetX < 0 ? Direction.West : Direction.North);
-  } else {
-    evtObj.direction = (offsetX < 0 ? Direction.South : Direction.East);
-  }
+  var nextDirection = (offsetY < 0)
+    ? (offsetX < 0 ? Direction.West : Direction.North)
+    : (offsetX < 0 ? Direction.South : Direction.East);
+
+  mutateEventObjectById(eventObjectID, function(current) {
+    if (!current) {
+      return current;
+    }
+    current.direction = nextDirection;
+    return current;
+  });
 
   if (abs(offsetX) < moveSpeed * 2 || abs(offsetY) < moveSpeed * 2) {
-    evtObj.x = x * 32 + h * 16;
-    evtObj.y = y * 16 + h * 8;
+    mutateEventObjectById(eventObjectID, function(current) {
+      if (!current) {
+        return current;
+      }
+      current.x = targetX;
+      current.y = targetY;
+      current.currentFrameNum = 0;
+      return current;
+    });
   } else {
     script.NPCWalkOneStep(eventObjectID, moveSpeed);
   }
 
-  if (evtObj.x === x * 32 + h * 16 && evtObj.y === y * 16 + h * 8) {
-    evtObj.currentFrameNum = 0;
+  var updated = getEventObjectById(eventObjectID);
+  if (updated && updated.x === targetX && updated.y === targetY) {
+    mutateEventObjectById(eventObjectID, function(current) {
+      if (!current) {
+        return current;
+      }
+      current.currentFrameNum = 0;
+      return current;
+    });
     return true;
   }
 
@@ -499,11 +813,21 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
   if (!Array.isArray(trail) || trail.length === 0) {
     return;
   }
-  var evtObj = GameData.eventObject[eventObjectID - 1],
-      offsetX = (x * 32 + h * 16) - evtObj.x,
-      offsetY = (y * 16 + h * 8) - evtObj.y;
+  var eventIndex = normalizeEventIndex(eventObjectID);
+  if (eventIndex == null) {
+    return;
+  }
+  var targetX = x * 32 + h * 16;
+  var targetY = y * 16 + h * 8;
   var viewport = getViewportValue();
   var partyOffset = getPartyOffsetValue();
+  var currentEvent = getEventObjectById(eventObjectID);
+  if (!currentEvent) {
+    return;
+  }
+  var offsetX = targetX - currentEvent.x;
+  var offsetY = targetY - currentEvent.y;
+
   while (offsetX !== 0 || offsetY !== 0) {
     var previousDirection = stateService.getGlobal('partyDirection');
     var nextDirection = (offsetY < 0)
@@ -514,12 +838,12 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
     var dx;
     var dy;
     if (abs(offsetX) > speed * 2) {
-      dx = speed * (offsetX < 0 ? -2 : 2)
+      dx = speed * (offsetX < 0 ? -2 : 2);
     } else {
       dx = offsetX;
     }
-    if (abs(offsetY) > speed){
-       dy = speed * (offsetY < 0 ? -1 : 1)
+    if (abs(offsetY) > speed) {
+       dy = speed * (offsetY < 0 ? -1 : 1);
     } else {
        dy = offsetY;
     }
@@ -545,14 +869,24 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
       PAL_Y(viewport) + dy
     ));
 
-    evtObj.x += dx;
-    evtObj.y += dy;
+    mutateEventObjectById(eventObjectID, function(current) {
+      if (!current) {
+        return current;
+      }
+      current.x += dx;
+      current.y += dy;
+      return current;
+    });
 
     yield play.update(false);
     yield scene.makeScene();
     surface.updateScreen(null);
-    offsetX = x * 32 + h * 16 - PAL_X(viewport) - PAL_X(partyOffset);
-    offsetY = y * 16 + h * 8 - PAL_Y(viewport) - PAL_Y(partyOffset);
+    currentEvent = getEventObjectById(eventObjectID);
+    if (!currentEvent) {
+      break;
+    }
+    offsetX = targetX - currentEvent.x;
+    offsetY = targetY - currentEvent.y;
 
     yield sleepByFrame(1);
   }
@@ -568,107 +902,126 @@ script.partyRideEventObject = function*(eventObjectID, x, y, h, speed) {
  */
 script.monsterChasePlayer = function(eventObjectID, speed, chaseRange, floating) {
   log.trace('[SCRIPT] monsterChasePlayer(%d, %d, %d)', eventObjectID, speed, chaseRange);
-  var evtObj = GameData.eventObject[eventObjectID - 1];
+  var eventIndex = normalizeEventIndex(eventObjectID);
+  if (eventIndex == null) {
+    script.NPCWalkOneStep(eventObjectID, 0);
+    return;
+  }
+  var evtObj = getEventObjectById(eventObjectID);
+  if (!evtObj) {
+    script.NPCWalkOneStep(eventObjectID, 0);
+    return;
+  }
   var monsterSpeed = 0;
-  var prevx, prevy;
+  var posX = evtObj.x;
+  var posY = evtObj.y;
+  var direction = typeof evtObj.direction === 'number' ? evtObj.direction : Direction.South;
   var chaseRangeModifier = getChaseRangeValue();
   if (chaseRangeModifier !== 0) {
     var viewport = getViewportValue();
     var partyOffset = getPartyOffsetValue();
-    var x = PAL_X(viewport) + PAL_X(partyOffset) - evtObj.x,
-        y = PAL_Y(viewport) + PAL_Y(partyOffset) - evtObj.y;
+    var relativeX = PAL_X(viewport) + PAL_X(partyOffset) - posX;
+    var relativeY = PAL_Y(viewport) + PAL_Y(partyOffset) - posY;
 
-    if (x == 0) {
-       x = randomLong(0, 1) ? -1 : 1;
+    if (relativeX === 0) {
+      relativeX = randomLong(0, 1) ? -1 : 1;
     }
-    if (y == 0) {
-       y = randomLong(0, 1) ? -1 : 1;
+    if (relativeY === 0) {
+      relativeY = randomLong(0, 1) ? -1 : 1;
     }
-    var prevx = evtObj.x,
-        prevy = evtObj.y;
-    var i = prevx % 32,
-        j = prevy % 16;
+    var prevx = posX;
+    var prevy = posY;
+    var i = prevx % 32;
+    var j = prevy % 16;
     prevx = ~~(prevx / 32);
     prevy = ~~(prevy / 16);
     var l = 0;
     if (i + j * 2 >= 16) {
-       if (i + j * 2 >= 48) {
-          prevx++;
-          prevy++;
-       } else if (32 - i + j * 2 < 16) {
-          prevx++;
-       } else if (32 - i + j * 2 < 48) {
-          l = 1;
-       } else{
-          prevy++;
-       }
+      if (i + j * 2 >= 48) {
+        prevx++;
+        prevy++;
+      } else if (32 - i + j * 2 < 16) {
+        prevx++;
+      } else if (32 - i + j * 2 < 48) {
+        l = 1;
+      } else {
+        prevy++;
+      }
     }
     prevx = prevx * 32 + l * 16;
     prevy = prevy * 16 + l * 8;
 
     // Is the party near to the event object?
-    if (abs(x) + abs(y) * 2 < chaseRange * 32 * chaseRangeModifier) {
-      if (x < 0) {
-         if (y < 0) {
-            evtObj.direction = Direction.West;
-         } else {
-            evtObj.direction = Direction.South;
-         }
+    if (abs(relativeX) + abs(relativeY) * 2 < chaseRange * 32 * chaseRangeModifier) {
+      if (relativeX < 0) {
+        direction = (relativeY < 0) ? Direction.West : Direction.South;
       } else {
-         if (y < 0) {
-            evtObj.direction = Direction.North;
-         } else {
-            evtObj.direction = Direction.East;
-         }
+        direction = (relativeY < 0) ? Direction.North : Direction.East;
       }
 
-      if (x !== 0) {
-         x = evtObj.x + ~~(x / abs(x)) * 16;
-      } else {
-         x = evtObj.x;
+      var targetX = posX;
+      var targetY = posY;
+      if (relativeX !== 0) {
+        targetX = posX + ~~(relativeX / abs(relativeX)) * 16;
       }
-      if (y !== 0) {
-         y = evtObj.y + ~~(y / abs(y)) * 8;
-      } else {
-         y = evtObj.y;
+      if (relativeY !== 0) {
+        targetY = posY + ~~(relativeY / abs(relativeY)) * 8;
       }
 
       if (floating) {
-         monsterSpeed = speed;
+        monsterSpeed = speed;
       } else {
-        if (!scene.checkObstacle(PAL_XY(x, y), true, eventObjectID)) {
-           monsterSpeed = speed;
+        var adjustedX = posX;
+        var adjustedY = posY;
+        if (!scene.checkObstacle(PAL_XY(targetX, targetY), true, eventObjectID)) {
+          monsterSpeed = speed;
         } else {
-           evtObj.x = prevx;
-           evtObj.y = prevy;
+          adjustedX = prevx;
+          adjustedY = prevy;
         }
         for (l = 0; l < 4; l++) {
+          var testX = adjustedX;
+          var testY = adjustedY;
           switch (l) {
             case 0:
-               evtObj.x -= 4;
-               evtObj.y += 2;
-               break;
+              testX -= 4;
+              testY += 2;
+              break;
             case 1:
-               evtObj.x -= 4;
-               evtObj.y -= 2;
-               break;
+              testX -= 4;
+              testY -= 2;
+              break;
             case 2:
-               evtObj.x += 4;
-               evtObj.y -= 2;
-               break;
+              testX += 4;
+              testY -= 2;
+              break;
             case 3:
-               evtObj.x += 4;
-               evtObj.y += 2;
-               break;
+              testX += 4;
+              testY += 2;
+              break;
           }
-          if (scene.checkObstacle(PAL_XY(evtObj.x, evtObj.y), false, 0)) {
-             evtObj.x = prevx;
-             evtObj.y = prevy;
+          if (scene.checkObstacle(PAL_XY(testX, testY), false, 0)) {
+            testX = prevx;
+            testY = prevy;
           }
+          adjustedX = testX;
+          adjustedY = testY;
         }
+        posX = adjustedX;
+        posY = adjustedY;
       }
     }
   }
+
+  mutateEventObjectById(eventObjectID, function(current) {
+    if (!current) {
+      return current;
+    }
+    current.direction = direction;
+    current.x = posX;
+    current.y = posY;
+    return current;
+  });
   script.NPCWalkOneStep(eventObjectID, monsterSpeed);
 };
 
@@ -684,27 +1037,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
   if (!sc) {
     return scriptEntry + 1;
   }
-  var evtObj;// = GameData.eventObject[eventObjectID - 1],
-  var current;
-  var curEventObjectID;
+  var baseEventId = (typeof eventObjectID === 'number' && eventObjectID > 0) ? eventObjectID : null;
+  var evtObj = baseEventId ? getEventObjectById(baseEventId) : null;
+  var targetInfo = resolveEventTarget(sc.operand[0], baseEventId);
+  var curEventObjectID = targetInfo.id != null ? targetInfo.id : (baseEventId || 0);
+  var current = targetInfo.object || (targetInfo.id === baseEventId ? evtObj : null);
   var playerRole, i, j, x, y, w;
-  if (eventObjectID !== 0) {
-    evtObj = GameData.eventObject[eventObjectID - 1];
-  } else {
-    evtObj = null;
-  }
-  if (sc.operand[0] === 0 || sc.operand[0] === 0xFFFF) {
-    current = evtObj;
-    curEventObjectID = eventObjectID;
-  } else {
-    i = sc.operand[0] - 1;
-    if (i > 0x9000) {
-       // HACK for Dream 2.11 to avoid crash
-       i -= 0x9000;
-    }
-    current = GameData.eventObject[i];
-    curEventObjectID = sc.operand[0];
-  }
   var party = getPartyState();
   var partyIndex = sc.operand[0];
   var partyMember = null;
@@ -734,16 +1072,32 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x000D:
     case 0x000E:
       script.debug('[SCRIPT] walk one step');
-      evtObj.direction = sc.operation - 0x000B;
+      if (baseEventId) {
+        mutateEventObjectById(baseEventId, function(target) {
+          if (!target) {
+            return target;
+          }
+          target.direction = sc.operation - 0x000B;
+          return target;
+        });
+      }
       script.NPCWalkOneStep(eventObjectID, 2);
       break;
     case 0x000F:
       script.debug('[SCRIPT] Set the direction and/or gesture for event object');
-      if (sc.operand[0] !== 0xFFFF) {
-         evtObj.direction = sc.operand[0];
-      }
-      if (sc.operand[1] !== 0xFFFF) {
-         evtObj.currentFrameNum = sc.operand[1];
+      if (baseEventId) {
+        mutateEventObjectById(baseEventId, function(target) {
+          if (!target) {
+            return target;
+          }
+          if (sc.operand[0] !== 0xFFFF) {
+            target.direction = sc.operand[0];
+          }
+          if (sc.operand[1] !== 0xFFFF) {
+            target.currentFrameNum = sc.operand[1];
+          }
+          return target;
+        });
       }
       break;
     case 0x0010:
@@ -764,18 +1118,42 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0012:
       script.debug('[SCRIPT] Set the position of the event object, relative to the party');
-      current.x = sc.operand[1] + getViewportX() + getPartyOffsetX();
-      current.y = sc.operand[2] + getViewportY() + getPartyOffsetY();
+      if (curEventObjectID > 0) {
+        mutateEventObjectById(curEventObjectID, function(target) {
+          if (!target) {
+            return target;
+          }
+          target.x = sc.operand[1] + getViewportX() + getPartyOffsetX();
+          target.y = sc.operand[2] + getViewportY() + getPartyOffsetY();
+          return target;
+        });
+      }
       break;
     case 0x0013:
       script.debug('[SCRIPT] Set the position of the event object');
-      current.x = sc.operand[1];
-      current.y = sc.operand[2];
+      if (curEventObjectID > 0) {
+        mutateEventObjectById(curEventObjectID, function(target) {
+          if (!target) {
+            return target;
+          }
+          target.x = sc.operand[1];
+          target.y = sc.operand[2];
+          return target;
+        });
+      }
       break;
     case 0x0014:
       script.debug('[SCRIPT] Set the gesture of the event object');
-      evtObj.currentFrameNum = sc.operand[0];
-      evtObj.direction = Direction.South;
+      if (baseEventId) {
+        mutateEventObjectById(baseEventId, function(target) {
+          if (!target) {
+            return target;
+          }
+          target.currentFrameNum = sc.operand[0];
+          target.direction = Direction.South;
+          return target;
+        });
+      }
       break;
     case 0x0015:
       script.debug('[SCRIPT] Set the direction and gesture for a party member');
@@ -787,33 +1165,21 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0016:
       script.debug('[SCRIPT] Set the direction and gesture for an event object');
-      if (sc.operand[0] !== 0) {
-        current.direction = sc.operand[1];
-        current.currentFrameNum = sc.operand[2];
+      if (sc.operand[0] !== 0 && curEventObjectID > 0) {
+        mutateEventObjectById(curEventObjectID, function(target) {
+          if (!target) {
+            return target;
+          }
+          target.direction = sc.operand[1];
+          target.currentFrameNum = sc.operand[2];
+          return target;
+        });
       }
       break;
     case 0x0017:
       script.debug('[SCRIPT] set the player\'s extra attribute');
-      /*{
-         WORD *p;
-
-         var i = sc.operand[0] - 0xB;
-
-         p = (WORD *)(&Global.equipmentEffect[i]); // HACKHACK
-
-         p[sc.operand[1] * MAX_PLAYER_ROLES + eventObjectID] =
-            (SHORT)sc.operand[2];
-      }*/
-      // WARNING HACK
       i = sc.operand[0] - 0xB;
-      var equipmentEffects = getEquipmentEffects();
-      var effectEntry = equipmentEffects[i];
-      if (!effectEntry) {
-        break;
-      }
-      var p = new BinaryReader(effectEntry.uint8Array);
-      var offset = (sc.operand[1] * Const.MAX_PLAYER_ROLES + eventObjectID) * 2;
-      p.setUint16(offset, SHORT(sc.operand[2])); // WARNING setInt16??
+      setEquipmentEffectWordValue(i, sc.operand[1], eventObjectID, SHORT(sc.operand[2]));
       break;
     case 0x0018:
       script.debug('[SCRIPT] Equip the selected item');
@@ -821,11 +1187,10 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.curEquipPart = i;
       // The eventObjectID parameter here should indicate the player role
       script.removeEquipmentEffect(eventObjectID, i);
-      if (GameData.playerRoles.equipment[i][eventObjectID] !== sc.operand[1]) {
-        w = GameData.playerRoles.equipment[i][eventObjectID];
-        mutatePlayerRoles(function(playerRoles) {
-          playerRoles.equipment[i][eventObjectID] = sc.operand[1];
-        });
+      var currentEquipment = getPlayerEquipmentValue(i, eventObjectID);
+      if (currentEquipment !== sc.operand[1]) {
+        w = currentEquipment;
+        setPlayerEquipmentValue(i, eventObjectID, sc.operand[1]);
         script.addItemToInventory(sc.operand[1], -1);
         if (w !== 0) {
           script.addItemToInventory(w, 1);
@@ -852,10 +1217,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       }*/
       // WARNING HACK
       var playerRole = (sc.operand[2] === 0 ? eventObjectID : (sc.operand[2] - 1));
-      var reader = new BinaryReader(GameData.playerRoles.uint8Array);
-      var offset = (sc.operand[0] * Const.MAX_PLAYER_ROLES + playerRole) * 2;
-      var val = reader.getUint16(offset) + sc.operand[1];
-      reader.setUint16(offset, SHORT(val)); // WARNING setInt16??
+      adjustPlayerRoleWordValue(sc.operand[0], playerRole, SHORT(sc.operand[1]));
       break;
     case 0x001A:
       script.debug('[SCRIPT] Set player\'s stat');
@@ -891,20 +1253,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       } else {
         playerRole = sc.operand[2] - 1;
       }
-      var reader;
       if (script.curEquipPart !== -1) {
         // In the progress of equipping items
-        var activeEffects = getEquipmentEffects();
-        var activeEffect = activeEffects[script.curEquipPart];
-        if (!activeEffect) {
-          break;
-        }
-        reader = new BinaryReader(activeEffect.uint8Array);
+        setEquipmentEffectWordValue(script.curEquipPart, sc.operand[0], playerRole, SHORT(sc.operand[1]));
       } else {
-        reader = new BinaryReader(GameData.playerRoles.uint8Array);
+        setPlayerRoleWordValue(sc.operand[0], playerRole, SHORT(sc.operand[1]));
       }
-      var offset = (sc.operand[0] * Const.MAX_PLAYER_ROLES + playerRole) * 2;
-      reader.setUint16(offset, SHORT(sc.operand[1])); // WARNING setInt16??
       break;
     case 0x001B:
       script.debug('[SCRIPT] Increase/decrease player\'s HP');
@@ -977,13 +1331,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
             if (!member) continue;
             var roleId = member.playerRole;
             for (var equipIndex = 0; equipIndex < Const.MAX_PLAYER_EQUIPMENTS; equipIndex++) {
-              if (GameData.playerRoles.equipment[equipIndex][roleId] === sc.operand[0]) {
+              if (getPlayerEquipmentValue(equipIndex, roleId) === sc.operand[0]) {
                 script.removeEquipmentEffect(roleId, equipIndex);
-                (function(slot, roleIndex) {
-                  mutatePlayerRoles(function(playerRoles) {
-                    playerRoles.equipment[slot][roleIndex] = 0;
-                  });
-                })(equipIndex, roleId);
+                setPlayerEquipmentValue(equipIndex, roleId, 0);
                 x--;
                 if (x === 0) {
                   return;
@@ -1023,10 +1373,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         script.scriptSuccess = false;
         forEachPartyMember(function(member) {
           var roleIndex = member.playerRole;
-          if (GameData.playerRoles.HP[roleIndex] === 0) {
-            mutatePlayerRoles(function(playerRoles) {
-              playerRoles.HP[roleIndex] = ~~(playerRoles.maxHP[roleIndex] * sc.operand[1] / 10);
-            });
+          if (worldService.getPlayerHP(roleIndex) === 0) {
+            var revivedHP = Math.floor(worldService.getPlayerMaxHP(roleIndex) * sc.operand[1] / 10);
+            worldService.setPlayerHP(roleIndex, revivedHP);
             script.curePoisonByLevel(roleIndex, 3);
             for (x = 0; x < PlayerStatus.All; x++) {
               script.removePlayerStatus(roleIndex, x);
@@ -1036,10 +1385,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         });
       } else {
         // Apply to one player
-        if (GameData.playerRoles.HP[eventObjectID] === 0) {
-          mutatePlayerRoles(function(playerRoles) {
-            playerRoles.HP[eventObjectID] = ~~(playerRoles.maxHP[eventObjectID] * sc.operand[1] / 10);
-          });
+        if (worldService.getPlayerHP(eventObjectID) === 0) {
+          var revivedHP = Math.floor(worldService.getPlayerMaxHP(eventObjectID) * sc.operand[1] / 10);
+          worldService.setPlayerHP(eventObjectID, revivedHP);
           script.curePoisonByLevel(eventObjectID, 3);
           for (x = 0; x < PlayerStatus.All; x++) {
             script.removePlayerStatus(eventObjectID, x);
@@ -1054,27 +1402,19 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       if (sc.operand[1] === 0) {
         // Remove all equipments
         for (i = 0; i < Const.MAX_PLAYER_EQUIPMENTS; i++) {
-          w = GameData.playerRoles.equipment[i][playerRole];
+          w = getPlayerEquipmentValue(i, playerRole);
           if (w !== 0) {
             script.addItemToInventory(w, 1);
-            (function(equipIndex) {
-              mutatePlayerRoles(function(playerRoles) {
-                playerRoles.equipment[equipIndex][playerRole] = 0;
-              });
-            })(i);
+            setPlayerEquipmentValue(i, playerRole, 0);
           }
           script.removeEquipmentEffect(playerRole, i);
         }
       } else {
-        w = GameData.playerRoles.equipment[sc.operand[1] - 1][playerRole];
+        w = getPlayerEquipmentValue(sc.operand[1] - 1, playerRole);
         if (w !== 0) {
           script.removeEquipmentEffect(playerRole, sc.operand[1] - 1);
           script.addItemToInventory(w, 1);
-          (function(equipIndex, roleIndex) {
-            mutatePlayerRoles(function(playerRoles) {
-              playerRoles.equipment[equipIndex][roleIndex] = 0;
-            });
-          })(sc.operand[1] - 1, playerRole);
+          setPlayerEquipmentValue(sc.operand[1] - 1, playerRole, 0);
         }
       }
       break;
@@ -1271,23 +1611,22 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
                (SHORT)pScript->rgwOperand[1] / 100;
       }*/
       // WARNING HACK
-      var reader = new BinaryReader(script.equipmentEffect[BodyPart.Extra].uint8Array),
-          reader1 = new BinaryReader(GameData.playerRoles.uint8Array);
       if (sc.operand[2] === 0) {
         playerRole = eventObjectID;
       } else {
         playerRole = sc.operand[2] - 1;
       }
-      var offset = (sc.operand[0] * Const.MAX_PLAYER_ROLES + playerRole) * 2;
-      var val = reader1.getUint16(offset) * floor(SHORT(sc.operand[1]) / 100);
-      reader.setUint16(offset, val); // WARNING setInt16??
+      var baseValue = worldService.getPlayerRoleWord(sc.operand[0], playerRole) || 0;
+      var val = baseValue * floor(SHORT(sc.operand[1]) / 100);
+      setEquipmentEffectWordValue(BodyPart.Extra, sc.operand[0], playerRole, val);
       break;
     case 0x0031:
       script.debug('[SCRIPT] Change battle sprite temporarily for player');
-      mutateGlobalEntry('equipmentEffect', BodyPart.Extra, function(effect) {
+      worldService.mutateEquipmentEffect(BodyPart.Extra, function(effect) {
         if (effect && effect.spriteNumInBattle) {
           effect.spriteNumInBattle[eventObjectID] = sc.operand[0];
         }
+        return effect;
       });
       break;
     case 0x0033:
@@ -1351,14 +1690,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0038:
       script.debug('[SCRIPT] Teleport the party out of the scene');
       var sceneId = getSceneIdValue();
-      var scenes = GameData.scene;
-      var currentScene = scenes && sceneId ? scenes[sceneId - 1] : null;
+      var currentScene = worldService.getSceneEntry(sceneId);
       if (!isInBattle() && currentScene && currentScene.scriptOnTeleport !== 0) {
         var ret = yield script.runTriggerScript(currentScene.scriptOnTeleport, 0xFFFF);
-        mutateScenes(function(scenes) {
-          if (scenes && scenes[sceneId - 1]) {
-            scenes[sceneId - 1].scriptOnTeleport = ret;
-          }
+        worldService.mutateSceneEntry(sceneId, function(entry) {
+          entry.scriptOnTeleport = ret;
+          return entry;
         });
       } else {
         // failed
@@ -1562,15 +1899,13 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Set the base damage of magic according to MP value'); // 酒神吧大概是
       i = ((sc.operand[1] === 0) ? 8 : sc.operand[1]);
       j = GameData.object[sc.operand[0]].magic.magicNumber;
-      var mpValue = GameData.playerRoles.MP[eventObjectID];
+      var mpValue = worldService.getPlayerMP(eventObjectID);
       mutateMagic(function(magicData) {
         if (magicData && magicData[j]) {
           magicData[j].baseDamage = mpValue * i;
         }
       });
-      mutatePlayerRoles(function(playerRoles) {
-        playerRoles.MP[eventObjectID] = 0;
-      });
+      worldService.setPlayerMP(eventObjectID, 0);
       break;
     case 0x0058:
       script.debug('[SCRIPT] Jump if there is less than the specified number of the specified items in the inventory');
@@ -1591,9 +1926,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x005A:
       script.debug('[SCRIPT] Halve the player\'s HP');
       // The eventObjectID parameter here should indicate the player role
-      mutatePlayerRoles(function(playerRoles) {
-        playerRoles.HP[eventObjectID] = ~~(playerRoles.HP[eventObjectID] / 2);
-      });
+      var currentHP = worldService.getPlayerHP(eventObjectID);
+      worldService.setPlayerHP(eventObjectID, Math.floor(currentHP / 2));
       break;
     case 0x005B:
       script.debug('[SCRIPT] Halve the enemy\'s HP');
@@ -1678,15 +2012,15 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       w = sc.operand[1] * 5;
       var attackingMember = getPartyMember(BATTLE().movingPlayerIndex);
       var attackingRole = attackingMember ? attackingMember.playerRole : 0;
-      w += GameData.playerRoles.attackStrength[attackingRole];
+      w += worldService.getPlayerAttackStrength(attackingRole);
       w += randomLong(0, 4);
       yield battle.simulateMagic(SHORT(eventObjectID), sc.operand[0], w);
       break;
     case 0x0067:
       script.debug('[SCRIPT] Enemy use magic');
       //debugger;
-      battleService.setEnemyMagic(eventObjectID, sc.operand[0]);
-      battleService.setEnemyMagicRate(eventObjectID, (sc.operand[1] == 0) ? 10 : sc.operand[1]);
+      setEnemyMagicValue(eventObjectID, sc.operand[0]);
+      setEnemyMagicRateValue(eventObjectID, (sc.operand[1] == 0) ? 10 : sc.operand[1]);
       break;
     case 0x0068:
       script.debug('[SCRIPT] Jump if it\'s enemy\'s turn');
@@ -1715,22 +2049,21 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x006D:
       script.debug('[SCRIPT] Set the enter sc and teleport sc for a scene');
       if (sc.operand[0]) {
-        mutateScenes(function(scenes) {
-          var target = scenes && scenes[sc.operand[0] - 1];
-          if (!target) {
-            return scenes;
+        worldService.mutateSceneEntry(sc.operand[0], function(sceneEntry) {
+          if (!sceneEntry) {
+            return sceneEntry;
           }
           if (sc.operand[1]) {
-            target.scriptOnEnter = sc.operand[1];
+            sceneEntry.scriptOnEnter = sc.operand[1];
           }
           if (sc.operand[2]) {
-            target.scriptOnTeleport = sc.operand[2];
+            sceneEntry.scriptOnTeleport = sc.operand[2];
           }
-          if (sc.operand[1] == 0 && sc.operand[2] == 0) {
-            target.scriptOnEnter = 0;
-            target.scriptOnTeleport = 0;
+          if (sc.operand[1] === 0 && sc.operand[2] === 0) {
+            sceneEntry.scriptOnEnter = 0;
+            sceneEntry.scriptOnTeleport = 0;
           }
-          return scenes;
+          return sceneEntry;
         });
       }
       break;
@@ -1794,7 +2127,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         var shouldJump = false;
         forEachPartyMember(function(member) {
           var roleId = member.playerRole;
-          if (GameData.playerRoles.HP[roleId] < GameData.playerRoles.maxHP[roleId]) {
+          if (worldService.getPlayerHP(roleId) < worldService.getPlayerMaxHP(roleId)) {
             shouldJump = true;
           }
         });
@@ -1817,7 +2150,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
             if (member) {
               member.playerRole = sc.operand[idx] - 1;
             }
-            battleService.setPlayerActionType(assignedCount, BattleActionType.Attack);
+            setPlayerActionTypeSafe(assignedCount, BattleActionType.Attack);
             assignedCount++;
           }
         }
@@ -1867,7 +2200,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         for (var partyIndex = 0; partyIndex <= maxIndex && partyIndex < party.length; partyIndex++) {
           var member = party[partyIndex];
           if (!member) continue;
-          if (GameData.playerRoles.name[member.playerRole] === sc.operand[0]) {
+          if (worldService.getPlayerNameId(member.playerRole) === sc.operand[0]) {
             scriptEntry = sc.operand[1] - 1;
             return;
           }
@@ -1916,10 +2249,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         var normalizedViewport = PAL_XY(getViewportX() + deltaX, getViewportY() + deltaY);
         setViewportValue(normalizedViewport);
         setPartyOffsetValue(PAL_XY(160, 112));
-        mutateGlobalValue('party', function(party) {
-          if (!party) {
-            return party;
-          }
+        worldService.mutateParty(function(party) {
           for (var partyIdx = 0; partyIdx <= maxPartyIndex; partyIdx++) {
             var member = party[partyIdx];
             if (member) {
@@ -1946,10 +2276,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
             setViewportValue(targetViewport);
             var deltaViewportX = previousViewportX - PAL_X(targetViewport);
             var deltaViewportY = previousViewportY - PAL_Y(targetViewport);
-            mutateGlobalValue('party', function(party) {
-              if (!party) {
-                return party;
-              }
+            worldService.mutateParty(function(party) {
               for (var partyIdx = 0; partyIdx <= maxPartyIndex; partyIdx++) {
                 var member = party[partyIdx];
                 if (member) {
@@ -1967,10 +2294,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
             var currentPartyOffset = getPartyOffsetValue();
             var updatedPartyOffset = PAL_XY(PAL_X(currentPartyOffset) - stepX, PAL_Y(currentPartyOffset) - stepY);
             setPartyOffsetValue(updatedPartyOffset);
-            mutateGlobalValue('party', function(party) {
-              if (!party) {
-                return party;
-              }
+            worldService.mutateParty(function(party) {
               for (var partyIdx = 0; partyIdx <= maxPartyIndex; partyIdx++) {
                 var member = party[partyIdx];
                 if (member) {
@@ -2087,7 +2411,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
           if (!member) continue;
           var roleId = member.playerRole;
           for (var slot = 0; slot < Const.MAX_PLAYER_EQUIPMENTS; slot++) {
-            if (GameData.playerRoles.equipment[slot][roleId] == sc.operand[0]) {
+            if (getPlayerEquipmentValue(slot, roleId) == sc.operand[0]) {
               y = true;
               return;
             }
@@ -2252,20 +2576,21 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0099:
       script.debug('[SCRIPT] Change the map for the specified scene');
       if (sc.operand[0] == 0xFFFF) {
-        mutateScenes(function(scenes) {
-          var sceneId = getSceneIdValue();
-          if (scenes && sceneId && scenes[sceneId - 1]) {
-            scenes[sceneId - 1].mapNum = sc.operand[1];
+        var currentSceneId = getSceneIdValue();
+        worldService.mutateSceneEntry(currentSceneId, function(entry) {
+          if (entry) {
+            entry.mapNum = sc.operand[1];
           }
+          return entry;
         });
         res.setLoadFlags(LoadFlag.Scene);
         yield res.loadResources();
       } else {
-        mutateScenes(function(scenes) {
-          if (scenes && scenes[sc.operand[0] - 1]) {
-            scenes[sc.operand[0] - 1].mapNum = sc.operand[1];
+        worldService.mutateSceneEntry(sc.operand[0], function(entry) {
+          if (entry) {
+            entry.mapNum = sc.operand[1];
           }
-          return scenes;
+          return entry;
         });
       }
       break;
@@ -2543,14 +2868,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
  */
 script.runTriggerScript = function*(scriptEntry, eventObjectID) {
   if (typeof scriptEntry !== 'number' || Number.isNaN(scriptEntry)) {
-    log.warning(
-      '[SCRIPT] runTriggerScript received invalid entry ' + scriptEntry +
-      ' (event ' + (eventObjectID || 0) + ')'
-    );
+    warnLog('[SCRIPT] runTriggerScript received invalid entry ' + scriptEntry +
+      ' (event ' + (eventObjectID || 0) + ')');
     script.scriptSuccess = false;
     return 0;
   }
-  if (scriptEntry <= 0 || !GameData.scriptEntry || !GameData.scriptEntry[scriptEntry]) {
+  if (scriptEntry <= 0 || !worldService.getScriptEntry(scriptEntry)) {
     log.trace(
       '[SCRIPT] runTriggerScript skipped missing entry ' + scriptEntry +
       ' (event ' + (eventObjectID || 0) + ')'
@@ -2575,8 +2898,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
   lastEventObjectID = eventObjectID;
 
   if (eventObjectID != 0) {
-    // WARNING TODO 这里有个为空的问题，在求雨情节完成时
-    evtObj = GameData.eventObject[eventObjectID - 1];
+    evtObj = worldService.getEventObject(eventObjectID - 1);
   }
   script.scriptSuccess = true;
 
@@ -2777,7 +3099,7 @@ script.runAutoScript = function*(scriptEntry, eventObjectID) {
   if (!sc) {
     return scriptEntry;
   }
-  var evtObj = GameData.eventObject[eventObjectID - 1];
+  var evtObj = worldService.getEventObject(eventObjectID - 1);
 
   traceScript(scriptEntry, sc, eventObjectID);
 

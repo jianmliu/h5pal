@@ -2,6 +2,7 @@ import utils from './utils';
 import input from './input';
 import scene from './scene';
 import stateService from '../../services/state-service.js';
+import worldService from '../../services/world-service.js';
 
 log.trace('itemmenu module load');
 
@@ -19,7 +20,12 @@ function setCurrentInventoryIndex(value) {
 }
 
 function adjustCurrentInventoryIndex(delta) {
-  setCurrentInventoryIndex(Global.curInvMenuItem + delta);
+  setCurrentInventoryIndex(getCurrentInventoryIndex() + delta);
+}
+
+function getCurrentInventoryIndex() {
+  var value = stateService.getGlobal('curInvMenuItem');
+  return typeof value === 'number' ? value : 0;
 }
 
 function ensureInventorySlot(inventory, index) {
@@ -38,6 +44,7 @@ itemmenu.init = function*(surf, _ui) {
 
 itemmenu.itemSelectMenuUpdate = function() {
   var prevImageIndex = 0xFFFF;
+  var bufImage = null;
   // Process input
   if (input.isKeyPressed(Key.Up)) {
     adjustCurrentInventoryIndex(-3);
@@ -56,61 +63,69 @@ itemmenu.itemSelectMenuUpdate = function() {
   }
 
   // Make sure the current menu item index is in bound
-  if (Global.curInvMenuItem >= itemmenu.numInventory) {
+  var currentIndex = getCurrentInventoryIndex();
+  if (currentIndex >= itemmenu.numInventory) {
     setCurrentInventoryIndex(itemmenu.numInventory - 1);
+    currentIndex = getCurrentInventoryIndex();
   }
-  if (Global.curInvMenuItem < 0) {
+  if (currentIndex < 0) {
     setCurrentInventoryIndex(0);
+    currentIndex = 0;
   }
 
   // Redraw the box
   ui.createBox(PAL_XY(2, 0), 6, 17, 1, false);
 
   // Draw the texts in the current page
-  var i = ~~(Global.curInvMenuItem / 3) * 3 - 3 * 4;
+  var inventory = worldService.getInventory();
+  var i = ~~(currentIndex / 3) * 3 - 3 * 4;
   if (i < 0) {
     i = 0;
   }
 
   for (var j = 0; j < 7; j++) {
     for (var k = 0; k < 3; k++) {
-      var object = Global.inventory[i].item;
+      var slot = inventory[i] || {};
+      var object = slot.item || 0;
       var color = ui.MENUITEM_COLOR;
       if (i >= Const.MAX_INVENTORY || object == 0) {
         // End of the list reached
         j = 7;
         break;
       }
-      if (i == Global.curInvMenuItem) {
-        if (!(GameData.object[object].item.flags & itemmenu.itemFlags) ||
-            Global.inventory[i].amount <= Global.inventory[i].amountInUse) {
+      var objectEntry = worldService.getObjectEntry(object) || {};
+      var objectFlags = objectEntry.item ? objectEntry.item.flags : 0;
+      if (i == currentIndex) {
+        if (!(objectFlags & itemmenu.itemFlags) ||
+            (slot.amount || 0) <= (slot.amountInUse || 0)) {
           // This item is not selectable
           color = ui.MENUITEM_COLOR_SELECTED_INACTIVE;
         } else {
           // This item is selectable
-          if (Global.inventory[i].amount == 0) {
+          if ((slot.amount || 0) === 0) {
             color = ui.MENUITEM_COLOR_EQUIPPEDITEM;
           } else {
             color = ui.MENUITEM_COLOR_SELECTED;
           }
         }
-      } else if (!(GameData.object[object].item.flags & itemmenu.itemFlags) ||
-                 Global.inventory[i].amount <= Global.inventory[i].amountInUse) {
+      } else if (!(objectFlags & itemmenu.itemFlags) ||
+                 (slot.amount || 0) <= (slot.amountInUse || 0)) {
         // This item is not selectable
         color = ui.MENUITEM_COLOR_INACTIVE;
-      } else if (Global.inventory[i].amount == 0) {
+      } else if ((slot.amount || 0) === 0) {
         color = ui.MENUITEM_COLOR_EQUIPPEDITEM;
       }
       // Draw the text
       ui.drawText(ui.getWord(object), PAL_XY(15 + k * 100, 12 + j * 18), color, true, false);
       // Draw the cursor on the current selected item
-      if (i == Global.curInvMenuItem) {
+      if (i == currentIndex) {
         surface.blitRLE(ui.sprite.frames[ui.SPRITENUM_CURSOR], PAL_XY(40 + k * 100, 22 + j * 18));
       }
       // Draw the amount of this item
-      if (Global.inventory[i].amount - Global.inventory[i].amountInUse > 1) {
+      var remaining = (slot.amount || 0) - (slot.amountInUse || 0);
+      if (remaining > 1) {
         ui.drawNumber(
-          Global.inventory[i].amount - Global.inventory[i].amountInUse,
+          remaining,
           2,
           PAL_XY(96 + k * 100, 17 + j * 18),
           NumColor.Cyan,
@@ -124,14 +139,19 @@ itemmenu.itemSelectMenuUpdate = function() {
   // Draw the picture of current selected item
   surface.blitRLE(ui.sprite.frames[ui.SPRITENUM_ITEMBOX], PAL_XY(5, 140));
 
-  var object = Global.inventory[Global.curInvMenuItem].item;
+  var currentSlot = inventory[currentIndex] || {};
+  var object = currentSlot.item || 0;
+  var objectData = worldService.getObjectEntry(object);
+  var currentObjectFlags = objectData && objectData.item ? objectData.item.flags : 0;
+  var bitmapId = objectData && objectData.item ? objectData.item.bitmap : 0;
 
-  if (GameData.object[object].item.bitmap != prevImageIndex) {
-    var bufImage = Files.BALL.readChunk(GameData.object[object].item.bitmap);
+  if (bitmapId != prevImageIndex) {
+    bufImage = Files.BALL.readChunk(bitmapId);
     if (bufImage) {
-      prevImageIndex = GameData.object[object].item.bitmap;
+      prevImageIndex = bitmapId;
     } else {
       prevImageIndex = 0xFFFF;
+      bufImage = null;
     }
   }
   if (prevImageIndex != 0xFFFF) {
@@ -139,8 +159,9 @@ itemmenu.itemSelectMenuUpdate = function() {
   }
 
   // Draw the description of the selected item
-  if (!itemmenu.noDesc && Global.objectDesc != null){
-    var descObj = ui.getObjectDesc(Global.objectDesc, object);
+  var objectDescTable = stateService.getGlobal('objectDesc');
+  if (!itemmenu.noDesc && objectDescTable != null){
+    var descObj = ui.getObjectDesc(objectDescTable, object);
     if (descObj) {
       var d = descObj.desc;
       var k = 150;
@@ -165,12 +186,11 @@ itemmenu.itemSelectMenuUpdate = function() {
   }
 
   if (input.isKeyPressed(Key.Search)) {
-    if ((GameData.object[object].item.flags & itemmenu.itemFlags) &&
-        Global.inventory[Global.curInvMenuItem].amount >
-        Global.inventory[Global.curInvMenuItem].amountInUse) {
-      if (Global.inventory[Global.curInvMenuItem].amount > 0) {
-        var j = (Global.curInvMenuItem < 3 * 4) ? ~~(Global.curInvMenuItem / 3) : 4;
-        var k = Global.curInvMenuItem % 3;
+    if ((currentObjectFlags & itemmenu.itemFlags) &&
+        (currentSlot.amount || 0) > (currentSlot.amountInUse || 0)) {
+      if ((currentSlot.amount || 0) > 0) {
+        var j = (currentIndex < 3 * 4) ? ~~(currentIndex / 3) : 4;
+        var k = currentIndex % 3;
 
         ui.drawText(ui.getWord(object), PAL_XY(15 + k * 100, 12 + j * 18),
            ui.MENUITEM_COLOR_CONFIRMED, false, false);
@@ -190,23 +210,38 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
   script.compressInventory();
   // Count the total number of items in inventory
   itemmenu.numInventory = 0;
+  var inventorySnapshot = worldService.getInventory();
   while (itemmenu.numInventory < Const.MAX_INVENTORY &&
-         Global.inventory[itemmenu.numInventory].item != 0) {
+         inventorySnapshot[itemmenu.numInventory] &&
+         inventorySnapshot[itemmenu.numInventory].item != 0) {
     itemmenu.numInventory++;
   }
   // Also add usable equipped items to the list
-  if ((itemFlags & ItemFlag.Usable) && !Global.inBattle) {
-    stateService.mutateGlobal('inventory', (inventory) => {
-      if (!inventory) {
+  if ((itemFlags & ItemFlag.Usable) && !stateService.getGlobal('inBattle')) {
+    worldService.mutateInventory((inventory) => {
+      if (!Array.isArray(inventory)) {
         return inventory;
       }
-      for (var i = 0; i <= Global.wMaxPartyMemberIndex; i++) {
-        var w = Global.party[i].playerRole;
+      var party = worldService.getParty();
+      var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+      var capacity = worldService.getInventoryCapacity() || Const.MAX_INVENTORY;
+      for (var i = 0; i <= maxPartyMemberIndex; i++) {
+        var member = party[i];
+        if (!member) {
+          continue;
+        }
+        var roleId = member.playerRole;
         for (var j = 0; j < Const.MAX_PLAYER_EQUIPMENTS; j++) {
-          if (GameData.object[GameData.playerRoles.equipment[j][w]].item.flags & ItemFlag.Usable) {
-            if (itemmenu.numInventory < Const.MAX_INVENTORY) {
+          var equipId = worldService.getPlayerEquipment(j, roleId);
+          if (!equipId) {
+            continue;
+          }
+          var equipEntry = worldService.getObjectEntry(equipId);
+          var equipFlags = equipEntry && equipEntry.item ? equipEntry.item.flags : 0;
+          if (equipFlags & ItemFlag.Usable) {
+            if (itemmenu.numInventory < capacity) {
               var slot = ensureInventorySlot(inventory, itemmenu.numInventory);
-              slot.item = GameData.playerRoles.equipment[j][w];
+              slot.item = equipId;
               slot.amount = 0;
               slot.amountInUse = -1;
               itemmenu.numInventory++;
@@ -216,16 +251,18 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
       }
       return inventory;
     });
+    inventorySnapshot = worldService.getInventory();
   }
 };
 
 itemmenu.itemSelectMenu = function*(onchange, itemFlags) {
   itemmenu.itemSelectMenuInit(itemFlags);
-  var prevIndex = Global.curInvMenuItem;
+  var prevIndex = getCurrentInventoryIndex();
   input.clear();
   if (onchange) {
     itemmenu.noDesc = true;
-    onchange(Global.inventory[Global.curInvMenuItem].item);
+    var initialSlot = worldService.getInventorySlot(prevIndex);
+    onchange(initialSlot ? initialSlot.item : 0);
   }
   while (true) {
     if (!onchange) {
@@ -250,14 +287,16 @@ itemmenu.itemSelectMenu = function*(onchange, itemFlags) {
       return w;
     }
 
-    if (prevIndex != Global.curInvMenuItem) {
-      if (Global.curInvMenuItem >= 0 && Global.curInvMenuItem < Const.MAX_INVENTORY) {
+    var currentIndex = getCurrentInventoryIndex();
+    if (prevIndex != currentIndex) {
+      if (currentIndex >= 0 && currentIndex < Const.MAX_INVENTORY) {
         if (onchange){
-          onchange(Global.inventory[Global.curInvMenuItem].item);
+          var slot = worldService.getInventorySlot(currentIndex);
+          onchange(slot ? slot.item : 0);
         }
       }
 
-      prevIndex = Global.curInvMenuItem;
+      prevIndex = currentIndex;
     }
   }
   throw 'should not really reach here';
