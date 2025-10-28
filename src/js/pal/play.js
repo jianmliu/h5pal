@@ -32,85 +32,114 @@ play.init = function*(surf) {
  * @param {Boolean} trigger       whether to process trigger events or not.
  */
 play.update = function*(trigger) {
-  // Check for trigger events
-  if (trigger){
-    // Check if we are entering a new scene
-    if (Global.enteringScene) {
-      // Run the script for entering the scene
+  var currentSceneId = worldService.getSceneId() || stateService.getGlobal('numScene');
+
+  if (trigger) {
+    if (stateService.getGlobal('enteringScene')) {
       stateService.setGlobal('enteringScene', false);
 
-      var i = Global.numScene - 1;
-      var sc = GameData.scene[i];
-      sc.scriptOnEnter = yield script.runTriggerScript(sc.scriptOnEnter, 0xFFFF);
+      var sceneData = worldService.getSceneData();
+      var scriptOnEnter = sceneData && typeof sceneData.scriptOnEnter === 'number'
+        ? sceneData.scriptOnEnter
+        : 0;
+      var nextScriptOnEnter = yield script.runTriggerScript(scriptOnEnter, 0xFFFF);
 
-      if (Global.enteringScene || Global.gameStart) {
-        // Don't go further as we're switching to another scene
+      if (sceneData && typeof nextScriptOnEnter === 'number') {
+        stateService.mutateGameData('scene', function(scenes) {
+          if (Array.isArray(scenes) && currentSceneId > 0 && scenes[currentSceneId - 1]) {
+            scenes[currentSceneId - 1].scriptOnEnter = nextScriptOnEnter;
+          }
+          return scenes;
+        });
+      }
+
+      if (stateService.getGlobal('enteringScene') || stateService.getGlobal('gameStart')) {
         return;
       }
+
       input.clear();
       yield scene.makeScene();
     }
 
-    // Update the vanish time for all event objects
-    var eventObjects = GameData.eventObject;
-    for (var i = 0; i < eventObjects.length; ++i) {
-      var p = eventObjects[i];
-      if (p.vanishTime !== 0) {
-        p.vanishTime += ((p.vanishTime < 0) ? 1 : -1);
+    stateService.mutateGameData('eventObject', function(objects) {
+      if (!Array.isArray(objects)) {
+        return objects;
       }
-    }
+      for (var idx = 0; idx < objects.length; idx++) {
+        var eventObject = objects[idx];
+        if (eventObject && eventObject.vanishTime !== 0) {
+          eventObject.vanishTime += ((eventObject.vanishTime < 0) ? 1 : -1);
+        }
+      }
+      return objects;
+    });
 
-    // Loop through all event objects in the current scene
-    for (var eventObjectID = GameData.scene[Global.numScene - 1].eventObjectIndex + 1;
-         eventObjectID <= GameData.scene[Global.numScene].eventObjectIndex;
-         ++eventObjectID) {
-      var p = GameData.eventObject[eventObjectID - 1];
+    var viewportValue = worldService.getViewport();
+    var partyOffsetValue = worldService.getPartyOffset();
+    var sceneEventObjects = worldService.getEventObjectsInCurrentScene();
 
-      if (p.vanishTime !== 0){
+    for (var ei = 0; ei < sceneEventObjects.length; ei++) {
+      var entry = sceneEventObjects[ei];
+      var eventObjectID = entry.id;
+      var eventIndex = entry.index;
+      var obj = entry.state;
+
+      if (!obj || obj.vanishTime !== 0) {
         continue;
       }
 
-      if (p.state < 0) {
-        if (p.x < PAL_X(Global.viewport) ||
-            p.x > PAL_X(Global.viewport) + 320 ||
-            p.y < PAL_Y(Global.viewport) ||
-            p.y > PAL_Y(Global.viewport) + 320){
-          p.state = abs(p.state);
-          p.currentFrameNum = 0;
+      if (obj.state < 0) {
+        if (obj.x < PAL_X(viewportValue) ||
+            obj.x > PAL_X(viewportValue) + 320 ||
+            obj.y < PAL_Y(viewportValue) ||
+            obj.y > PAL_Y(viewportValue) + 320) {
+          worldService.mutateEventObject(eventIndex, (evt) => {
+            evt.state = abs(evt.state);
+            evt.currentFrameNum = 0;
+            return evt;
+          });
+          obj = worldService.getEventObject(eventIndex);
         }
-      } else if (p.state > 0 && p.triggerMode >= TriggerMode.TouchNear) {
-        // This event object can be triggered without manually exploring
-        if (abs(PAL_X(Global.viewport) + PAL_X(Global.partyOffset) - p.x) +
-            abs(PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset) - p.y) * 2
-            < (p.triggerMode - TriggerMode.TouchNear) * 32 + 16) {
-          // Player is in the trigger zone.
-          if (p.spriteFrames) {
-            // The sprite has multiple frames. Try to adjust the direction.
-            p.currentFrameNum = 0;
+      } else if (obj.state > 0 && obj.triggerMode >= TriggerMode.TouchNear) {
+        var heroX = PAL_X(viewportValue) + PAL_X(partyOffsetValue);
+        var heroY = PAL_Y(viewportValue) + PAL_Y(partyOffsetValue);
+        if (abs(heroX - obj.x) + abs(heroY - obj.y) * 2 <
+            (obj.triggerMode - TriggerMode.TouchNear) * 32 + 16) {
+          if (obj.spriteFrames) {
+            worldService.mutateEventObject(eventIndex, (evt) => {
+              evt.currentFrameNum = 0;
+              var xOffset = heroX - evt.x;
+              var yOffset = heroY - evt.y;
+              if (xOffset > 0) {
+                evt.direction = (yOffset > 0 ? Direction.East : Direction.North);
+              } else {
+                evt.direction = (yOffset > 0 ? Direction.South : Direction.West);
+              }
+              return evt;
+            });
+            obj = worldService.getEventObject(eventIndex);
 
-            var xOffset = PAL_X(Global.viewport) + PAL_X(Global.partyOffset) - p.x;
-            var yOffset = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset) - p.y;
-
-            if (xOffset > 0) {
-              p.direction = (yOffset > 0 ? Direction.East : Direction.North);
-            } else {
-              p.direction = (yOffset > 0 ? Direction.South : Direction.West);
-            }
-
-            // Redraw the scene
             scene.updatePartyGestures(false);
 
             yield scene.makeScene();
             surface.updateScreen(null);
+
+            viewportValue = worldService.getViewport();
+            partyOffsetValue = worldService.getPartyOffset();
+            heroX = PAL_X(viewportValue) + PAL_X(partyOffsetValue);
+            heroY = PAL_Y(viewportValue) + PAL_Y(partyOffsetValue);
           }
 
-          // Execute the script.
-          p.triggerScript = yield script.runTriggerScript(p.triggerScript, eventObjectID);
+          var updatedTrigger = yield script.runTriggerScript(obj.triggerScript, eventObjectID);
+          worldService.mutateEventObject(eventIndex, (evt) => {
+            evt.triggerScript = updatedTrigger;
+            return evt;
+          });
+          obj = worldService.getEventObject(eventIndex);
 
           input.clear();
 
-          if (Global.enteringScene || Global.gameStart) {
-            // Don't go further on scene switching
+          if (stateService.getGlobal('enteringScene') || stateService.getGlobal('gameStart')) {
             return;
           }
         }
@@ -118,49 +147,57 @@ play.update = function*(trigger) {
     }
   }
 
-  // Run autoScript for each event objects
-  for (var eventObjectID = GameData.scene[Global.numScene - 1].eventObjectIndex + 1;
-       eventObjectID <= GameData.scene[Global.numScene].eventObjectIndex;
-       ++eventObjectID) {
-    var p = GameData.eventObject[eventObjectID - 1];
+  var viewportCurrent = worldService.getViewport();
+  var partyOffsetCurrent = worldService.getPartyOffset();
+  var sceneObjects = worldService.getEventObjectsInCurrentScene();
 
-    if (p.state > 0 && p.vanishTime === 0) {
-      var scriptEntry = p.autoScript;
-      if (scriptEntry !== 0) {
-        p.autoScript = yield script.runAutoScript(scriptEntry, eventObjectID);
-        if (Global.enteringScene || Global.gameStart) {
-          // Don't go further on scene switching
+  for (var index = 0; index < sceneObjects.length; index++) {
+    var currentEntry = sceneObjects[index];
+    var currentIdx = currentEntry.index;
+    var currentObj = currentEntry.state;
+    if (!currentObj) {
+      continue;
+    }
+
+    if (currentObj.state > 0 && currentObj.vanishTime === 0) {
+      var autoScriptEntry = currentObj.autoScript;
+      if (autoScriptEntry !== 0) {
+        var autoScriptResult = yield script.runAutoScript(autoScriptEntry, currentEntry.id);
+        worldService.mutateEventObject(currentIdx, (evt) => {
+          evt.autoScript = autoScriptResult;
+          return evt;
+        });
+        currentObj = worldService.getEventObject(currentIdx);
+        if (stateService.getGlobal('enteringScene') || stateService.getGlobal('gameStart')) {
           return;
         }
       }
     }
 
-    // Check if the player is in the way
-    if (trigger && p.state >= ObjectState.Blocker && p.spriteNum !== 0 &&
-        abs(p.x - PAL_X(Global.viewport) - PAL_X(Global.partyOffset)) +
-        abs(p.y - PAL_Y(Global.viewport) - PAL_Y(Global.partyOffset)) * 2 <= 12) {
-      // Player is in the way, try to move a step
-      var dir = (p.direction + 1 % 4);
-      for (var i = 0; i < 4; i++) {
-        var x = PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
-        var y = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
+    if (trigger && currentObj.state >= ObjectState.Blocker && currentObj.spriteNum !== 0) {
+      var heroPosX = PAL_X(viewportCurrent) + PAL_X(partyOffsetCurrent);
+      var heroPosY = PAL_Y(viewportCurrent) + PAL_Y(partyOffsetCurrent);
+      if (abs(currentObj.x - heroPosX) + abs(currentObj.y - heroPosY) * 2 <= 12) {
+        var dir = (currentObj.direction + 1) % 4;
+        for (var attempt = 0; attempt < 4; attempt++) {
+          heroPosX = PAL_X(viewportCurrent) + PAL_X(partyOffsetCurrent);
+          heroPosY = PAL_Y(viewportCurrent) + PAL_Y(partyOffsetCurrent);
+          var targetX = heroPosX + ((dir === Direction.West || dir === Direction.South) ? -16 : 16);
+          var targetY = heroPosY + ((dir === Direction.West || dir === Direction.North) ? -8 : 8);
+          var targetPos = PAL_XY(targetX, targetY);
 
-        x += ((dir == Direction.West || dir == Direction.South) ? -16 : 16);
-        y += ((dir == Direction.West || dir == Direction.North) ? -8 : 8);
+          if (!scene.checkObstacle(targetPos, true, 0)) {
+            worldService.setViewport(PAL_XY(
+              PAL_X(targetPos) - PAL_X(partyOffsetCurrent),
+              PAL_Y(targetPos) - PAL_Y(partyOffsetCurrent)
+            ));
+            viewportCurrent = worldService.getViewport();
+            partyOffsetCurrent = worldService.getPartyOffset();
+            break;
+          }
 
-        var pos = PAL_XY(x, y);
-
-        if (!scene.checkObstacle(pos, true, 0)) {
-          // move here
-          worldService.setViewport(PAL_XY(
-            PAL_X(pos) - PAL_X(Global.partyOffset),
-            PAL_Y(pos) - PAL_Y(Global.partyOffset)
-          ));
-
-          break;
+          dir = (dir + 1) % 4;
         }
-
-        dir = (dir + 1) % 4;
       }
     }
   }
@@ -179,7 +216,12 @@ play.useItem = function*() {
       return;
     }
 
-    if (!(GameData.object[object].item.flags & ItemFlag.ApplyToAll)) {
+    var objectState = worldService.getObjectEntry(object);
+    if (!objectState || !objectState.item) {
+      continue;
+    }
+
+    if (!(objectState.item.flags & ItemFlag.ApplyToAll)) {
       // Select the player to use the item on
       while (true) {
         var player = yield uigame.itemUseMenu(object);
@@ -188,32 +230,35 @@ play.useItem = function*() {
           break;
         }
         // Run the script
-        var currentScript = GameData.object[object].item.scriptOnUse;
+        var currentScript = objectState.item.scriptOnUse;
         var nextScript = yield script.runTriggerScript(currentScript, player);
-        stateService.mutateGameData('object', (objects) => {
-          if (objects && objects[object] && objects[object].item) {
-            objects[object].item.scriptOnUse = nextScript;
+        worldService.mutateObjectEntry(object, (entry) => {
+          if (entry && entry.item) {
+            entry.item.scriptOnUse = nextScript;
           }
-          return objects;
+          return entry;
         });
         // Remove the item if the item is consuming and the script succeeded
-        if ((GameData.object[object].item.flags & ItemFlag.Consuming) && script.scriptSuccess) {
+        var updatedState = worldService.getObjectEntry(object);
+        if (updatedState && updatedState.item && (updatedState.item.flags & ItemFlag.Consuming) && script.scriptSuccess) {
           script.addItemToInventory(object, -1);
         }
+        objectState = worldService.getObjectEntry(object);
       }
     } else {
       // Run the script
-      var currentScriptAll = GameData.object[object].item.scriptOnUse;
+      var currentScriptAll = objectState.item.scriptOnUse;
       var nextScriptAll = yield script.runTriggerScript(currentScriptAll, 0xFFFF);
-      stateService.mutateGameData('object', (objects) => {
-        if (objects && objects[object] && objects[object].item) {
-          objects[object].item.scriptOnUse = nextScriptAll;
+      worldService.mutateObjectEntry(object, (entry) => {
+        if (entry && entry.item) {
+          entry.item.scriptOnUse = nextScriptAll;
         }
-        return objects;
+        return entry;
       });
 
       // Remove the item if the item is consuming and the script succeeded
-      if ((GameData.object[object].item.flags & ItemFlag.Consuming) && script.scriptSuccess) {
+      var refreshedState = worldService.getObjectEntry(object);
+      if (refreshedState && refreshedState.item && (refreshedState.item.flags & ItemFlag.Consuming) && script.scriptSuccess) {
         script.addItemToInventory(object, -1);
       }
 
@@ -233,6 +278,11 @@ play.equipItem = function*() {
        return;
     }
 
+    var objectEntry = worldService.getObjectEntry(object);
+    if (!objectEntry) {
+      continue;
+    }
+
     yield uigame.equipItemMenu(object);
   }
 };
@@ -245,15 +295,18 @@ play.search = function*() {
   var poses = [];
 
   // Get the party location
-  x = PAL_X(Global.viewport) + PAL_X(Global.partyOffset);
-  y = PAL_Y(Global.viewport) + PAL_Y(Global.partyOffset);
-  if (Global.partyDirection == Direction.North || Global.partyDirection == Direction.East) {
+  var viewport = worldService.getViewport();
+  var partyOffset = worldService.getPartyOffset();
+  var partyDirection = worldService.getPartyDirection();
+  x = PAL_X(viewport) + PAL_X(partyOffset);
+  y = PAL_Y(viewport) + PAL_Y(partyOffset);
+  if (partyDirection == Direction.North || partyDirection == Direction.East) {
     xOffset = 16;
   } else {
     xOffset = -16;
   }
 
-  if (Global.partyDirection == Direction.East || Global.partyDirection == Direction.South) {
+  if (partyDirection == Direction.East || partyDirection == Direction.South) {
     yOffset = 8;
   } else {
     yOffset = -8;
@@ -269,9 +322,9 @@ play.search = function*() {
     y += yOffset;
   }
 
-  var sc = GameData.scene[Global.numScene - 1];
-  var party = Global.party;
-  var scenes = GameData.scene;
+  var sceneData = worldService.getSceneData();
+  var range = worldService.getSceneEventObjectRange();
+  var partyMembers = worldService.getParty();
   for (i = 0; i < 13; i++) {
     // Convert to map location
     dh = ((PAL_X(poses[i]) % 32) ? 1 : 0);
@@ -279,9 +332,11 @@ play.search = function*() {
     dy = ~~(PAL_Y(poses[i]) / 16);
 
     // Loop through all event objects
-    for (k = scenes[Global.numScene - 1].eventObjectIndex;
-         k < scenes[Global.numScene].eventObjectIndex; k++){
-      p = GameData.eventObject[k];
+    for (k = range.start; k < range.end; k++){
+      p = worldService.getEventObject(k);
+      if (!p) {
+        continue;
+      }
       ex = ~~(p.x / 32);
       ey = ~~(p.y / 16);
       eh = ((p.x % 32) ? 1 : 0);
@@ -293,12 +348,19 @@ play.search = function*() {
 
       // Adjust direction/gesture for party members and the event object
       if (p.spriteFrames * 4 > p.currentFrameNum) {
-        p.currentFrameNum = 0; // use standing gesture
-        p.direction = (Global.partyDirection + 2) % 4; // face the party
+        worldService.mutateEventObject(k, (evt) => {
+          evt.currentFrameNum = 0;
+          evt.direction = (partyDirection + 2) % 4;
+          return evt;
+        });
 
-        for (l = 0; l <= Global.maxPartyMemberIndex; l++) {
-          // All party members should face the event object
-          party[l].frame = Global.partyDirection * 3;
+        for (l = 0; l < partyMembers.length; l++) {
+          worldService.mutatePartyMember(l, (member) => {
+            if (member) {
+              member.frame = partyDirection * 3;
+            }
+            return member;
+          });
         }
 
         // Redraw everything
@@ -307,7 +369,11 @@ play.search = function*() {
       }
 
       // Execute the script
-      p.triggerScript = yield script.runTriggerScript(p.triggerScript, k + 1);
+      var nextTriggerScript = yield script.runTriggerScript(p.triggerScript, k + 1);
+      worldService.mutateEventObject(k, (evt) => {
+        evt.triggerScript = nextTriggerScript;
+        return evt;
+      });
 
       // Clear inputs and delay for a short time
       yield sleep(50); // WARNING param normalize

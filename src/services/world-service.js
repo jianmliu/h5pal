@@ -38,6 +38,20 @@ function getGameDataStore() {
   return null;
 }
 
+function resolveDirectionDefault() {
+  let directionTable = null;
+  if (typeof globalThis !== 'undefined' && globalThis.Direction) {
+    directionTable = globalThis.Direction;
+  } else if (typeof global !== 'undefined' && global.Direction) {
+    directionTable = global.Direction;
+  }
+  return directionTable && typeof directionTable.South === 'number'
+    ? directionTable.South
+    : 0;
+}
+
+const DEFAULT_PARTY_DIRECTION = resolveDirectionDefault();
+
 class WorldService extends EventBus {
   constructor() {
     super();
@@ -305,6 +319,7 @@ class WorldService extends EventBus {
     }
     this.entityMaps.mapMeta = sceneEntity;
     this.fire('mapMetaSynced', { sceneId: payload.sceneId, mapId: payload.mapId });
+    this._collisionState = null;
   }
 
   syncMapTiles() {
@@ -347,6 +362,7 @@ class WorldService extends EventBus {
     }
     this.entityMaps.mapTile = sceneEntity;
     this.fire('mapTilesSynced', { sceneId: payload.sceneId, mapId: payload.mapId });
+    this._collisionState = null;
   }
 
   syncEventObjects() {
@@ -422,6 +438,7 @@ class WorldService extends EventBus {
 
     this.fire('eventObjectsSynced', { count: eventObjects.length });
     this.fire('npcStatesSynced', { count: eventObjects.length, sceneId });
+    this._collisionState = null;
     this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
   }
 
@@ -635,6 +652,11 @@ class WorldService extends EventBus {
     return component ? component.sceneRef : null;
   }
 
+  getNextSceneData() {
+    const component = this.getSceneComponent();
+    return component ? component.nextSceneRef : null;
+  }
+
   getMapData() {
     const component = this.getSceneComponent();
     return component ? component.mapRef : null;
@@ -723,8 +745,23 @@ class WorldService extends EventBus {
     return this._collisionState;
   }
 
-  isPositionBlocked(position, options = {}) {
+  ensureCollisionState(context = {}) {
+    this._ensureInitialised();
+    const mapMeta = this.getMapMetaComponent();
+    const mapTile = this.getMapTileComponent();
+    const expectedMapId = mapMeta && typeof mapMeta.mapId === 'number'
+      ? mapMeta.mapId
+      : (mapTile && typeof mapTile.mapId === 'number' ? mapTile.mapId : null);
     const state = this._collisionState;
+    const currentMapId = state && typeof state.mapId === 'number' ? state.mapId : null;
+    if (!state || (expectedMapId != null && currentMapId !== expectedMapId)) {
+      this.runSystems('collision', context);
+    }
+    return this._collisionState;
+  }
+
+  isPositionBlocked(position, options = {}, context) {
+    const state = this.ensureCollisionState(context || {});
     if (!state || typeof state.isBlocked !== 'function') {
       return null;
     }
@@ -769,8 +806,117 @@ class WorldService extends EventBus {
       return null;
     }
     const result = mutator(target);
+    if (typeof result !== 'undefined' && result !== target) {
+      gameData.eventObject[id] = result;
+    }
     this.syncEventObjects();
-    return result;
+    return typeof result !== 'undefined' ? result : target;
+  }
+
+  getSceneEventObjectRange() {
+    this._ensureInitialised();
+    const sceneRef = this.getSceneData();
+    const nextSceneRef = this.getNextSceneData();
+    const store = getGameDataStore();
+    const eventObjects = store && Array.isArray(store.eventObject) ? store.eventObject : [];
+    const start = sceneRef && typeof sceneRef.eventObjectIndex === 'number'
+      ? sceneRef.eventObjectIndex
+      : 0;
+    const end = nextSceneRef && typeof nextSceneRef.eventObjectIndex === 'number'
+      ? nextSceneRef.eventObjectIndex
+      : eventObjects.length;
+    return {
+      start,
+      end,
+      count: Math.max(0, end - start)
+    };
+  }
+
+  getEventObjectsInCurrentScene() {
+    this._ensureInitialised();
+    const range = this.getSceneEventObjectRange();
+    const store = getGameDataStore();
+    const eventObjects = store && Array.isArray(store.eventObject) ? store.eventObject : [];
+    const results = [];
+    for (let idx = range.start; idx < range.end && idx < eventObjects.length; idx++) {
+      const state = eventObjects[idx];
+      if (!state) {
+        continue;
+      }
+      results.push({
+        index: idx,
+        id: idx + 1,
+        state
+      });
+    }
+    return results;
+  }
+
+  getAllEventObjects() {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    const eventObjects = store && Array.isArray(store.eventObject) ? store.eventObject : [];
+    const results = [];
+    for (let idx = 0; idx < eventObjects.length; idx++) {
+      const state = eventObjects[idx];
+      if (!state) {
+        continue;
+      }
+      results.push({
+        index: idx,
+        id: idx + 1,
+        state
+      });
+    }
+    return results;
+  }
+
+  getObjectEntry(id) {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    if (!store || !Array.isArray(store.object)) {
+      return null;
+    }
+    return store.object[id] || null;
+  }
+
+  mutateObjectEntry(id, mutator) {
+    this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return null;
+    }
+    let updatedEntry = null;
+    stateService.mutateGameData('object', (objects) => {
+      if (!Array.isArray(objects)) {
+        return objects;
+      }
+      const entry = objects[id];
+      if (!entry) {
+        return objects;
+      }
+      const result = mutator(entry);
+      if (typeof result !== 'undefined' && result !== entry) {
+        objects[id] = result;
+        updatedEntry = result;
+      } else {
+        updatedEntry = entry;
+      }
+      return objects;
+    });
+    return updatedEntry;
+  }
+
+  getPartyDirection() {
+    this._ensureInitialised();
+    const dir = stateService.getGlobal('partyDirection');
+    return typeof dir === 'number' ? dir : DEFAULT_PARTY_DIRECTION;
+  }
+
+  setPartyDirection(value) {
+    this._ensureInitialised();
+    const resolved = typeof value === 'number' ? value : DEFAULT_PARTY_DIRECTION;
+    stateService.setGlobal('partyDirection', resolved);
+    return resolved;
   }
 
   _handleGlobalChanged(event) {
@@ -796,6 +942,7 @@ class WorldService extends EventBus {
         this.syncMapMeta();
         this.syncMapTiles();
         this.syncEventObjects();
+        this.ensureCollisionState();
         break;
       default:
         break;
@@ -812,18 +959,21 @@ class WorldService extends EventBus {
     switch (payload.key) {
       case 'eventObject':
         this.syncEventObjects();
+        this.ensureCollisionState();
         break;
       case 'scene':
         this.syncScene();
         this.syncMapMeta();
         this.syncMapTiles();
         this.syncEventObjects();
+        this.ensureCollisionState();
         break;
       case 'map':
         this.syncScene();
         this.syncMapMeta();
         this.syncMapTiles();
         this.syncEventObjects();
+        this.ensureCollisionState();
         break;
       case 'scriptEntry':
         this.syncScriptRegisters();

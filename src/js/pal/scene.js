@@ -275,18 +275,7 @@ scene.updatePartyGestures = function(walking) {
  * @param  {EventObject} selfObject    the event object which will be skipped.
  * @return {Boolean}                   TRUE if the location is obstacle, FALSE if not.
  */
-scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
-  var options = {
-    checkEventObjects: checkEventObjects !== false
-  };
-  if (typeof selfObject === 'number') {
-    options.selfEventIndex = selfObject - 1;
-  }
-  var blocked = worldService.isPositionBlocked({ x: PAL_X(pos), y: PAL_Y(pos) }, options);
-  if (blocked === true) {
-    return blocked;
-  }
-  // Fallback to legacy behaviour if collision state is not available.
+function legacyCheckObstacle(pos, checkEventObjects, selfObject) {
   if (PAL_X(pos) < 0 || PAL_X(pos) >= 2048 || PAL_Y(pos) < 0 || PAL_Y(pos) >= 2048) {
     return true;
   }
@@ -341,6 +330,34 @@ scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
     }
   }
   return false;
+}
+
+scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
+  var options = {
+    checkEventObjects: checkEventObjects !== false
+  };
+  if (typeof selfObject === 'number') {
+    options.selfEventIndex = selfObject - 1;
+  }
+  var collisionContext = {
+    mapCache: scene.mapCache,
+    Files: typeof Files !== 'undefined' ? Files : null,
+    viewportComponent: typeof worldService.getViewportComponent === 'function'
+      ? worldService.getViewportComponent()
+      : null
+  };
+  var blocked = worldService.isPositionBlocked(
+    { x: PAL_X(pos), y: PAL_Y(pos) },
+    options,
+    collisionContext
+  );
+  if (blocked == null) {
+    return legacyCheckObstacle(pos, checkEventObjects, selfObject);
+  }
+  if (blocked) {
+    return true;
+  }
+  return legacyCheckObstacle(pos, checkEventObjects, selfObject);
 };
 
 scene.applyWave = function(buffer) {

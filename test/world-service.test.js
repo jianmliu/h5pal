@@ -11,6 +11,13 @@ describe('world service', () => {
     globalThis.PAL_X = (pos) => pos & 0xFFFF;
     globalThis.PAL_Y = (pos) => (pos >>> 16) & 0xFFFF;
     globalThis.PAL_XY = (x, y) => ((y & 0xFFFF) << 16) | (x & 0xFFFF);
+    globalThis.Direction = {
+      South: 0,
+      West: 1,
+      North: 2,
+      East: 3,
+      Unknown: 4
+    };
 
     globalThis.Global = {
       viewport: PAL_XY(10, 20),
@@ -21,7 +28,8 @@ describe('world service', () => {
       ],
       trail: [createTrailEntry(), createTrailEntry(), createTrailEntry(), createTrailEntry(), createTrailEntry()],
       numScene: 1,
-      maxPartyMemberIndex: 1
+      maxPartyMemberIndex: 1,
+      partyDirection: 0
     };
 
     globalThis.GameData = {
@@ -36,6 +44,10 @@ describe('world service', () => {
       map: [
         { metadata: { name: 'map0' } },
         { metadata: { name: 'map1' } }
+      ],
+      object: [
+        { item: { flags: 0, scriptOnUse: 123 } },
+        { item: { flags: 0, scriptOnUse: 456 } }
       ]
     };
 
@@ -102,7 +114,29 @@ describe('world service', () => {
     const previous = worldService.getViewportComponent().partyOffset;
     worldService.mutatePartyOffset((value) => PAL_XY(PAL_X(value) + 16, PAL_Y(value) + 8));
     const updated = worldService.getViewportComponent().partyOffset;
-    expect(updated).not.toBe(previous);
-    expect(updated).toBe(Global.partyOffset);
+   expect(updated).not.toBe(previous);
+   expect(updated).toBe(Global.partyOffset);
+ });
+
+  it('exposes event object ranges, direction helpers, and object accessors', () => {
+    worldService.init();
+    const range = worldService.getSceneEventObjectRange();
+    expect(range.start).toBe(0);
+    expect(range.end).toBe(2);
+    const sceneObjects = worldService.getEventObjectsInCurrentScene();
+    expect(sceneObjects).toHaveLength(range.count);
+
+    expect(worldService.getPartyDirection()).toBe(0);
+    worldService.setPartyDirection(1);
+    expect(worldService.getPartyDirection()).toBe(1);
+    expect(Global.partyDirection).toBe(1);
+
+    const objectEntry = worldService.getObjectEntry(0);
+    expect(objectEntry.item.scriptOnUse).toBe(123);
+    worldService.mutateObjectEntry(0, (entry) => {
+      entry.item.scriptOnUse = 321;
+      return entry;
+    });
+    expect(worldService.getObjectEntry(0).item.scriptOnUse).toBe(321);
   });
 });
