@@ -43,7 +43,20 @@ vi.mock('../src/js/pal/ajax.js', () => {
 vi.mock('../src/services/state-service.js', () => ({
   default: {
     setGlobal: vi.fn(),
-    getGlobal: vi.fn()
+    getGlobal: vi.fn(),
+    mutateGlobal: vi.fn((key, mutator) => {
+      if (typeof mutator === 'function') {
+        mutator();
+      }
+    }),
+    setGameData: vi.fn(),
+    mutateGameData: vi.fn((key, mutator) => {
+      if (typeof mutator === 'function') {
+        mutator();
+      }
+    }),
+    on: vi.fn(),
+    off: vi.fn()
   }
 }));
 

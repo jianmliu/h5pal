@@ -29,7 +29,8 @@ describe('world service', () => {
       trail: [createTrailEntry(), createTrailEntry(), createTrailEntry(), createTrailEntry(), createTrailEntry()],
       numScene: 1,
       maxPartyMemberIndex: 1,
-      partyDirection: 0
+      partyDirection: 0,
+      equipmentEffect: [{ spriteNumInBattle: [0, 101] }]
     };
 
     globalThis.GameData = {
@@ -103,7 +104,7 @@ describe('world service', () => {
     expect(eventComponent.stateRef).toBe(GameData.eventObject[1]);
 
     GameData.eventObject.push({ state: 3, triggerMode: 0, spriteNum: 0 });
-    stateService.setGameData('eventObject', GameData.eventObject);
+    worldService.setEventObjectTable(GameData.eventObject);
     worldService.syncEventObjects();
     const nextComponent = worldService.getEventObjectComponent(2);
     expect(nextComponent.stateRef).toBe(GameData.eventObject[2]);
@@ -138,5 +139,37 @@ describe('world service', () => {
       return entry;
     });
     expect(worldService.getObjectEntry(0).item.scriptOnUse).toBe(321);
+  });
+
+  it('replaces core tables through helper setters', () => {
+    worldService.init();
+    const updatedScene = { eventObjectIndex: 0, mapNum: 1, scriptOnEnter: 99 };
+    const nextScenes = [updatedScene, { eventObjectIndex: 2, mapNum: 1, scriptOnEnter: 0 }];
+    worldService.setSceneTable(nextScenes);
+    worldService.syncScene();
+    const sceneComponent = worldService.getSceneComponent();
+    expect(sceneComponent.sceneRef).toBe(updatedScene);
+    expect(worldService.getSceneTable()).toBe(nextScenes);
+
+    const scriptEntries = [{ opcode: 1 }, { opcode: 2 }];
+    worldService.setScriptEntries(scriptEntries);
+    expect(worldService.getScriptEntry(1)).toBe(scriptEntries[1]);
+    const objects = [{ enemy: { enemyID: 1 } }];
+    worldService.setObjectTable(objects);
+    expect(worldService.getObjectTable()).toBe(objects);
+
+    const eventObjects = [
+      { state: 10, triggerMode: 0, spriteNum: 1 },
+      { state: 20, triggerMode: 0, spriteNum: 2 }
+    ];
+    worldService.setEventObjectTable(eventObjects);
+    worldService.syncEventObjects();
+    expect(worldService.getEventObjectComponent(0).stateRef).toBe(eventObjects[0]);
+    expect(worldService.getEventObjectTable()).toBe(eventObjects);
+
+    expect(worldService.getEquipmentEffects()).toBe(globalThis.Global.equipmentEffect);
+
+    worldService.setBattleSpeed(3);
+    expect(worldService.getBattleSpeed()).toBe(3);
   });
 });

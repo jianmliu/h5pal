@@ -5,7 +5,6 @@ import input from './input';
 import script from '../../services/script-service.js';
 import music from './music';
 import sound from './sound';
-import stateService from '../../services/state-service.js';
 import resourceService from '../../services/resource-service.js';
 import fight from './fight';
 import ui from './ui';
@@ -29,65 +28,8 @@ battleService.bindModule(battle);
 function BATTLE() {
   const state = battleService.getState();
   if (state) return state;
-  if (typeof Global !== 'undefined' && Global && Global.battle) return Global.battle;
-  return {};
-}
-
-function getGlobalValue(key, defaultValue) {
-  switch (key) {
-    case 'screenWave':
-      return worldService.getScreenWave();
-    case 'waveProgression':
-      return worldService.getWaveProgression();
-    case 'numBattleField':
-      return worldService.getBattleFieldId();
-    case 'numBattleMusic':
-      return worldService.getBattleMusicTrack();
-    case 'numPalette':
-      return worldService.getPaletteId();
-    case 'nightPalette':
-      return worldService.getNightPaletteFlag();
-    case 'needToFadeIn':
-      return worldService.getNeedToFadeIn();
-    case 'autoBattle':
-      return worldService.getAutoBattle();
-    case 'numMusic':
-      return worldService.getMusicTrack();
-    default:
-      break;
-  }
-  var value = stateService.getGlobal(key);
-  return typeof value !== 'undefined' ? value : defaultValue;
-}
-
-function setGlobalValue(key, value) {
-  switch (key) {
-    case 'screenWave':
-      return worldService.setScreenWave(value);
-    case 'waveProgression':
-      return worldService.setWaveProgression(value);
-    case 'numBattleField':
-      return worldService.setBattleFieldId(value);
-    case 'numBattleMusic':
-      return worldService.setBattleMusicTrack(value);
-    case 'numPalette':
-      return worldService.setPaletteId(value);
-    case 'nightPalette':
-      return worldService.setNightPaletteFlag(value);
-    case 'needToFadeIn':
-      return worldService.setNeedToFadeIn(value);
-    case 'autoBattle':
-      return worldService.setAutoBattle(value);
-    case 'numMusic':
-      return worldService.setMusicTrack(value);
-    default:
-      break;
-  }
-  return stateService.setGlobal(key, value);
-}
-
-function mutateGlobalValue(key, mutator) {
-  return stateService.mutateGlobal(key, mutator);
+  const fallback = worldService.getBattleState();
+  return fallback || {};
 }
 
 function getParty() {
@@ -103,7 +45,7 @@ function getMaxPartyMemberIndex() {
 }
 
 function getEquipmentEffects() {
-  return getGlobalValue('equipmentEffect', []);
+  return worldService.getEquipmentEffects() || [];
 }
 
 function getEquipmentEffect(index) {
@@ -442,12 +384,16 @@ battle.main = function*() {
   yield surface.switchScreen(5);
 
   // Play the battle music
-  music.play(getGlobalValue('numBattleMusic', 0), true, 0);
+  music.play(worldService.getBattleMusicTrack() || 0, true, 0);
 
   // Fade in the screen when needed
-  if (getGlobalValue('needToFadeIn', false)) {
-    yield surface.fadeIn(getGlobalValue('numPalette', 0), getGlobalValue('nightPalette', false), 1);
-    setGlobalValue('needToFadeIn', false);
+  if (worldService.getNeedToFadeIn()) {
+    yield surface.fadeIn(
+      worldService.getPaletteId() || 0,
+      !!worldService.getNightPaletteFlag(),
+      1
+    );
+    worldService.setNeedToFadeIn(false);
   }
 
   // Run the pre-battle scripts for each enemies
@@ -732,7 +678,7 @@ battle.loadBattleBackground = function() {
   battleService.setBackground(background);
 
   // Load the picture
-  var buf = Files.FBP.decompressChunk(getGlobalValue('numBattleField', 0));
+  var buf = Files.FBP.decompressChunk(worldService.getBattleFieldId() || 0);
 
   // Draw the picture to the surface.
   surface.blit(buf, background);
@@ -1054,13 +1000,13 @@ battle.playerEscape = function*() {
 battle.start = function*(enemyTeam, isBoss) {
   log.debug(['[BATTLE] start', enemyTeam, isBoss].join(' '));
   // Set the screen waving effects
-  var prevWaveLevel = getGlobalValue('screenWave', 0);
-  var prevWaveProgression = getGlobalValue('waveProgression', 0);
+  var prevWaveLevel = worldService.getScreenWave() || 0;
+  var prevWaveProgression = worldService.getWaveProgression() || 0;
 
-  setGlobalValue('waveProgression', 0);
-  var battleFieldIndex = getGlobalValue('numBattleField', 0);
+  worldService.setWaveProgression(0);
+  var battleFieldIndex = worldService.getBattleFieldId() || 0;
   var battleFieldConfig = worldService.getBattleFieldEntry(battleFieldIndex);
-  setGlobalValue('screenWave', battleFieldConfig ? battleFieldConfig.screenWave : 0);
+  worldService.setScreenWave(battleFieldConfig ? battleFieldConfig.screenWave : 0);
 
   var party = getParty();
   var maxPartyIndex = getMaxPartyMemberIndex();
@@ -1099,7 +1045,7 @@ battle.start = function*(enemyTeam, isBoss) {
   }
 
   // Clear all item-using records
-  stateService.mutateGlobal('inventory', function(inventory) {
+  worldService.mutateInventory(function(inventory) {
     if (!Array.isArray(inventory)) {
       return inventory;
     }
@@ -1204,7 +1150,7 @@ battle.start = function*(enemyTeam, isBoss) {
       state.UI.nextMsg = [];
       state.UI.msgShowTime = 0;
       state.UI.state = BattleUIState.Wait;
-      state.UI.autoAttack = !!getGlobalValue('autoBattle', false);
+      state.UI.autoAttack = !!worldService.getAutoBattle();
       state.UI.selectedIndex = 0;
       state.UI.prevEnemyTarget = 0;
       if (Array.isArray(state.UI.showNum)) {
@@ -1235,7 +1181,7 @@ battle.start = function*(enemyTeam, isBoss) {
     fight.updateTimeChargingUnit();
   }
 
-  setGlobalValue('inBattle', true);
+  worldService.setInBattle(true);
 
   battle.updateFighters();
 
@@ -1266,7 +1212,7 @@ battle.start = function*(enemyTeam, isBoss) {
   }
 
   // Clear all item-using records
-  stateService.mutateGlobal('inventory', function(inventory) {
+  worldService.mutateInventory(function(inventory) {
     if (!Array.isArray(inventory)) {
       return inventory;
     }
@@ -1297,13 +1243,13 @@ battle.start = function*(enemyTeam, isBoss) {
   //SDL_FreeSurface(Global.battle.lpBackground);
   //SDL_FreeSurface(Global.battle.lpSceneBuf);
 
-  setGlobalValue('inBattle', false);
+  worldService.setInBattle(false);
 
-  music.play(getGlobalValue('numMusic', 0), true, 1);
+  music.play(worldService.getMusicTrack() || 0, true, 1);
 
   // Restore the screen waving effects
-  setGlobalValue('waveProgression', prevWaveProgression);
-  setGlobalValue('screenWave', prevWaveLevel);
+  worldService.setWaveProgression(prevWaveProgression);
+  worldService.setScreenWave(prevWaveLevel);
 
   return result;
 }

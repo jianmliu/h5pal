@@ -236,51 +236,6 @@ function createFightGameDataFacade() {
   });
 }
 
-function createFightGlobalFacade() {
-  return new Proxy({}, {
-    get(target, prop) {
-      switch (prop) {
-        case 'battle':
-          return battleService.getState();
-        case 'playerStatus':
-          return worldService.getPlayerStatusMatrix();
-        case 'party':
-          return worldService.getParty();
-        case 'maxPartyMemberIndex':
-          return worldService.getMaxPartyMemberIndex();
-        case 'autoBattle':
-          return worldService.getAutoBattle();
-        case 'screenWave':
-          return worldService.getScreenWave();
-        case 'numBattleField':
-          return worldService.getBattleFieldId();
-        default:
-          return target[prop];
-      }
-    },
-    set(target, prop, value) {
-      switch (prop) {
-        case 'autoBattle':
-          worldService.setAutoBattle(value);
-          return true;
-        case 'screenWave':
-          worldService.setScreenWave(value);
-          return true;
-        case 'maxPartyMemberIndex':
-          worldService.setMaxPartyMemberIndex(value);
-          return true;
-        case 'numBattleField':
-          worldService.setBattleFieldId(value);
-          return true;
-        default:
-          target[prop] = value;
-          return true;
-      }
-    }
-  });
-}
-
-const Global = createFightGlobalFacade();
 const GameData = createFightGameDataFacade();
 
 log.trace('fight module load');
@@ -290,8 +245,8 @@ var fight = {};
 function BATTLE() {
   const state = battleService.getState();
   if (state) return state;
-  if (typeof Global !== 'undefined' && Global && Global.battle) return Global.battle;
-  return {};
+  const fallback = worldService.getBattleState();
+  return fallback || {};
 }
 
 function withBattle(fn, options) {
@@ -336,6 +291,51 @@ function getPlayerStatusMatrix() {
 
 function getPlayerStatusRow(roleId) {
   return worldService.getPlayerStatus(roleId) || [];
+}
+
+function getPlayerStatusValue(roleId, statusIndex) {
+  var row = getPlayerStatusRow(roleId);
+  if (!row) {
+    return 0;
+  }
+  var value = row[statusIndex];
+  return typeof value === 'number' ? value : 0;
+}
+
+function hasPlayerStatus(roleId, statusIndex) {
+  return getPlayerStatusValue(roleId, statusIndex) !== 0;
+}
+
+function getPartyMember(index) {
+  return worldService.getPartyMember(index) || null;
+}
+
+function getPartyMemberRole(index) {
+  var member = getPartyMember(index);
+  return member ? member.playerRole : null;
+}
+
+function getCurrentBattleFieldEntry() {
+  var fieldId = worldService.getBattleFieldId();
+  if (typeof fieldId !== 'number') {
+    return null;
+  }
+  return worldService.getBattleFieldEntry(fieldId) || null;
+}
+
+function getCurrentBattleFieldMagicEffect(index) {
+  var entry = getCurrentBattleFieldEntry();
+  if (!entry || !entry.magicEffect) {
+    return 0;
+  }
+  var effects = entry.magicEffect;
+  if (Array.isArray(effects)) {
+    return effects[index] || 0;
+  }
+  if (ArrayBuffer.isView(effects)) {
+    return effects[index] || 0;
+  }
+  return 0;
 }
 
 function getPlayerHP(roleId) {
@@ -466,8 +466,9 @@ function getUIState() {
   if (state && state.UI) {
     return state.UI;
   }
-  if (typeof Global !== 'undefined' && Global && Global.battle && Global.battle.UI) {
-    return Global.battle.UI;
+  const fallback = worldService.getBattleState();
+  if (fallback && fallback.UI) {
+    return fallback.UI;
   }
   return null;
 }
@@ -609,7 +610,7 @@ fight.init = function*(surf, _battle) {
     var iMax = 0;
 
     withBattle(function(state) {
-      for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+      for (var i = 0; i <= getMaxPartyIndex(); i++) {
         var player = state.player[i];
         if (!player) continue;
         if (player.state == FighterState.Com ||
@@ -773,7 +774,7 @@ fight.init = function*(surf, _battle) {
         w = GameData.magic[GameData.object[w].magic.magicNumber].costMP;
 
         if (currentRoleId !== null &&
-            GameData.playerRoles.MP[currentRoleId] < w) {
+            worldService.getPlayerMP(currentRoleId) < w) {
           w = curPlayer.action.actionID;
           w = GameData.magic[GameData.object[w].magic.magicNumber].type;
           if (w == MagicType.ApplyToPlayer || w == MagicType.ApplyToParty ||
@@ -831,7 +832,7 @@ fight.init = function*(surf, _battle) {
    */
   battle.showPlayerPreMagicAnim = function*(playerIndex, summon) {
     log.debug(['[BATTLE] showPlayerPreMagicAnim', playerIndex, summon].join(' '));
-    var playerRole = Global.party[playerIndex].playerRole;
+    var playerRole = getPartyMemberRole(playerIndex);
 
     for (var i = 0; i < 4; i++) {
       setPlayerPosition(playerIndex, function(pos) {
@@ -847,7 +848,7 @@ fight.init = function*(surf, _battle) {
     yield battle.delay(2, 0, true);
 
     setPlayerFrame(playerIndex, 5);
-    sound.play(GameData.playerRoles.magicSound[playerRole]);
+    sound.play(worldService.getPlayerMagicSound(playerRole));
 
     if (!summon) {
       var currentPos = BATTLE().player[playerIndex].pos;
@@ -908,7 +909,7 @@ fight.init = function*(surf, _battle) {
    * @return {Boolean} true if the player is dying, false if not.
    */
   battle.isPlayerDying = function(playerRole) {
-    return GameData.playerRoles.HP[playerRole] < GameData.playerRoles.maxHP[playerRole] / 5;
+    return worldService.getPlayerHP(playerRole) < worldService.getPlayerMaxHP(playerRole) / 5;
   };
 
   /**
@@ -965,7 +966,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       damage /= 5;
 
       if (elem <= Const.NUM_MAGIC_ELEMENTAL) {
-        damage *= 10 + GameData.battleField[Global.numBattleField].magicEffect[elem - 1];
+        damage *= 10 + getCurrentBattleFieldMagicEffect(elem - 1);
         damage /= 10;
       }
     }
@@ -1011,7 +1012,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
   battle.getPlayerActualDexterity = function(playerRole) {
     var dexterity = script.getPlayerDexterity(playerRole);
 
-    if (Global.playerStatus[playerRole][PlayerStatus.Haste] != 0) {
+    if (hasPlayerStatus(playerRole, PlayerStatus.Haste)) {
       dexterity *= 3;
     }
 
@@ -1042,15 +1043,15 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       });
     }
 
-    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-      playerRole = Global.party[i].playerRole;
+    for (var i = 0; i <= getMaxPartyIndex(); i++) {
+      playerRole = getPartyMemberRole(i);
 
       mutatePlayer(i, function(player) {
         if (!player) {
           return player;
         }
-        player.prevHP = GameData.playerRoles.HP[playerRole];
-        player.prevMP = GameData.playerRoles.MP[playerRole];
+        player.prevHP = worldService.getPlayerHP(playerRole);
+        player.prevMP = worldService.getPlayerMP(playerRole);
         return player;
       });
     }
@@ -1090,11 +1091,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       }
     }
 
-    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-      var playerRole = Global.party[i].playerRole;
+    for (var i = 0; i <= getMaxPartyIndex(); i++) {
+      var playerRole = getPartyMemberRole(i);
 
-      if (BATTLE().player[i].prevHP != GameData.playerRoles.HP[playerRole]) {
-        var damage = GameData.playerRoles.HP[playerRole] - BATTLE().player[i].prevHP;
+      if (BATTLE().player[i].prevHP != worldService.getPlayerHP(playerRole)) {
+        var damage = worldService.getPlayerHP(playerRole) - BATTLE().player[i].prevHP;
 
         var x = PAL_X(BATTLE().player[i].pos) - 9;
         var y = PAL_Y(BATTLE().player[i].pos) - 75;
@@ -1112,8 +1113,8 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         changed = true;
       }
 
-      if (BATTLE().player[i].prevMP != GameData.playerRoles.MP[playerRole]) {
-        var damage = GameData.playerRoles.MP[playerRole] - BATTLE().player[i].prevMP;
+      if (BATTLE().player[i].prevMP != worldService.getPlayerMP(playerRole)) {
+        var damage = worldService.getPlayerMP(playerRole) - BATTLE().player[i].prevMP;
 
         var x = PAL_X(BATTLE().player[i].pos) - 9;
         var y = PAL_Y(BATTLE().player[i].pos) - 67;
@@ -1191,26 +1192,26 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     }
 
     if (checkPlayers && !worldService.getAutoBattle()) {
-      for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-        var w = Global.party[i].playerRole;
+      for (var i = 0; i <= getMaxPartyIndex(); i++) {
+        var w = getPartyMemberRole(i);
         var name;
 
-        if (GameData.playerRoles.HP[w] < BATTLE().player[i].prevHP &&
-            GameData.playerRoles.HP[w] == 0) {
-          w = GameData.playerRoles.coveredBy[w];
+        if (worldService.getPlayerHP(w) < BATTLE().player[i].prevHP &&
+            worldService.getPlayerHP(w) == 0) {
+          w = worldService.getPlayerCoveredBy(w);
 
-          for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
-            if (Global.party[j].playerRole == w) {
+          for (var j = 0; j <= getMaxPartyIndex(); j++) {
+            if (getPartyMemberRole(j) == w) {
                break;
             }
           }
 
-          if (GameData.playerRoles.HP[w] > 0 &&
-              Global.playerStatus[w][PlayerStatus.Sleep] == 0 &&
-              Global.playerStatus[w][PlayerStatus.Paralyzed] == 0 &&
-              Global.playerStatus[w][PlayerStatus.Confused] == 0 &&
-              j <= Global.maxPartyMemberIndex) {
-            name = GameData.playerRoles.name[w];
+          if (worldService.getPlayerHP(w) > 0 &&
+              getPlayerStatusValue(w, PlayerStatus.Sleep) == 0 &&
+              getPlayerStatusValue(w, PlayerStatus.Paralyzed) == 0 &&
+              getPlayerStatusValue(w, PlayerStatus.Confused) == 0 &&
+              j <= getMaxPartyIndex()) {
+            name = worldService.getPlayerNameId(w);
 
             if (GameData.object[name].player.scriptOnFriendDeath != 0) {
               yield battle.delay(10, 0, true);
@@ -1241,37 +1242,37 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         }
       }
 
-      for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-        var w = Global.party[i].playerRole;
+      for (var i = 0; i <= getMaxPartyIndex(); i++) {
+        var w = getPartyMemberRole(i);
         var name;
 
-        if (Global.playerStatus[w][PlayerStatus.Sleep] != 0 ||
-           Global.playerStatus[w][PlayerStatus.Confused] != 0) {
+        if (getPlayerStatusValue(w, PlayerStatus.Sleep) != 0 ||
+           getPlayerStatusValue(w, PlayerStatus.Confused) != 0) {
           continue;
         }
 
-        if (GameData.playerRoles.HP[w] < BATTLE().player[i].prevHP) {
-          if (GameData.playerRoles.HP[w] > 0 && battle.isPlayerDying(w) &&
-            BATTLE().player[i].prevHP >= GameData.playerRoles.maxHP[w] / 5) {
-            var cover = GameData.playerRoles.coveredBy[w];
+        if (worldService.getPlayerHP(w) < BATTLE().player[i].prevHP) {
+          if (worldService.getPlayerHP(w) > 0 && battle.isPlayerDying(w) &&
+            BATTLE().player[i].prevHP >= worldService.getPlayerMaxHP(w) / 5) {
+            var cover = worldService.getPlayerCoveredBy(w);
 
-            if (Global.playerStatus[cover][PlayerStatus.Sleep] != 0 ||
-               Global.playerStatus[cover][PlayerStatus.Paralyzed] != 0 ||
-               Global.playerStatus[cover][PlayerStatus.Confused] != 0) {
+            if (getPlayerStatusValue(cover, PlayerStatus.Sleep) != 0 ||
+               getPlayerStatusValue(cover, PlayerStatus.Paralyzed) != 0 ||
+               getPlayerStatusValue(cover, PlayerStatus.Confused) != 0) {
               continue;
             }
 
-            name = GameData.playerRoles.name[w];
+            name = worldService.getPlayerNameId(w);
 
-            sound.play(GameData.playerRoles.dyingSound[w]);
+            sound.play(worldService.getPlayerDyingSound(w));
 
-            for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
-              if (Global.party[j].playerRole == cover) {
+            for (var j = 0; j <= getMaxPartyIndex(); j++) {
+              if (getPartyMemberRole(j) == cover) {
                 break;
               }
             }
 
-            if (j > Global.maxPartyMemberIndex || GameData.playerRoles.HP[cover] == 0) {
+            if (j > getMaxPartyIndex() || worldService.getPlayerHP(cover) == 0) {
               continue;
             }
 
@@ -1335,7 +1336,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     log.debug(['[BATTLE] showPlayerAttackAnim', playerIndex, critical].join(' '));
     var sceneBuf = BATTLE().sceneBuf;
     var screen = surface.byteBuffer;
-    var playerRole = Global.party[playerIndex].playerRole;
+    var playerRole = getPartyMemberRole(playerIndex);
     var target = BATTLE().player[playerIndex].action.target;
 
     var enemy_x = 0;
@@ -1361,11 +1362,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     var index = GameData.battleEffectIndex[battle.getPlayerBattleSprite(playerRole)][1];
     index *= 3;
     // Play the attack voice
-    if (GameData.playerRoles.HP[playerRole] > 0) {
+    if (worldService.getPlayerHP(playerRole) > 0) {
       if (!critical) {
-        sound.play(GameData.playerRoles.attackSound[playerRole]);
+        sound.play(worldService.getPlayerAttackSound(playerRole));
       } else {
-        sound.play(GameData.playerRoles.criticalSound[playerRole]);
+        sound.play(worldService.getPlayerCriticalSound(playerRole));
       }
     }
 
@@ -1388,7 +1389,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     x -= 16;
     y -= 4;
 
-    sound.play(GameData.playerRoles.weaponSound[playerRole]);
+    sound.play(worldService.getPlayerWeaponSound(playerRole));
 
     x = enemy_x;
     y = enemy_y - ~~(enemy_h / 3) + 10;
@@ -1505,7 +1506,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
     for (var i = 0; i <= 6; i++) {
       if (target == -1) {
-        for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
+        for (var j = 0; j <= getMaxPartyIndex(); j++) {
           battleService.setPlayerColorShift(j, i);
         }
       } else {
@@ -1517,7 +1518,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
     for (var i = 5; i >= 0; i--) {
       if (target == -1) {
-        for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
+        for (var j = 0; j <= getMaxPartyIndex(); j++) {
           battleService.setPlayerColorShift(j, i);
         }
       } else {
@@ -1564,7 +1565,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         if (target != -1) {
           throw 'should not be here';
         }
-        for (l = 0; l <= Global.maxPartyMemberIndex; l++) {
+        for (l = 0; l <= getMaxPartyIndex(); l++) {
           var pos = BATTLE().player[l].pos;
           x = PAL_X(pos);
           y = PAL_Y(pos);
@@ -1595,7 +1596,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
         // Repaint the previous player
         if (effectTarget > 0 && BATTLE().hidingTime == 0) {
-          if (Global.playerStatus[Global.party[effectTarget - 1].playerRole][PlayerStatus.Confused] == 0) {
+          if (getPlayerStatusValue(getPartyMemberRole(effectTarget - 1), PlayerStatus.Confused) == 0) {
             var targetPlayer = BATTLE().player[effectTarget - 1];
             var p = targetPlayer.sprite.getFrame(targetPlayer.currentFrame)
             x = PAL_X(targetPlayer.pos);
@@ -1619,7 +1620,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
     for (i = 0; i < 6; i++) {
       if (GameData.magic[magicNum].type == MagicType.ApplyToParty) {
-        for (j = 0; j <= Global.maxPartyMemberIndex; j++) {
+        for (j = 0; j <= getMaxPartyIndex(); j++) {
           battleService.setPlayerColorShift(j, i);
         }
       } else {
@@ -1634,7 +1635,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
     for (i = 6; i >= 0; i--) {
       if (GameData.magic[magicNum].type == MagicType.ApplyToParty) {
-        for (j = 0; j <= Global.maxPartyMemberIndex; j++) {
+        for (j = 0; j <= getMaxPartyIndex(); j++) {
           battleService.setPlayerColorShift(j, i);
         }
       } else {
@@ -1843,7 +1844,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
       var blow = ((BATTLE().blow > 0) ? randomLong(0, BATTLE().blow) : randomLong(BATTLE().blow, 0));
 
-      for (var k = 0; k <= Global.maxPartyMemberIndex; k++) {
+      for (var k = 0; k <= getMaxPartyIndex(); k++) {
         var playerPos = BATTLE().player[k].pos;
         x = PAL_X(playerPos) + blow;
         y = PAL_Y(playerPos) + ~~(blow / 2);
@@ -1968,7 +1969,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     worldService.setScreenWave(wave);
     yield surface.shakeScreen(0, 0);
 
-    for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+    for (var i = 0; i <= getMaxPartyIndex(); i++) {
       setPlayerPosition(i, BATTLE().player[i].originalPos);
     }
   };
@@ -1995,7 +1996,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     }
     // Brighten the players
     for (var i = 1; i <= 10; i++) {
-      for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
+      for (var j = 0; j <= getMaxPartyIndex(); j++) {
         mutatePlayer(j, function(player) {
           player.colofShift = i;
           return player;
@@ -2091,7 +2092,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
    */
   battle.playerValidateAction = function(playerIndex) {
     log.debug(['[BATTLE] playerValidateAction', playerIndex].join(' '));
-    var playerRole = Global.party[playerIndex].playerRole;
+    var playerRole = getPartyMemberRole(playerIndex);
     var objectID = BATTLE().player[playerIndex].action.actionID;
     var target = BATTLE().player[playerIndex].action.target;
     var valid = true;
@@ -2117,7 +2118,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     case BattleActionType.Magic:
       // Make sure player actually has the magic to be used
       for (var i = 0; i < Const.MAX_PLAYER_MAGICS; i++) {
-        if (GameData.playerRoles.magic[i][playerRole] == objectID) {
+        if (worldService.getPlayerMagicAt(i, playerRole) == objectID) {
           break; // player has this magic
         }
       }
@@ -2128,12 +2129,12 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
       var w = GameData.object[objectID].magic.magicNumber;
 
-      if (Global.playerStatus[playerRole][PlayerStatus.Silence] > 0) {
+      if (getPlayerStatusValue(playerRole, PlayerStatus.Silence) > 0) {
         // Player is silenced
         valid = false;
       }
 
-      if (GameData.playerRoles.MP[playerRole] <
+      if (worldService.getPlayerMP(playerRole) <
           GameData.magic[w].costMP) {
         // No enough MP
         valid = false;
@@ -2172,14 +2173,14 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
     case BattleActionType.CoopMagic:
       toEnemy = true;
 
-      for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-        var w = Global.party[i].playerRole;
+      for (var i = 0; i <= getMaxPartyIndex(); i++) {
+        var w = getPartyMemberRole(i);
 
         if (battle.isPlayerDying(w) ||
-            Global.playerStatus[w][PlayerStatus.Silence] > 0 ||
-            Global.playerStatus[w][PlayerStatus.Sleep] > 0 ||
-            Global.playerStatus[w][PlayerStatus.Paralyzed] > 0 ||
-            Global.playerStatus[w][PlayerStatus.Confused] > 0) {
+            getPlayerStatusValue(w, PlayerStatus.Silence) > 0 ||
+            getPlayerStatusValue(w, PlayerStatus.Sleep) > 0 ||
+            getPlayerStatusValue(w, PlayerStatus.Paralyzed) > 0 ||
+            getPlayerStatusValue(w, PlayerStatus.Confused) > 0) {
           setActionField('actionType', BattleActionType.Attack);
           break;
         }
@@ -2228,18 +2229,18 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       break;
 
     case BattleActionType.AttackMate:
-      if (Global.playerStatus[playerRole][PlayerStatus.Confused] == 0) {
+      if (getPlayerStatusValue(playerRole, PlayerStatus.Confused) == 0) {
         // Attack enemies instead if player is not confused
         toEnemy = true;
         setActionField('actionType', BattleActionType.Attack);
       } else {
-        for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          if (i != playerIndex && GameData.playerRoles.HP[Global.party[i].playerRole] != 0) {
+        for (var i = 0; i <= getMaxPartyIndex(); i++) {
+          if (i != playerIndex && worldService.getPlayerHP(getPartyMemberRole(i)) != 0) {
             break;
           }
         }
 
-        if (i > Global.maxPartyMemberIndex) {
+        if (i > getMaxPartyIndex()) {
           // Attack enemies if no one else is alive
           toEnemy = true;
           setActionField('actionType', BattleActionType.Attack);
@@ -2281,7 +2282,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
    */
   battle.playerPerformAction = function*(playerIndex) {
     log.debug(['[BATTLE] playerPerformAction', playerIndex].join(' '));
-    var playerRole = Global.party[playerIndex].playerRole;
+    var playerRole = getPartyMemberRole(playerIndex);
     var coopPos = [ [208, 157], [234, 170], [260, 183] ];
 
     setBattleField('movingPlayerIndex', playerIndex);
@@ -2298,7 +2299,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       case BattleActionType.Attack:
         if (target != -1) {
           // Attack one enemy
-          for (var t = 0; t < (Global.playerStatus[playerRole][PlayerStatus.DualAttack] ? 2 : 1); t++) {
+          for (var t = 0; t < (getPlayerStatusValue(playerRole, PlayerStatus.DualAttack) ? 2 : 1); t++) {
             str = script.getPlayerAttackStrength(playerRole);
             def = BATTLE().enemy[target].e.defense;
             def += (BATTLE().enemy[target].e.level + 6) * 4;
@@ -2309,7 +2310,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             damage = battle.calcPhysicalAttackDamage(str, def, res);
             damage += randomLong(1, 2);
 
-            if (randomLong(0, 5) == 0 || Global.playerStatus[playerRole][PlayerStatus.Bravery] > 0) {
+            if (randomLong(0, 5) == 0 || getPlayerStatusValue(playerRole, PlayerStatus.Bravery) > 0) {
               // Critical Hit
               damage *= 3;
               critical = true;
@@ -2344,11 +2345,11 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           }
         } else {
           // Attack all enemies
-          for (var t = 0; t < (Global.playerStatus[playerRole][PlayerStatus.DualAttack] ? 2 : 1); t++) {
+          for (var t = 0; t < (getPlayerStatusValue(playerRole, PlayerStatus.DualAttack) ? 2 : 1); t++) {
             var division = 1;
             var indices = [ 2, 1, 0, 4, 3 ];
 
-            var critical = (randomLong(0, 5) == 0 || Global.playerStatus[playerRole][PlayerStatus.Bravery] > 0);
+            var critical = (randomLong(0, 5) == 0 || getPlayerStatusValue(playerRole, PlayerStatus.Bravery) > 0);
 
             if (t == 0) {
               setPlayerFrame(playerIndex, 7);
@@ -2422,21 +2423,21 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
       case BattleActionType.AttackMate:
         // Check if there is someone else who is alive
-        for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+        for (var i = 0; i <= getMaxPartyIndex(); i++) {
           if (i == playerIndex) {
             continue;
           }
 
-          if (GameData.playerRoles.HP[Global.party[i].playerRole] > 0) {
+          if (worldService.getPlayerHP(getPartyMemberRole(i)) > 0) {
             break;
           }
         }
 
-        if (i <= Global.maxPartyMemberIndex) {
+        if (i <= getMaxPartyIndex()) {
           // Pick a target randomly
           do {
-            target = randomLong(0, Global.maxPartyMemberIndex);
-          } while (target == playerIndex || GameData.playerRoles.HP[Global.party[target].playerRole] == 0);
+            target = randomLong(0, getMaxPartyIndex());
+          } while (target == playerIndex || worldService.getPlayerHP(getPartyMemberRole(target)) == 0);
 
           for (var j = 0; j < 2; j++) {
             setPlayerFrame(playerIndex, 8);
@@ -2456,16 +2457,16 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           yield battle.delay(5, 0, true);
 
           setPlayerFrame(playerIndex, 9);
-          sound.play(GameData.playerRoles.weaponSound[playerRole]);
+          sound.play(worldService.getPlayerWeaponSound(playerRole));
 
           str = script.getPlayerAttackStrength(playerRole);
-          def = script.getPlayerDefense(Global.party[target].playerRole);
+          def = script.getPlayerDefense(getPartyMemberRole(target));
           if (BATTLE().player[target].defending) {
             def *= 2;
           }
 
           damage = battle.calcPhysicalAttackDamage(str, def, 2);
-          if (Global.playerStatus[Global.party[target].playerRole][PlayerStatus.Protect] > 0) {
+          if (getPlayerStatusValue(getPartyMemberRole(target), PlayerStatus.Protect) > 0) {
             damage = ~~(damage / 2);
           }
 
@@ -2473,8 +2474,8 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             damage = 1;
           }
 
-          if (damage > SHORT(GameData.playerRoles.HP[Global.party[target].playerRole])) {
-            damage = GameData.playerRoles.HP[Global.party[target].playerRole];
+          if (damage > SHORT(worldService.getPlayerHP(getPartyMemberRole(target)))) {
+            damage = worldService.getPlayerHP(getPartyMemberRole(target));
           }
 
           if (SUPER_DEFENSE) {
@@ -2507,7 +2508,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         break;
 
       case BattleActionType.CoopMagic:
-        var object = script.getPlayerCooperativeMagic(Global.party[playerIndex].playerRole);
+        var object = script.getPlayerCooperativeMagic(getPartyMemberRole(playerIndex));
         var magicNum = GameData.object[object].magic.magicNumber;
 
         if (GameData.magic[magicNum].type == MagicType.Summon) {
@@ -2530,7 +2531,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             // Update the position for other players
             var t = 0;
 
-            for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
+            for (var j = 0; j <= getMaxPartyIndex(); j++) {
               if (j == playerIndex) {
                 continue;
               }
@@ -2552,7 +2553,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             yield battle.delay(1, 0, true);
           }
 
-          for (var i = Global.maxPartyMemberIndex; i >= 0; i--) {
+          for (var i = getMaxPartyIndex(); i >= 0; i--) {
             if (i == playerIndex) {
               continue;
             }
@@ -2574,7 +2575,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           yield battle.showPlayerOffMagicAnim(-1, object, target);
         }
 
-        for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
+        for (var i = 0; i <= getMaxPartyIndex(); i++) {
           var roleId = getPartyRoleId(i);
           if (roleId === null || typeof roleId === 'undefined') {
             continue;
@@ -2595,9 +2596,9 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
         str = 0;
 
-        for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          str += script.getPlayerAttackStrength(Global.party[i].playerRole);
-          str += script.getPlayerMagicStrength(Global.party[i].playerRole);
+        for (var i = 0; i <= getMaxPartyIndex(); i++) {
+          str += script.getPlayerAttackStrength(getPartyMemberRole(i));
+          str += script.getPlayerMagicStrength(getPartyMemberRole(i));
         }
 
         str = ~~(str / 4);
@@ -2675,7 +2676,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             // Update the position for other players
             var t = 0;
 
-            for (var j = 0; j <= Global.maxPartyMemberIndex; j++) {
+            for (var j = 0; j <= getMaxPartyIndex(); j++) {
               setPlayerFrame(j, 0);
 
               if (j == playerIndex) {
@@ -2778,7 +2779,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           var w = 0;
 
           if (BATTLE().player[playerIndex].action.target != -1) {
-            w = Global.party[BATTLE().player[playerIndex].action.target].playerRole;
+            w = getPartyMemberRole(BATTLE().player[playerIndex].action.target);
           }
           else if (GameData.magic[magicNum].type == MagicType.Trance) {
             w = playerRole;
@@ -2944,7 +2945,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         yield battle.delay(2, object, true);
 
         setPlayerFrame(playerIndex, 5);
-        sound.play(GameData.playerRoles.magicSound[playerRole]);
+        sound.play(worldService.getPlayerMagicSound(playerRole));
 
         yield battle.delay(8, object, true);
 
@@ -3027,9 +3028,9 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
    */
   battle.enemySelectTargetIndex = function() {
     log.debug(['[BATTLE] enemySelectTargetIndex'].join(' '));
-    var i = randomLong(0, Global.maxPartyMemberIndex);
-    while (GameData.playerRoles.HP[Global.party[i].playerRole] == 0) {
-      i = randomLong(0, Global.maxPartyMemberIndex);
+    var i = randomLong(0, getMaxPartyIndex());
+    while (worldService.getPlayerHP(getPartyMemberRole(i)) == 0) {
+      i = randomLong(0, getMaxPartyIndex());
     }
 
     return i;
@@ -3048,7 +3049,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
     var enemy = BATTLE().enemy[enemyIndex];
     var target = battle.enemySelectTargetIndex();
-    var playerRole = Global.party[target].playerRole;
+    var playerRole = getPartyMemberRole(target);
     var magic = enemy.e.magic;
     var magicNum;
     var soundNum;
@@ -3118,23 +3119,23 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       if (GameData.magic[magicNum].type != MagicType.Normal) {
         target = -1;
 
-        for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          w = Global.party[i].playerRole;
+        for (var i = 0; i <= getMaxPartyIndex(); i++) {
+          w = getPartyMemberRole(i);
 
-          if (Global.playerStatus[w][PlayerStatus.Sleep] == 0 &&
-              Global.playerStatus[w][PlayerStatus.Paralyzed] == 0 &&
-              Global.playerStatus[w][PlayerStatus.Confused] == 0 &&
+          if (getPlayerStatusValue(w, PlayerStatus.Sleep) == 0 &&
+              getPlayerStatusValue(w, PlayerStatus.Paralyzed) == 0 &&
+              getPlayerStatusValue(w, PlayerStatus.Confused) == 0 &&
               randomLong(0, 2) == 0 &&
-              GameData.playerRoles.HP[w] != 0) {
+              worldService.getPlayerHP(w) != 0) {
             magAutoDefend[i] = true;
             setPlayerFrame(i, 3);
           } else {
             magAutoDefend[i] = false;
           }
         }
-      } else if (Global.playerStatus[playerRole][PlayerStatus.Sleep] == 0 &&
-                 Global.playerStatus[playerRole][PlayerStatus.Paralyzed] == 0 &&
-                 Global.playerStatus[playerRole][PlayerStatus.Confused] == 0 &&
+      } else if (getPlayerStatusValue(playerRole, PlayerStatus.Sleep) == 0 &&
+                 getPlayerStatusValue(playerRole, PlayerStatus.Paralyzed) == 0 &&
+                 getPlayerStatusValue(playerRole, PlayerStatus.Confused) == 0 &&
                  randomLong(0, 2) == 0) {
         autoDefend = true;
         setPlayerFrame(target, 3);
@@ -3171,9 +3172,9 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       if (SHORT(GameData.magic[magicNum].baseDamage) > 0) {
         if (target == -1) {
           // damage all players
-          for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-            var w = Global.party[i].playerRole;
-            if (GameData.playerRoles.HP[w] == 0) {
+          for (var i = 0; i <= getMaxPartyIndex(); i++) {
+            var w = getPartyMemberRole(i);
+            if (worldService.getPlayerHP(w) == 0) {
               // skip dead players
               continue;
             }
@@ -3191,13 +3192,13 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             );
 
             damage /= ((BATTLE().player[i].defending ? 2 : 1) *
-                      ((Global.playerStatus[w][PlayerStatus.Protect] > 0) ? 2 : 1)) +
+                      ((getPlayerStatusValue(w, PlayerStatus.Protect) > 0) ? 2 : 1)) +
                       (magAutoDefend[i] ? 1 : 0);
             damage = ~~damage;
             //damage = 999;
 
-            if (damage > GameData.playerRoles.HP[w]) {
-              damage = GameData.playerRoles.HP[w];
+            if (damage > worldService.getPlayerHP(w)) {
+              damage = worldService.getPlayerHP(w);
             }
 
             if (SUPER_DEFENSE) {
@@ -3210,8 +3211,8 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
               }
             }
 
-            if (GameData.playerRoles.HP[w] == 0) {
-              sound.play(GameData.playerRoles.deathSound[w]);
+            if (worldService.getPlayerHP(w) == 0) {
+              sound.play(worldService.getPlayerDeathSound(w));
             }
           }
         } else {
@@ -3229,13 +3230,13 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           );
 
           damage /= ((BATTLE().player[target].defending ? 2 : 1) *
-                    ((Global.playerStatus[playerRole][PlayerStatus.Protect] > 0) ? 2 : 1)) +
+                    ((getPlayerStatusValue(playerRole, PlayerStatus.Protect) > 0) ? 2 : 1)) +
                     (autoDefend ? 1 : 0);
           damage = ~~damage;
           // damage = 999;
 
-          if (damage > GameData.playerRoles.HP[playerRole]) {
-            damage = GameData.playerRoles.HP[playerRole];
+          if (damage > worldService.getPlayerHP(playerRole)) {
+            damage = worldService.getPlayerHP(playerRole);
           }
 
           if (SUPER_DEFENSE) {
@@ -3246,8 +3247,8 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
             worldService.adjustPlayerHP(playerRole, -damage);
           }
 
-          if (GameData.playerRoles.HP[playerRole] == 0) {
-            sound.play(GameData.playerRoles.deathSound[playerRole]);
+          if (worldService.getPlayerHP(playerRole) == 0) {
+            sound.play(worldService.getPlayerDeathSound(playerRole));
           }
         }
       }
@@ -3258,10 +3259,10 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
       for (var i = 0; i < 5; i++) {
         if (target == -1) {
-          for (x = 0; x <= Global.maxPartyMemberIndex; x++) {
+          for (x = 0; x <= getMaxPartyIndex(); x++) {
             var targetPlayer = BATTLE().player[x];
             if (targetPlayer.prevHP ==
-                GameData.playerRoles.HP[Global.party[x].playerRole]) {
+                worldService.getPlayerHP(getPartyMemberRole(x))) {
               // Skip unaffected players
               continue;
             }
@@ -3329,24 +3330,24 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
       // Check if the inflictor should be protected
       if ((battle.isPlayerDying(playerRole) ||
-          Global.playerStatus[playerRole][PlayerStatus.Confused] > 0 ||
-          Global.playerStatus[playerRole][PlayerStatus.Sleep] > 0 ||
-          Global.playerStatus[playerRole][PlayerStatus.Paralyzed] > 0) && autoDefend) {
-        var w = GameData.playerRoles.coveredBy[playerRole];
+          getPlayerStatusValue(playerRole, PlayerStatus.Confused) > 0 ||
+          getPlayerStatusValue(playerRole, PlayerStatus.Sleep) > 0 ||
+          getPlayerStatusValue(playerRole, PlayerStatus.Paralyzed) > 0) && autoDefend) {
+        var w = worldService.getPlayerCoveredBy(playerRole);
 
-        for (var i = 0; i <= Global.maxPartyMemberIndex; i++) {
-          if (Global.party[i].playerRole == w) {
+        for (var i = 0; i <= getMaxPartyIndex(); i++) {
+          if (getPartyMemberRole(i) == w) {
             coverIndex = i;
             break;
           }
         }
 
         if (coverIndex != -1) {
-          coverPlayer = Global.party[coverIndex];
-          if (battle.isPlayerDying(Global.party[coverIndex].playerRole) ||
-              Global.playerStatus[Global.party[coverIndex].playerRole][PlayerStatus.Confused] > 0 ||
-              Global.playerStatus[Global.party[coverIndex].playerRole][PlayerStatus.Sleep] > 0 ||
-              Global.playerStatus[Global.party[coverIndex].playerRole][PlayerStatus.Paralyzed] > 0) {
+          coverPlayer = getPartyMember(coverIndex);
+          if (battle.isPlayerDying(getPartyMemberRole(coverIndex)) ||
+              getPlayerStatusValue(getPartyMemberRole(coverIndex), PlayerStatus.Confused) > 0 ||
+              getPlayerStatusValue(getPartyMemberRole(coverIndex), PlayerStatus.Sleep) > 0 ||
+              getPlayerStatusValue(getPartyMemberRole(coverIndex), PlayerStatus.Paralyzed) > 0) {
             coverIndex = -1;
             coverPlayer = null;
           }
@@ -3356,9 +3357,9 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       // If no one can cover the inflictor and inflictor is in a
       // bad status, don't evade
       if (coverIndex == -1 &&
-          (Global.playerStatus[playerRole][PlayerStatus.Confused] > 0 ||
-           Global.playerStatus[playerRole][PlayerStatus.Sleep] > 0 ||
-           Global.playerStatus[playerRole][PlayerStatus.Paralyzed] > 0)) {
+          (getPlayerStatusValue(playerRole, PlayerStatus.Confused) > 0 ||
+           getPlayerStatusValue(playerRole, PlayerStatus.Sleep) > 0 ||
+           getPlayerStatusValue(playerRole, PlayerStatus.Paralyzed) > 0)) {
         autoDefend = false;
       }
 
@@ -3385,7 +3386,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       soundNum = enemy.e.callSound;
 
       if (coverIndex != -1) {
-        soundNum = GameData.playerRoles.coverSound[Global.party[coverIndex].playerRole];
+        soundNum = worldService.getPlayerCoverSound(getPartyMemberRole(coverIndex));
 
         setPlayerFrame(coverIndex, 3);
 
@@ -3395,7 +3396,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         setPlayerPosition(coverIndex, PAL_XY(x, y));
       } else if (autoDefend) {
         setPlayerFrame(target, 3);
-        soundNum = GameData.playerRoles.coverSound[playerRole];
+        soundNum = worldService.getPlayerCoverSound(playerRole);
       }
 
       if (enemy.e.attackFrames == 0) {
@@ -3418,13 +3419,13 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         damage = battle.calcPhysicalAttackDamage(str + randomLong(0, 2), def, 2);
         damage += randomLong(0, 1);
 
-        if (Global.playerStatus[playerRole][PlayerStatus.Protect]) {
+        if (getPlayerStatusValue(playerRole, PlayerStatus.Protect)) {
           damage /= 2;
         }
         // damage = 999;
 
-        if (SHORT(GameData.playerRoles.HP[playerRole]) < damage) {
-          damage = GameData.playerRoles.HP[playerRole];
+        if (SHORT(worldService.getPlayerHP(playerRole)) < damage) {
+          damage = worldService.getPlayerHP(playerRole);
         }
 
         damage = ~~damage;
@@ -3467,8 +3468,8 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
       yield battle.delay(1, 0, false);
 
-      if (GameData.playerRoles.HP[playerRole] == 0) {
-        sound.play(GameData.playerRoles.deathSound[playerRole]);
+      if (worldService.getPlayerHP(playerRole) == 0) {
+        sound.play(worldService.getPlayerDeathSound(playerRole));
         frameBak = 2;
       } else if (battle.isPlayerDying(playerRole)) {
          frameBak = 1;

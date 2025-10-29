@@ -1,4 +1,3 @@
-import stateService from '../../services/state-service.js';
 
 // Pal的全局变量对象
 /**
@@ -1031,32 +1030,55 @@ var Global = global.Global = new GlobalVars();
 
 var DEFAULT_MAX_SPRITE_TO_DRAW = 2048;
 var MAX_SPRITE_STATE_KEY = 'MAX_SPRITE_TO_DRAW';
+var LEGACY_SPRITE_LIMIT_KEY = '__PAL_LEGACY_MAX_SPRITE__';
 
-if (typeof stateService.getGlobal === 'function') {
-  var existingMax = stateService.getGlobal(MAX_SPRITE_STATE_KEY);
-  if (typeof existingMax === 'undefined' || existingMax === null) {
-    stateService.setGlobal(MAX_SPRITE_STATE_KEY, DEFAULT_MAX_SPRITE_TO_DRAW);
-  }
-
-  Object.defineProperty(Global, 'MAX_SPRITE_TO_DRAW', {
-    configurable: true,
-    enumerable: true,
-    get: function() {
-      var value = stateService.getGlobal(MAX_SPRITE_STATE_KEY);
-      return (typeof value === 'number') ? value : DEFAULT_MAX_SPRITE_TO_DRAW;
-    },
-    set: function(nextValue) {
-      stateService.setGlobal(MAX_SPRITE_STATE_KEY, nextValue);
-    }
-  });
-} else {
-  Object.defineProperty(Global, 'MAX_SPRITE_TO_DRAW', {
-    configurable: true,
-    enumerable: true,
-    writable: true,
-    value: DEFAULT_MAX_SPRITE_TO_DRAW
-  });
+var legacyMaxSpriteLimit = DEFAULT_MAX_SPRITE_TO_DRAW;
+var legacyStore = (typeof globalThis !== 'undefined' && globalThis.Global)
+  ? globalThis.Global
+  : ((typeof global !== 'undefined' && global.Global) ? global.Global : null);
+if (legacyStore && typeof legacyStore[MAX_SPRITE_STATE_KEY] === 'number' && Number.isFinite(legacyStore[MAX_SPRITE_STATE_KEY])) {
+  legacyMaxSpriteLimit = Math.trunc(legacyStore[MAX_SPRITE_STATE_KEY]);
 }
+if (typeof globalThis !== 'undefined') {
+  globalThis[LEGACY_SPRITE_LIMIT_KEY] = legacyMaxSpriteLimit;
+}
+
+function resolveWorldService() {
+  if (typeof globalThis !== 'undefined' && globalThis.services && globalThis.services.world) {
+    return globalThis.services.world;
+  }
+  if (typeof global !== 'undefined' && global.services && global.services.world) {
+    return global.services.world;
+  }
+  return null;
+}
+
+Object.defineProperty(Global, 'MAX_SPRITE_TO_DRAW', {
+  configurable: true,
+  enumerable: true,
+  get: function() {
+    var world = resolveWorldService();
+    if (world && typeof world.getMaxSpriteDrawLimit === 'function') {
+      return world.getMaxSpriteDrawLimit();
+    }
+    if (typeof globalThis !== 'undefined' && typeof globalThis[LEGACY_SPRITE_LIMIT_KEY] === 'number') {
+      return globalThis[LEGACY_SPRITE_LIMIT_KEY];
+    }
+    return legacyMaxSpriteLimit;
+  },
+  set: function(nextValue) {
+    var normalized = Number.isFinite(nextValue) ? Math.trunc(nextValue) : DEFAULT_MAX_SPRITE_TO_DRAW;
+    var world = resolveWorldService();
+    if (world && typeof world.setMaxSpriteDrawLimit === 'function') {
+      world.setMaxSpriteDrawLimit(normalized);
+    } else {
+      legacyMaxSpriteLimit = normalized;
+      if (typeof globalThis !== 'undefined') {
+        globalThis[LEGACY_SPRITE_LIMIT_KEY] = normalized;
+      }
+    }
+  }
+});
 
 // game data which is available in data files.
 global.GameData = {};

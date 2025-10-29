@@ -1,5 +1,5 @@
 import resourceService from '../../services/resource-service.js';
-import stateService from '../../services/state-service.js';
+import worldService from '../../services/world-service.js';
 import Sprite from './sprite';
 import scene from './scene';
 
@@ -178,9 +178,13 @@ ending.scrollFBP = function*(chunkNum, scrollSpeed, scrollDown) {
 
     surface.updateScreen(null);
 
-    if (Global.needToFadeIn) {
-      yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
-      stateService.setGlobal('needToFadeIn', false);
+    if (worldService.getNeedToFadeIn()) {
+      yield surface.fadeIn(
+        worldService.getPaletteId() || 0,
+        !!worldService.getNightPaletteFlag(),
+        1
+      );
+      worldService.setNeedToFadeIn(false);
     }
 
     yield sleep(400 / scrollSpeed); // sleep(800 / scrollSpeed);
@@ -212,7 +216,7 @@ ending.endingAnimation = function*() {
   srcrect.w = 320;
   dstrect.w = 320;
 
-  stateService.setGlobal('screenWave', 2);
+  worldService.setScreenWave(2);
 
   for (var i = 0; i < 400; i++) {
     // Draw the background
@@ -250,15 +254,19 @@ ending.endingAnimation = function*() {
     // Update the screen
     surface.updateScreen(null);
 
-    if (Global.needToFadeIn) {
-      yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
-      stateService.setGlobal('needToFadeIn', false);
+    if (worldService.getNeedToFadeIn()) {
+      yield surface.fadeIn(
+        worldService.getPaletteId() || 0,
+        !!worldService.getNightPaletteFlag(),
+        1
+      );
+      worldService.setNeedToFadeIn(false);
     }
 
     yield sleep(25); // sleep(50);
   }
 
-  stateService.setGlobal('screenWave', 0);
+  worldService.setScreenWave(0);
 };
 
 function getSprite(n) {

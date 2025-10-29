@@ -1,5 +1,5 @@
 import ajax from '../js/pal/ajax.js';
-import stateService from './state-service.js';
+import worldService from './world-service.js';
 
 class ResourceService {
   constructor() {
@@ -93,7 +93,7 @@ class ResourceService {
     }, []);
 
     this.descCache.set(filename, objectDesc);
-    stateService.setGlobal('objectDesc', objectDesc);
+    worldService.setObjectDescTable(objectDesc);
     return objectDesc;
   }
 

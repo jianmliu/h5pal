@@ -69,6 +69,9 @@ const MAX_PLAYER_EQUIPMENTS = getConstValue('MAX_PLAYER_EQUIPMENTS', 0);
 const MAX_PLAYER_MAGICS = getConstValue('MAX_PLAYER_MAGICS', 0);
 const MAX_INVENTORY = getConstValue('MAX_INVENTORY', 0);
 const MAX_POISONS = getConstValue('MAX_POISONS', 0);
+const MAX_SPRITE_STATE_KEY = 'MAX_SPRITE_TO_DRAW';
+const LEGACY_SPRITE_LIMIT_KEY = '__PAL_LEGACY_MAX_SPRITE__';
+const DEFAULT_MAX_SPRITE_TO_DRAW = 2048;
 
 const toSignedWord = getGlobalFunction('SHORT', function(value) {
   const result = value & 0xFFFF;
@@ -116,6 +119,7 @@ class WorldService extends EventBus {
     this.systemManager = createWorldSystemManager({ worldService: this });
     this._collisionState = null;
     this._eventObjectsVersion = 0;
+    this._maxSpriteDrawLimit = DEFAULT_MAX_SPRITE_TO_DRAW;
   }
 
   init() {
@@ -126,6 +130,7 @@ class WorldService extends EventBus {
     stateService.on('globalChanged', this._handleGlobalChanged);
     stateService.on('gameDataChanged', this._handleGameDataChanged);
     this._initialised = true;
+    this._migrateLegacySpriteLimit();
     this.syncAll();
   }
 
@@ -153,6 +158,31 @@ class WorldService extends EventBus {
   _ensureInitialised() {
     if (!this._initialised) {
       this.init();
+    }
+  }
+
+  _replaceGameDataTable(key, value) {
+    this._ensureInitialised();
+    stateService.setGameData(key, value);
+    return value;
+  }
+
+  _migrateLegacySpriteLimit() {
+    let legacyValue = DEFAULT_MAX_SPRITE_TO_DRAW;
+    if (typeof globalThis !== 'undefined' && typeof globalThis[LEGACY_SPRITE_LIMIT_KEY] === 'number') {
+      const stored = globalThis[LEGACY_SPRITE_LIMIT_KEY];
+      if (Number.isFinite(stored)) {
+        legacyValue = Math.trunc(stored);
+      }
+    } else {
+      const store = getGlobalStore();
+      if (store && typeof store[MAX_SPRITE_STATE_KEY] === 'number' && Number.isFinite(store[MAX_SPRITE_STATE_KEY])) {
+        legacyValue = Math.trunc(store[MAX_SPRITE_STATE_KEY]);
+      }
+    }
+    this._maxSpriteDrawLimit = legacyValue;
+    if (typeof globalThis !== 'undefined') {
+      globalThis[LEGACY_SPRITE_LIMIT_KEY] = legacyValue;
     }
   }
 
@@ -521,6 +551,10 @@ class WorldService extends EventBus {
     this.fire('scriptRegistersSynced', { count: payload.count });
   }
 
+  setScriptEntries(entries) {
+    return this._replaceGameDataTable('scriptEntry', entries || []);
+  }
+
   getViewportComponent() {
     this._ensureInitialised();
     if (!this.entityMaps.viewport) {
@@ -800,6 +834,42 @@ class WorldService extends EventBus {
     });
   }
 
+  resetPoisonStatusMatrix() {
+    this._ensureInitialised();
+    this.mutatePoisonStatus((poisonStatus) => {
+      if (!poisonStatus) {
+        return poisonStatus;
+      }
+      if (poisonStatus.uint8Array) {
+        poisonStatus.uint8Array.fill(0);
+        return poisonStatus;
+      }
+      for (let i = 0; i < poisonStatus.length; i++) {
+        const row = poisonStatus[i];
+        if (!row) {
+          continue;
+        }
+        if (row.uint8Array) {
+          row.uint8Array.fill(0);
+          continue;
+        }
+        for (let j = 0; j < row.length; j++) {
+          const entry = row[j];
+          if (!entry) {
+            continue;
+          }
+          if (entry.uint8Array) {
+            entry.uint8Array.fill(0);
+            continue;
+          }
+          entry.poisonID = 0;
+          entry.poisonScript = 0;
+        }
+      }
+      return poisonStatus;
+    });
+  }
+
   getPlayerMagicSlots(roleId) {
     const roles = this.getPlayerRoles();
     if (!roles || !Array.isArray(roles.magic)) {
@@ -900,6 +970,16 @@ class WorldService extends EventBus {
     });
     this.syncScene();
     return result;
+  }
+
+  setSceneTable(scenes) {
+    return this._replaceGameDataTable('scene', scenes || []);
+  }
+
+  getSceneTable() {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    return store ? store.scene || null : null;
   }
 
   getNextSceneData() {
@@ -1092,6 +1172,16 @@ class WorldService extends EventBus {
     return snapshot;
   }
 
+  setEventObjectTable(eventObjects) {
+    return this._replaceGameDataTable('eventObject', eventObjects || []);
+  }
+
+  getEventObjectTable() {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    return store ? store.eventObject || null : null;
+  }
+
   getSceneEventObjectRange() {
     this._ensureInitialised();
     const sceneRef = this.getSceneData();
@@ -1202,6 +1292,16 @@ class WorldService extends EventBus {
     return snapshot;
   }
 
+  setObjectTable(objects) {
+    return this._replaceGameDataTable('object', objects || []);
+  }
+
+  getObjectTable() {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    return store ? store.object || null : null;
+  }
+
   mutateMagicTable(mutator) {
     this._ensureInitialised();
     if (typeof mutator !== 'function') {
@@ -1217,6 +1317,10 @@ class WorldService extends EventBus {
       return snapshot;
     });
     return snapshot;
+  }
+
+  setMagicTable(magicTable) {
+    return this._replaceGameDataTable('magic', magicTable || []);
   }
 
   getPlayerRoles() {
@@ -1277,6 +1381,10 @@ class WorldService extends EventBus {
     return store.levelUpMagic;
   }
 
+  setLevelUpMagicTable(levelUpMagic) {
+    return this._replaceGameDataTable('levelUpMagic', levelUpMagic || []);
+  }
+
   getStoreEntry(id) {
     this._ensureInitialised();
     const store = getGameDataStore();
@@ -1286,6 +1394,10 @@ class WorldService extends EventBus {
     return store.store[id] || null;
   }
 
+  setStoreTable(stores) {
+    return this._replaceGameDataTable('store', stores || []);
+  }
+
   getEnemyEntry(id) {
     this._ensureInitialised();
     const store = getGameDataStore();
@@ -1293,6 +1405,10 @@ class WorldService extends EventBus {
       return null;
     }
     return store.enemy[id] || null;
+  }
+
+  setEnemyTable(enemies) {
+    return this._replaceGameDataTable('enemy', enemies || []);
   }
 
   copyEnemyTemplate(enemyId) {
@@ -1319,6 +1435,10 @@ class WorldService extends EventBus {
     return store.enemyTeam[id] || null;
   }
 
+  setEnemyTeamTable(enemyTeams) {
+    return this._replaceGameDataTable('enemyTeam', enemyTeams || []);
+  }
+
   getEnemyFormationPosition(index, maxEnemyIndex) {
     this._ensureInitialised();
     const store = getGameDataStore();
@@ -1327,6 +1447,10 @@ class WorldService extends EventBus {
       return null;
     }
     return enemyPos[index][maxEnemyIndex] || null;
+  }
+
+  setEnemyPositionTable(enemyPositions) {
+    return this._replaceGameDataTable('enemyPos', enemyPositions || null);
   }
 
   getBattleFieldEntry(id) {
@@ -1338,6 +1462,10 @@ class WorldService extends EventBus {
     return store.battleField[id] || null;
   }
 
+  setBattleFieldTable(battleFields) {
+    return this._replaceGameDataTable('battleField', battleFields || []);
+  }
+
   getBattleEffectIndexRow(id) {
     this._ensureInitialised();
     const store = getGameDataStore();
@@ -1345,6 +1473,14 @@ class WorldService extends EventBus {
       return null;
     }
     return store.battleEffectIndex[id] || null;
+  }
+
+  setBattleEffectIndexTable(battleEffectIndex) {
+    return this._replaceGameDataTable('battleEffectIndex', battleEffectIndex || []);
+  }
+
+  setPlayerRoles(playerRoles) {
+    return this._replaceGameDataTable('playerRoles', playerRoles || null);
   }
 
   mutatePlayerRoles(mutator) {
@@ -1562,6 +1698,11 @@ class WorldService extends EventBus {
     return store && store.equipmentEffect ? store.equipmentEffect : null;
   }
 
+  getEquipmentEffects() {
+    this._ensureInitialised();
+    return this._getEquipmentEffects();
+  }
+
   getEquipmentEffect(part) {
     this._ensureInitialised();
     if (typeof part !== 'number') {
@@ -1609,7 +1750,11 @@ class WorldService extends EventBus {
       return null;
     }
     const result = mutator(entry);
-    return typeof result === 'undefined' ? entry : result;
+    if (typeof result !== 'undefined' && result !== entry) {
+      effects[part] = result;
+      return result;
+    }
+    return entry;
   }
 
   _mutateEquipmentEffectWord(part, fieldIndex, roleId, updater) {
@@ -1839,6 +1984,10 @@ class WorldService extends EventBus {
     return store && Array.isArray(store.levelUpExp) ? store.levelUpExp : [];
   }
 
+  setLevelUpExpTable(levelUpExp) {
+    return this._replaceGameDataTable('levelUpExp', levelUpExp || []);
+  }
+
   getPartyDirection() {
     this._ensureInitialised();
     const dir = stateService.getGlobal('partyDirection');
@@ -2064,6 +2213,14 @@ class WorldService extends EventBus {
     return this._setNumberGlobal('curMainMenuItem', value, 0);
   }
 
+  getLastEventObjectId() {
+    return this._getNumberGlobal('lastEventObjectId', 0);
+  }
+
+  setLastEventObjectId(value) {
+    return this._setNumberGlobal('lastEventObjectId', value, 0);
+  }
+
   getNoMusicFlag() {
     return this._getBooleanGlobal('noMusic', false);
   }
@@ -2213,6 +2370,39 @@ class WorldService extends EventBus {
 
   setBattleFieldId(value) {
     return this._setNumberGlobal('numBattleField', value, 0);
+  }
+
+  getBattleSpeed() {
+    return this._getNumberGlobal('battleSpeed', 2);
+  }
+
+  setBattleSpeed(value) {
+    return this._setNumberGlobal('battleSpeed', value, 2);
+  }
+
+  getMaxSpriteDrawLimit() {
+    return this._maxSpriteDrawLimit;
+  }
+
+  setMaxSpriteDrawLimit(value) {
+    const normalized = Number.isFinite(value) ? Math.trunc(value) : DEFAULT_MAX_SPRITE_TO_DRAW;
+    this._maxSpriteDrawLimit = normalized;
+    if (typeof globalThis !== 'undefined') {
+      globalThis[LEGACY_SPRITE_LIMIT_KEY] = normalized;
+    }
+    return normalized;
+  }
+
+  getFrameNum() {
+    return this._getNumberGlobal('frameNum', 0);
+  }
+
+  setFrameNum(value) {
+    return this._setNumberGlobal('frameNum', value, 0);
+  }
+
+  adjustFrameNum(delta) {
+    return this._adjustNumberGlobal('frameNum', delta, 0);
   }
 
   isGameStart() {

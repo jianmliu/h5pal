@@ -33,7 +33,7 @@ function BATTLE() {
       return battleService.state;
     }
   }
-  const fallback = stateService.getGlobal('battle');
+  const fallback = worldService.getBattleState();
   if (fallback) {
     if (battleService) {
       battleService.rawState = fallback.__raw__ || fallback;
@@ -157,7 +157,13 @@ function mutateGlobalValue(key, mutator) {
     return worldService.mutateParty(mutator);
   }
   if (key === 'poisonStatus') {
-    return worldService.mutatePoisonStatus(mutator);
+    if (typeof mutator !== 'function') {
+      return worldService.getPoisonStatusMatrix();
+    }
+    return worldService.mutatePoisonStatus(function(status) {
+      const result = mutator(status);
+      return typeof result === 'undefined' ? status : result;
+    });
   }
   return stateService.mutateGlobal(key, function(current) {
     if (typeof mutator !== 'function') {
@@ -448,7 +454,10 @@ function setSpritePosition(sprite, pos) {
 }
 
 function getEventObjectMapObject(eventObjectId) {
-  var targetId = eventObjectId > 0 ? eventObjectId : stateService.getGlobal('lastEventObjectId');
+  var targetId = eventObjectId > 0 ? eventObjectId : worldService.getLastEventObjectId();
+  if (!targetId || targetId <= 0) {
+    return null;
+  }
   var resolvedObject = getEventObjectById(targetId);
   return resolvedObject || null;
 }
@@ -480,7 +489,7 @@ function getMaxPartyMemberIndex() {
 }
 
 function getSceneIdValue() {
-  return worldService.getSceneId() || stateService.getGlobal('numScene');
+  return worldService.getSceneId();
 }
 
 function getChaseRangeValue() {
@@ -617,35 +626,6 @@ function forEachPartyMember(callback) {
     if (!member) continue;
     callback(member, i);
   }
-}
-
-function setGameDataValue(key, value) {
-  return stateService.setGameData(key, value);
-}
-
-function mutateGameDataValue(key, mutator) {
-  return stateService.mutateGameData(key, function(current) {
-    if (typeof mutator !== 'function') {
-      return current;
-    }
-    const result = mutator(current);
-    return typeof result === 'undefined' ? current : result;
-  });
-}
-
-function mutateGameDataEntry(key, index, mutator) {
-  return mutateGameDataValue(key, function(collection) {
-    if (!collection || typeof mutator !== 'function') {
-      return collection;
-    }
-    const numericIndex = Number(index);
-    const target = Number.isNaN(numericIndex) ? collection[index] : collection[numericIndex];
-    if (target == null) {
-      return collection;
-    }
-    mutator(target, collection, Number.isNaN(numericIndex) ? index : numericIndex);
-    return collection;
-  });
 }
 
 function mutatePlayerRoles(mutator) {
@@ -2339,15 +2319,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       // Reload the player sprites
       res.setLoadFlags(LoadFlag.PlayerSprite);
       yield res.loadResources();
-      //for (var i=0; i<Const.MAX_POISONS; ++i) {
-      //  Global.poisonStatus[i] = initTypedArray(PoisonStatus, Const.MAX_PLAYABLE_PLAYER_ROLES);
-      //}
-      mutateGlobalValue('poisonStatus', function(poisonStatus) {
-        if (poisonStatus && poisonStatus.uint8Array) {
-          memset(poisonStatus.uint8Array, 0, poisonStatus.uint8Array.length);
-        }
-        return poisonStatus;
-      });
+      worldService.resetPoisonStatusMatrix();
       yield script.updateEquipments();
       break;
     case 0x0076:
@@ -3060,7 +3032,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
     script.scriptSuccess = false;
     return 0;
   }
-  var lastEventObjectID = 0,
+  var lastEventObjectID = worldService.getLastEventObjectId(),
       nextScriptEntry = scriptEntry,
       ended = false,
       sc,
@@ -3074,7 +3046,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
     eventObjectID = lastEventObjectID;
   }
 
-  lastEventObjectID = eventObjectID;
+  worldService.setLastEventObjectId(eventObjectID);
 
   if (eventObjectID != 0) {
     evtObj = worldService.getEventObject(eventObjectID - 1);

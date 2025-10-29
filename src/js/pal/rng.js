@@ -1,6 +1,6 @@
 import yj_1 from './yj_1';
 import resourceService from '../../services/resource-service.js';
-import stateService from '../../services/state-service.js';
+import worldService from '../../services/world-service.js';
 
 log.trace('rng module load');
 
@@ -299,9 +299,13 @@ rng.play = function*(rngNum, startFrame, endFrame, speed) {
     surface.updateScreen();
 
     // Fade in the screen if needed
-    if (Global.needToFadeIn) {
-      yield surface.fadeIn(Global.numPalette, Global.nightPalette, 1);
-      stateService.setGlobal('needToFadeIn', false);
+    if (worldService.getNeedToFadeIn()) {
+      yield surface.fadeIn(
+        worldService.getPaletteId() || 0,
+        !!worldService.getNightPaletteFlag(),
+        1
+      );
+      worldService.setNeedToFadeIn(false);
     }
 
     // Delay for a while

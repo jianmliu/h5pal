@@ -32,7 +32,7 @@ play.init = function*(surf) {
  * @param {Boolean} trigger       whether to process trigger events or not.
  */
 play.update = function*(trigger) {
-  var currentSceneId = worldService.getSceneId() || stateService.getGlobal('numScene');
+  var currentSceneId = worldService.getSceneId() || 0;
 
   if (trigger) {
     if (worldService.isEnteringScene()) {

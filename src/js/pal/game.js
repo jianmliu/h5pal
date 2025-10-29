@@ -41,20 +41,6 @@ function mutateExp(mutator) {
   });
 }
 
-function setGameDataValue(key, value) {
-  return stateService.setGameData(key, value);
-}
-
-function mutateGameDataValue(key, mutator) {
-  return stateService.mutateGameData(key, function(current) {
-    if (typeof mutator !== 'function') {
-      return current;
-    }
-    const result = mutator(current);
-    return typeof result === 'undefined' ? current : result;
-  });
-}
-
 function encodeSavePayload(saveData, savedTimes, timestamp) {
   var buf = saveData.uint8Array;
   var arr = new Array(buf.length);
@@ -133,10 +119,10 @@ game.clearPlayerStatus = function() {
 
 game.loadDefaultGame = function*() {
   // Load the default data from the game data files.
-  setGameDataValue('eventObject', readTypedArray(EventObject, Files.SSS.readChunk(0)));
-  setGameDataValue('scene', readTypedArray(Scene, Files.SSS.readChunk(1)));
-  setGameDataValue('object', readTypedArray(ObjectUnion, Files.SSS.readChunk(2)));
-  setGameDataValue('playerRoles', new PlayerRoles(Files.DATA.readChunk(3)));
+  worldService.setEventObjectTable(readTypedArray(EventObject, Files.SSS.readChunk(0)));
+  worldService.setSceneTable(readTypedArray(Scene, Files.SSS.readChunk(1)));
+  worldService.setObjectTable(readTypedArray(ObjectUnion, Files.SSS.readChunk(2)));
+  worldService.setPlayerRoles(new PlayerRoles(Files.DATA.readChunk(3)));
   // Set some other default data.
   updateGlobalValues({
     cash: 0,
@@ -153,7 +139,7 @@ game.loadDefaultGame = function*() {
   if (!PAL_CLASSIC) {
     setGlobalValue('battleSpeed', 2);
   }
-  setGlobalValue('enteringScene', 1);
+  worldService.setEnteringScene(true);
   //utils.extend(Global, {
   //  inventory: initTypedArray(Inventory, Const.MAX_INVENTORY),
   //  poisonStatus: [],
@@ -167,10 +153,12 @@ game.loadDefaultGame = function*() {
   //}
   mutateExp(function(exp) {
     if (!exp) return exp;
+    const roles = worldService.getPlayerRoles();
+    const levels = roles && roles.level ? roles.level : null;
     for (var i = 0; i < Const.MAX_PLAYER_ROLES; ++i) {
       AllExperience.types.forEach(function(name) {
-        if (exp[name] && exp[name][i]) {
-          exp[name][i].level = GameData.playerRoles.level[i];
+        if (exp[name] && exp[name][i] && levels) {
+          exp[name][i].level = levels[i];
         }
       });
     }
@@ -183,19 +171,19 @@ game.loadDefaultGame = function*() {
  */
 game.initGlobalGameData = function*() {
   // MKF bundles are preloaded during startup via the resource service.
-  setGameDataValue('scriptEntry', readTypedArray(ScriptEntry, Files.SSS.readChunk(4)));
-  setGameDataValue('store', readTypedArray(Store, Files.DATA.readChunk(0)));
-  setGameDataValue('enemy', readTypedArray(Enemy, Files.DATA.readChunk(1)));
-  setGameDataValue('enemyTeam', readTypedArray(EnemyTeam, Files.DATA.readChunk(2)));
-  setGameDataValue('magic', readTypedArray(Magic, Files.DATA.readChunk(4)));
-  setGameDataValue('battleField', readTypedArray(BattleField, Files.DATA.readChunk(5)));
-  setGameDataValue('levelUpMagic', readTypedArray(LevelUpMagicAll, Files.DATA.readChunk(6)));
-  setGameDataValue('battleEffectIndex', readArray2D(
+  worldService.setScriptEntries(readTypedArray(ScriptEntry, Files.SSS.readChunk(4)));
+  worldService.setStoreTable(readTypedArray(Store, Files.DATA.readChunk(0)));
+  worldService.setEnemyTable(readTypedArray(Enemy, Files.DATA.readChunk(1)));
+  worldService.setEnemyTeamTable(readTypedArray(EnemyTeam, Files.DATA.readChunk(2)));
+  worldService.setMagicTable(readTypedArray(Magic, Files.DATA.readChunk(4)));
+  worldService.setBattleFieldTable(readTypedArray(BattleField, Files.DATA.readChunk(5)));
+  worldService.setLevelUpMagicTable(readTypedArray(LevelUpMagicAll, Files.DATA.readChunk(6)));
+  worldService.setBattleEffectIndexTable(readArray2D(
     Files.DATA.readChunk(11),
     10, 2, 2, 0
   ));
-  setGameDataValue('enemyPos', new EnemyPos(Files.DATA.readChunk(13)));
-  setGameDataValue('levelUpExp', readArray(Files.DATA.readChunk(14), Const.MAX_LEVELS, 2, 0));
+  worldService.setEnemyPositionTable(new EnemyPos(Files.DATA.readChunk(13)));
+  worldService.setLevelUpExpTable(readArray(Files.DATA.readChunk(14), Const.MAX_LEVELS, 2, 0));
 };
 
 game.loadGame = function*(slot) {
@@ -256,7 +244,7 @@ game._loadGame = function(s) {
   memcpy(Global.trail.uint8Array, s.trail.uint8Array, Global.trail.uint8Array.length);
   //Global.exp = s.exp;
   memcpy(Global.exp.uint8Array, s.exp.uint8Array, Global.exp.uint8Array.length);
-  setGameDataValue('playerRoles', s.playerRoles);
+  worldService.setPlayerRoles(s.playerRoles);
   //Global.poisonStatus = [];
   memset(Global.poisonStatus.uint8Array, 0, Global.poisonStatus.uint8Array.length);
   //for (var i=0; i<Const.MAX_POISONS; ++i){
@@ -264,10 +252,10 @@ game._loadGame = function(s) {
   //}
   memcpy(Global.inventory.uint8Array, s.inventory.uint8Array, Global.inventory.uint8Array.length);
   //Global.inventory = s.inventory;
-  setGameDataValue('scene', s.scene);
-  setGameDataValue('object', s.object);
-  setGameDataValue('eventObject', s.eventObject);
-  setGameDataValue('enteringScene', false);
+  worldService.setSceneTable(s.scene);
+  worldService.setObjectTable(s.object);
+  worldService.setEventObjectTable(s.eventObject);
+  worldService.setEnteringScene(false);
 
   //PAL_CompressInventory();
   script.compressInventory();
@@ -304,12 +292,24 @@ game._saveGame = function() {
   memcpy(saveData.party.uint8Array, Global.party.uint8Array, saveData.party.uint8Array.length);
   memcpy(saveData.trail.uint8Array, Global.trail.uint8Array, saveData.trail.uint8Array.length);
   memcpy(saveData.exp.uint8Array, Global.exp.uint8Array, saveData.exp.uint8Array.length);
-  memcpy(saveData.playerRoles.uint8Array, GameData.playerRoles.uint8Array, saveData.playerRoles.uint8Array.length);
+  const playerRoles = worldService.getPlayerRoles();
+  if (playerRoles && playerRoles.uint8Array) {
+    memcpy(saveData.playerRoles.uint8Array, playerRoles.uint8Array, saveData.playerRoles.uint8Array.length);
+  }
   memcpy(saveData.poisonStatus.uint8Array, Global.poisonStatus.uint8Array, saveData.poisonStatus.uint8Array.length);
   memcpy(saveData.inventory.uint8Array, Global.inventory.uint8Array, saveData.inventory.uint8Array.length);
-  memcpy(saveData.scene.uint8Array, GameData.scene.uint8Array, saveData.scene.uint8Array.length);
-  memcpy(saveData.object.uint8Array, GameData.object.uint8Array, saveData.object.uint8Array.length);
-  memcpy(saveData.eventObject.uint8Array, GameData.eventObject.uint8Array, saveData.eventObject.uint8Array.length);
+  const sceneTable = worldService.getSceneTable();
+  if (sceneTable && sceneTable.uint8Array) {
+    memcpy(saveData.scene.uint8Array, sceneTable.uint8Array, saveData.scene.uint8Array.length);
+  }
+  const objectTable = worldService.getObjectTable();
+  if (objectTable && objectTable.uint8Array) {
+    memcpy(saveData.object.uint8Array, objectTable.uint8Array, saveData.object.uint8Array.length);
+  }
+  const eventObjectTable = worldService.getEventObjectTable();
+  if (eventObjectTable && eventObjectTable.uint8Array) {
+    memcpy(saveData.eventObject.uint8Array, eventObjectTable.uint8Array, saveData.eventObject.uint8Array.length);
+  }
 
   return saveData;
 };

@@ -8,7 +8,6 @@ import utils from './utils';
 import input from './input';
 import uigame from './uigame';
 import battleServiceDefault from '../../services/battle-service.js';
-import stateService from '../../services/state-service.js';
 import worldService from '../../services/world-service.js';
 
 log.trace('uibattle module load');
@@ -98,13 +97,8 @@ function BATTLE() {
   if (state) {
     return state;
   }
-  if (typeof stateService.getGlobal === 'function') {
-    var fallback = stateService.getGlobal('battle');
-    if (fallback) {
-      return fallback;
-    }
-  }
-  return {};
+  var fallback = worldService.getBattleState();
+  return fallback || {};
 }
 
 function snapshotUIState(component) {
@@ -202,7 +196,7 @@ function runUIUpdate(mutator, context) {
     return result;
   });
 
-  if (typeof nextAutoBattle !== 'undefined' && typeof stateService.setGlobal === 'function') {
+  if (typeof nextAutoBattle !== 'undefined') {
     worldService.setAutoBattle(nextAutoBattle);
   }
 
@@ -372,15 +366,10 @@ function getUIStateSnapshot() {
 function getAutoBattle(component) {
   var uiComponent = component || getUIComponent();
   if (uiComponent && typeof uiComponent.autoBattle !== 'undefined') {
-    return uiComponent.autoBattle;
+    return !!uiComponent.autoBattle;
   }
-  if (typeof stateService.getGlobal === 'function') {
-    var autoBattle = worldService.getAutoBattle();
-    if (typeof autoBattle !== 'undefined') {
-      return !!autoBattle;
-    }
-  }
-  return !!worldService.getAutoBattle();
+  var autoBattle = worldService.getAutoBattle();
+  return typeof autoBattle !== 'undefined' ? !!autoBattle : false;
 }
 
 function getUIStateObject() {
@@ -392,11 +381,9 @@ function getUIStateObject() {
   if (state && state.UI) {
     return state.UI;
   }
-  if (typeof stateService.getGlobal === 'function') {
-    var fallback = stateService.getGlobal('battle');
-    if (fallback && fallback.UI) {
-      return fallback.UI;
-    }
+  var fallback = worldService.getBattleState();
+  if (fallback && fallback.UI) {
+    return fallback.UI;
   }
   return null;
 }
@@ -408,13 +395,11 @@ function getUIProp(prop, fallback, component) {
   }
   if (prop === 'autoAttack') {
     if (typeof uiComponent.autoBattle !== 'undefined') {
-      return uiComponent.autoBattle;
+      return !!uiComponent.autoBattle;
     }
-    if (typeof stateService.getGlobal === 'function') {
-      var autoBattle = worldService.getAutoBattle();
-      if (typeof autoBattle !== 'undefined') {
-        return !!autoBattle;
-      }
+    var autoBattle = worldService.getAutoBattle();
+    if (typeof autoBattle !== 'undefined') {
+      return !!autoBattle;
     }
   }
   var uiState = uiComponent.stateRef || getUIStateObject();
