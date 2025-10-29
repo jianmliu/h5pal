@@ -2,7 +2,6 @@ import utils from './utils';
 import input from './input';
 import Sprite from './sprite';
 import Map from './map';
-import stateService from '../../services/state-service.js';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
 
@@ -66,7 +65,7 @@ scene.init = function*(surf) {
 };
 
 scene.makeScene = function*() {
-  var sceneId = worldService.getSceneId() || stateService.getGlobal('numScene');
+  var sceneId = worldService.getSceneId() || 0;
   var activeScene = sceneId ? worldService.getSceneEntry(sceneId) : null;
   if (!activeScene) return;
   if (scene.currentSceneId !== sceneId) {
@@ -295,7 +294,7 @@ function legacyCheckObstacle(pos, checkEventObjects, selfObject) {
     }
   }
 
-  var numScene = worldService.getSceneId() || stateService.getGlobal('numScene');
+  var numScene = worldService.getSceneId() || 0;
   var sc = numScene ? worldService.getSceneEntry(numScene) : null;
   if (!sc || typeof sc.getMap !== 'function') {
     return true;
@@ -424,7 +423,7 @@ utils.extend(Scene.prototype, {
       var sprite = new Sprite(chunk);
       sprite.__paletteSpriteNum = spriteNum;
       array[localIndex] = sprite;
-      worldService.mutateEventObject(entry.index, function(eventState) {
+      worldService.mutateEventObjectById(entry.id, function(eventState) {
         if (eventState) {
           eventState.spriteFramesAuto = sprite.frameCount;
         }
@@ -471,7 +470,7 @@ utils.extend(Scene.prototype, {
       sprite.__paletteSpriteNum = spriteNum;
       this.eventObjectSprite[localIndex] = sprite;
       if (state) {
-        worldService.mutateEventObject(targetIndex, function(eventState) {
+        worldService.mutateEventObjectById(eventObjectID, function(eventState) {
           if (eventState) {
             eventState.spriteFramesAuto = sprite.frameCount;
           }

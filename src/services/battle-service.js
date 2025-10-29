@@ -33,6 +33,22 @@ function ensureGameGlobal() {
   return store;
 }
 
+function getPartySnapshot() {
+  const party = worldService.getParty();
+  return Array.isArray(party) ? party : [];
+}
+
+function getPlayerStatusRow(roleId) {
+  if (typeof roleId !== 'number' || roleId < 0) {
+    return null;
+  }
+  return worldService.getPlayerStatus(roleId);
+}
+
+function getAutoBattleFlag() {
+  return !!worldService.getAutoBattle();
+}
+
 class BattleService extends EventBus {
   constructor() {
     super();
@@ -247,37 +263,43 @@ class BattleService extends EventBus {
       return;
     }
     const registry = this.ecs;
-    const hasGlobal = typeof Global !== 'undefined' && Global;
-
-    const maxPartyMemberIndex = hasGlobal && typeof Global.maxPartyMemberIndex === 'number'
-      ? Global.maxPartyMemberIndex
-      : -1;
+    const party = getPartySnapshot();
+    const rawMaxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+    const maxPartyMemberIndex = Math.max(
+      -1,
+      Math.min(
+        typeof rawMaxPartyMemberIndex === 'number' ? rawMaxPartyMemberIndex : party.length - 1,
+        party.length - 1
+      )
+    );
 
     const gameData = typeof GameData !== 'undefined' ? GameData : null;
 
     for (let idx = 0; idx <= maxPartyMemberIndex; idx++) {
-      const partyEntry = hasGlobal && Array.isArray(Global.party) ? Global.party[idx] : null;
+      const partyEntry = party[idx];
       const playerState = state.player && state.player[idx];
       if (!partyEntry || !playerState) {
         continue;
       }
+      const roleId = partyEntry.playerRole;
+      const statusRow = getPlayerStatusRow(roleId);
       const entityId = registry.createEntity({ tags: BattleTags.Player });
       registry.addComponent(entityId, BattleComponents.BattleActor, createBattleActorComponent({
         type: 'player',
         index: idx,
-        roleId: partyEntry.playerRole
+        roleId
       }));
       registry.addComponent(entityId, BattleComponents.Time, createTimeComponent(playerState));
       registry.addComponent(entityId, BattleComponents.Status, createStatusComponent({
         type: 'player',
         playerIndex: idx,
-        roleId: partyEntry.playerRole,
-        statusRef: hasGlobal && Global.playerStatus ? Global.playerStatus[partyEntry.playerRole] : null
+        roleId,
+        statusRef: statusRow
       }));
       registry.addComponent(entityId, BattleComponents.Stats, createStatsComponent({
         type: 'player',
         actorIndex: idx,
-        roleId: partyEntry.playerRole,
+        roleId,
         statsRef: gameData && gameData.playerRoles ? {
           hp: gameData.playerRoles.HP,
           mp: gameData.playerRoles.MP,
@@ -285,7 +307,7 @@ class BattleService extends EventBus {
           maxMP: gameData.playerRoles.maxMP
         } : null,
         extra: {
-          statusRef: hasGlobal && Global.playerStatus ? Global.playerStatus[partyEntry.playerRole] : null
+          statusRef: statusRow
         }
       }));
       registry.addComponent(entityId, BattleComponents.Position, createPositionComponent({
@@ -400,7 +422,7 @@ class BattleService extends EventBus {
       currentPlayer: uiState ? uiState.curPlayerIndex : null,
       selectedAction: uiState ? uiState.selectedAction : null,
       selectedIndex: uiState ? uiState.selectedIndex : null,
-      autoBattle: typeof Global !== 'undefined' && Global ? Global.autoBattle : false
+      autoBattle: getAutoBattleFlag()
     }));
     this.entityMaps.ui = uiEntity;
 
@@ -447,7 +469,7 @@ class BattleService extends EventBus {
     component.currentPlayer = uiState ? uiState.curPlayerIndex : null;
     component.selectedAction = uiState ? uiState.selectedAction : null;
     component.selectedIndex = uiState ? uiState.selectedIndex : null;
-    component.autoBattle = typeof Global !== 'undefined' && Global ? Global.autoBattle : false;
+    component.autoBattle = getAutoBattleFlag();
   }
 
   syncActorComponents() {
@@ -456,11 +478,12 @@ class BattleService extends EventBus {
     if (!registry || !state) {
       return;
     }
-    const hasGlobal = typeof Global !== 'undefined' && Global;
+    const party = getPartySnapshot();
     const gameData = typeof GameData !== 'undefined' ? GameData : null;
 
     this.entityMaps.player.forEach((entityId, index) => {
       const playerState = state.player && state.player[index];
+      const partyEntry = party[index];
       if (!playerState) {
         return;
       }
@@ -468,9 +491,10 @@ class BattleService extends EventBus {
       if (statsComp) {
         statsComp.stateRef = playerState;
         statsComp.actorIndex = index;
-        if (statsComp.extra && hasGlobal && Global.party && Global.party[index]) {
-          const roleId = Global.party[index].playerRole;
+        if (statsComp.extra && partyEntry && typeof partyEntry.playerRole === 'number') {
+          const roleId = partyEntry.playerRole;
           statsComp.extra.roleId = roleId;
+          statsComp.extra.statusRef = getPlayerStatusRow(roleId);
           if (gameData && gameData.playerRoles) {
             statsComp.current = {
               hp: gameData.playerRoles.HP ? gameData.playerRoles.HP[roleId] : null,
@@ -479,6 +503,8 @@ class BattleService extends EventBus {
               maxMP: gameData.playerRoles.maxMP ? gameData.playerRoles.maxMP[roleId] : null
             };
           }
+        } else if (statsComp.extra) {
+          statsComp.extra.statusRef = null;
         }
       }
       const positionComp = registry.getComponent(entityId, BattleComponents.Position);

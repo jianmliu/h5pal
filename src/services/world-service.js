@@ -167,6 +167,25 @@ class WorldService extends EventBus {
     return value;
   }
 
+  _copyStructIntoGlobal(key, source, syncFn) {
+    this._ensureInitialised();
+    if (typeof source === 'undefined') {
+      stateService.setGlobal(key, source);
+      if (typeof syncFn === 'function') syncFn();
+      return source;
+    }
+    const current = stateService.getGlobal(key);
+    if (current && current.uint8Array && source && source.uint8Array && current.uint8Array.length === source.uint8Array.length) {
+      current.uint8Array.set(source.uint8Array);
+      if (typeof syncFn === 'function') syncFn();
+      return current;
+    }
+    const clone = (source && typeof source.copy === 'function') ? source.copy() : source;
+    stateService.setGlobal(key, clone);
+    if (typeof syncFn === 'function') syncFn();
+    return clone;
+  }
+
   _migrateLegacySpriteLimit() {
     let legacyValue = DEFAULT_MAX_SPRITE_TO_DRAW;
     if (typeof globalThis !== 'undefined' && typeof globalThis[LEGACY_SPRITE_LIMIT_KEY] === 'number') {
@@ -245,6 +264,14 @@ class WorldService extends EventBus {
       }
     }
     this.fire('viewportSynced', { value: viewportValue, partyOffset: offsetValue });
+  }
+
+  persistViewport() {
+    const component = this._ensureViewportComponent();
+    const viewportValue = component && typeof component.value === 'number' ? component.value : 0;
+    const offsetValue = component && typeof component.partyOffset === 'number' ? component.partyOffset : 0;
+    stateService.setGlobal('viewport', viewportValue);
+    stateService.setGlobal('partyOffset', offsetValue);
   }
 
   syncPartyMembers() {
@@ -563,6 +590,31 @@ class WorldService extends EventBus {
     return this.registry.getComponent(this.entityMaps.viewport, WorldComponents.Viewport);
   }
 
+  _ensureViewportComponent() {
+    this._ensureInitialised();
+    let entityId = this.entityMaps.viewport;
+    const currentViewport = stateService.getGlobal('viewport') || 0;
+    const currentOffset = stateService.getGlobal('partyOffset') || 0;
+    if (!entityId) {
+      entityId = this.registry.createEntity();
+      this.registry.addComponent(entityId, WorldComponents.Viewport, createViewportComponent({
+        value: currentViewport,
+        partyOffset: currentOffset
+      }));
+      this.entityMaps.viewport = entityId;
+      return this.registry.getComponent(entityId, WorldComponents.Viewport);
+    }
+    let component = this.registry.getComponent(entityId, WorldComponents.Viewport);
+    if (!component) {
+      this.registry.addComponent(entityId, WorldComponents.Viewport, createViewportComponent({
+        value: currentViewport,
+        partyOffset: currentOffset
+      }));
+      component = this.registry.getComponent(entityId, WorldComponents.Viewport);
+    }
+    return component;
+  }
+
   getPartyComponent(index) {
     this._ensureInitialised();
     const entityId = this.entityMaps.party.get(index);
@@ -634,64 +686,97 @@ class WorldService extends EventBus {
   getScriptEntry(entry) {
     this._ensureInitialised();
     const registry = this.registry;
-    if (!this.entityMaps.scriptRegister) {
-      return null;
+    if (this.entityMaps.scriptRegister) {
+      const component = registry.getComponent(this.entityMaps.scriptRegister, WorldComponents.ScriptRegister);
+      if (component && component.entries && typeof component.entries.length === 'number') {
+        const candidate = component.entries[entry];
+        if (typeof candidate !== 'undefined') {
+          return candidate || null;
+        }
+      }
     }
-    const component = registry.getComponent(this.entityMaps.scriptRegister, WorldComponents.ScriptRegister);
-    if (!component || !Array.isArray(component.entries)) {
-      return null;
+    const gameData = getGameDataStore();
+    const scriptEntries = gameData && gameData.scriptEntry;
+    if (scriptEntries && typeof scriptEntries.length === 'number') {
+      return scriptEntries[entry] || null;
     }
-    return component.entries[entry] || null;
+    return null;
   }
 
   getViewport() {
     this._ensureInitialised();
-    return stateService.getGlobal('viewport') || 0;
+    const component = this.getViewportComponent() || this._ensureViewportComponent();
+    if (component && typeof component.value === 'number') {
+      return component.value;
+    }
+    const fallback = stateService.getGlobal('viewport') || 0;
+    if (component) {
+      component.value = fallback;
+    }
+    return fallback;
   }
 
   getPartyOffset() {
     this._ensureInitialised();
-    return stateService.getGlobal('partyOffset') || 0;
+    const component = this.getViewportComponent() || this._ensureViewportComponent();
+    if (component && typeof component.partyOffset === 'number') {
+      return component.partyOffset;
+    }
+    const fallback = stateService.getGlobal('partyOffset') || 0;
+    if (component) {
+      component.partyOffset = fallback;
+    }
+    return fallback;
   }
 
   setViewport(value) {
     this._ensureInitialised();
-    stateService.setGlobal('viewport', value);
-    this.syncViewport();
-    return value;
+    const component = this._ensureViewportComponent();
+    const resolved = Number.isFinite(value) ? value : 0;
+    component.value = resolved;
+    this.persistViewport();
+    return resolved;
   }
 
   mutateViewport(mutator) {
     this._ensureInitialised();
-    const result = stateService.mutateGlobal('viewport', (current) => {
-      if (typeof mutator !== 'function') {
-        return current;
-      }
-      const next = mutator(current);
-      return typeof next === 'undefined' ? current : next;
-    });
-    this.syncViewport();
-    return result;
+    const component = this._ensureViewportComponent();
+    if (typeof mutator !== 'function') {
+      return component.value;
+    }
+    const next = mutator(component.value);
+    if (typeof next === 'undefined') {
+      return component.value;
+    }
+    const resolved = Number.isFinite(next) ? next : component.value;
+    component.value = resolved;
+    this.persistViewport();
+    return resolved;
   }
 
   setPartyOffset(value) {
     this._ensureInitialised();
-    stateService.setGlobal('partyOffset', value);
-    this.syncViewport();
-    return value;
+    const component = this._ensureViewportComponent();
+    const resolved = Number.isFinite(value) ? value : 0;
+    component.partyOffset = resolved;
+    this.persistViewport();
+    return resolved;
   }
 
   mutatePartyOffset(mutator) {
     this._ensureInitialised();
-    const result = stateService.mutateGlobal('partyOffset', (current) => {
-      if (typeof mutator !== 'function') {
-        return current;
-      }
-      const next = mutator(current);
-      return typeof next === 'undefined' ? current : next;
-    });
-    this.syncViewport();
-    return result;
+    const component = this._ensureViewportComponent();
+    if (typeof mutator !== 'function') {
+      return component.partyOffset;
+    }
+    const next = mutator(component.partyOffset);
+    if (typeof next === 'undefined') {
+      return component.partyOffset;
+    }
+    const resolved = Number.isFinite(next) ? next : component.partyOffset;
+    component.partyOffset = resolved;
+    this.persistViewport();
+    return resolved;
   }
 
   mutateTrail(mutator) {
@@ -707,6 +792,15 @@ class WorldService extends EventBus {
     return result;
   }
 
+  getTrailStruct() {
+    this._ensureInitialised();
+    return stateService.getGlobal('trail') || null;
+  }
+
+  setTrailStruct(struct) {
+    return this._copyStructIntoGlobal('trail', struct, () => this.syncTrail());
+  }
+
   getPartyMember(index) {
     this._ensureInitialised();
     const party = stateService.getGlobal('party') || [];
@@ -716,7 +810,18 @@ class WorldService extends EventBus {
   getParty() {
     this._ensureInitialised();
     const party = stateService.getGlobal('party');
-    return Array.isArray(party) ? party : [];
+    if (Array.isArray(party)) {
+      return party;
+    }
+    if (party && typeof party.length === 'number') {
+      return party;
+    }
+    return [];
+  }
+
+  getPartyStruct() {
+    this._ensureInitialised();
+    return stateService.getGlobal('party') || null;
   }
 
   getMaxPartyMemberIndex() {
@@ -741,10 +846,19 @@ class WorldService extends EventBus {
     });
   }
 
+  setPartyStruct(struct) {
+    return this._copyStructIntoGlobal('party', struct, () => this.syncPartyMembers());
+  }
+
   getInventory() {
     this._ensureInitialised();
     const inventory = stateService.getGlobal('inventory');
     return Array.isArray(inventory) ? inventory : [];
+  }
+
+  getInventoryStruct() {
+    this._ensureInitialised();
+    return stateService.getGlobal('inventory') || null;
   }
 
   mutateInventory(mutator) {
@@ -757,6 +871,10 @@ class WorldService extends EventBus {
       const result = mutator(current);
       return typeof result === 'undefined' ? current : result;
     });
+  }
+
+  setInventoryStruct(struct) {
+    return this._copyStructIntoGlobal('inventory', struct);
   }
 
   getInventorySlot(index) {
@@ -775,6 +893,11 @@ class WorldService extends EventBus {
     this._ensureInitialised();
     const status = stateService.getGlobal('playerStatus');
     return Array.isArray(status) ? status : [];
+  }
+
+  getPlayerStatusStruct() {
+    this._ensureInitialised();
+    return stateService.getGlobal('playerStatus') || null;
   }
 
   mutatePlayerStatus(mutator) {
@@ -816,10 +939,53 @@ class WorldService extends EventBus {
     return matrix[roleId] || null;
   }
 
+  setPlayerStatusStruct(struct) {
+    return this._copyStructIntoGlobal('playerStatus', struct);
+  }
+
+  resetPlayerStatusMatrix() {
+    this._ensureInitialised();
+    const status = stateService.getGlobal('playerStatus');
+    if (!status) {
+      return null;
+    }
+    if (status.uint8Array) {
+      status.uint8Array.fill(0);
+      return status;
+    }
+    if (Array.isArray(status)) {
+      for (let i = 0; i < status.length; i++) {
+        const row = status[i];
+        if (!row) {
+          continue;
+        }
+        if (row.uint8Array) {
+          row.uint8Array.fill(0);
+          continue;
+        }
+        if (Array.isArray(row)) {
+          for (let j = 0; j < row.length; j++) {
+            row[j] = 0;
+          }
+        } else if (typeof row === 'object') {
+          Object.keys(row).forEach((key) => {
+            row[key] = 0;
+          });
+        }
+      }
+    }
+    return status;
+  }
+
   getPoisonStatusMatrix() {
     this._ensureInitialised();
     const status = stateService.getGlobal('poisonStatus');
     return Array.isArray(status) ? status : [];
+  }
+
+  getPoisonStatusStruct() {
+    this._ensureInitialised();
+    return stateService.getGlobal('poisonStatus') || null;
   }
 
   mutatePoisonStatus(mutator) {
@@ -870,6 +1036,10 @@ class WorldService extends EventBus {
     });
   }
 
+  setPoisonStatusStruct(struct) {
+    return this._copyStructIntoGlobal('poisonStatus', struct);
+  }
+
   getPlayerMagicSlots(roleId) {
     const roles = this.getPlayerRoles();
     if (!roles || !Array.isArray(roles.magic)) {
@@ -918,6 +1088,17 @@ class WorldService extends EventBus {
   getSceneId() {
     this._ensureInitialised();
     return stateService.getGlobal('numScene');
+  }
+
+  setSceneId(sceneId) {
+    this._ensureInitialised();
+    stateService.setGlobal('numScene', sceneId);
+    this.syncScene();
+    this.syncMapMeta();
+    this.syncMapTiles();
+    this.syncEventObjects();
+    this.ensureCollisionState();
+    return sceneId;
   }
 
   getSceneData() {
@@ -1150,6 +1331,17 @@ class WorldService extends EventBus {
     this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
     this.fire('eventObjectMutated', { id, sceneId: stateService.getGlobal('numScene'), state: updatedEntry });
     return updatedEntry;
+  }
+
+  mutateEventObjectById(eventId, mutator) {
+    if (!Number.isFinite(eventId)) {
+      return null;
+    }
+    const index = Math.trunc(eventId) - 1;
+    if (index < 0) {
+      return null;
+    }
+    return this.mutateEventObject(index, mutator);
   }
 
   mutateEventObjects(mutator) {
@@ -1963,6 +2155,10 @@ class WorldService extends EventBus {
       }
       return exp;
     });
+  }
+
+  setExpStruct(struct) {
+    return this._copyStructIntoGlobal('exp', struct);
   }
 
   getLevelUpExp(level) {

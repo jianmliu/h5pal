@@ -7,7 +7,6 @@ import rng from './rng';
 import music from './music';
 import sound from './sound';
 import battleService from '../../services/battle-service.js';
-import stateService from '../../services/state-service.js';
 import worldService from '../../services/world-service.js';
 
 log.trace('script module load');
@@ -73,16 +72,25 @@ function setGlobalValue(key, value) {
       return worldService.setLastUnequippedItem(value);
     case 'maxPartyMemberIndex':
       return worldService.setMaxPartyMemberIndex(value);
+    case 'numScene':
+      return worldService.setSceneId(value);
     case 'enteringScene':
       return worldService.setEnteringScene(value);
+    case 'nightPalette':
+      return worldService.setNightPaletteFlag(value);
     case 'musicNum':
       return worldService.setMusicTrack(value);
     case 'numBattleMusic':
       return worldService.setBattleMusicTrack(value);
     case 'numBattleField':
       return worldService.setBattleFieldId(value);
+    case 'playerStatus':
+      return worldService.setPlayerStatusStruct(value);
+    case 'battleSpeed':
+      return worldService.setBattleSpeed(value);
     default:
-      return stateService.setGlobal(key, value);
+      warnLog('[SCRIPT] setGlobalValue skipped unknown key "' + key + '"');
+      return undefined;
   }
 }
 
@@ -165,27 +173,8 @@ function mutateGlobalValue(key, mutator) {
       return typeof result === 'undefined' ? status : result;
     });
   }
-  return stateService.mutateGlobal(key, function(current) {
-    if (typeof mutator !== 'function') {
-      return current;
-    }
-    const result = mutator(current);
-    return typeof result === 'undefined' ? current : result;
-  });
-}
-
-function mutateGlobalEntry(key, index, mutator) {
-  return mutateGlobalValue(key, function(collection) {
-    if (!collection || typeof mutator !== 'function') {
-      return collection;
-    }
-    const numericIndex = Number(index);
-    if (Number.isNaN(numericIndex) || collection[numericIndex] == null) {
-      return collection;
-    }
-    mutator(collection[numericIndex], collection, numericIndex);
-    return collection;
-  });
+  warnLog('[SCRIPT] mutateGlobalValue skipped unknown key "' + key + '"');
+  return undefined;
 }
 
 function adjustGlobalNumber(key, delta) {
@@ -327,11 +316,10 @@ function getEventObjectById(eventId) {
 }
 
 function mutateEventObjectById(eventId, mutator) {
-  var index = normalizeEventIndex(eventId);
-  if (index == null || typeof mutator !== 'function') {
+  if (typeof mutator !== 'function') {
     return null;
   }
-  return worldService.mutateEventObject(index, mutator);
+  return worldService.mutateEventObjectById(eventId, mutator);
 }
 
 function resolveEventTarget(operand, fallbackId) {
@@ -541,12 +529,6 @@ function warnLog(message) {
 function getScriptEntrySafe(scriptEntry, eventObjectID, context) {
   var sc = worldService.getScriptEntry(scriptEntry);
   if (!sc) {
-    var scriptTable = stateService.getGameData('scriptEntry');
-    if (Array.isArray(scriptTable)) {
-      sc = scriptTable[scriptEntry] || null;
-    }
-  }
-  if (!sc) {
     warnLog('[SCRIPT] ' + (context || 'script') +
       ' missing script entry ' + scriptEntry +
       ' (event ' + (eventObjectID || 0) + ')');
@@ -638,10 +620,6 @@ function mutateMagic(mutator) {
 
 function mutateObjects(mutator) {
   return worldService.mutateObjects(mutator);
-}
-
-function mutateEventObjects(mutator) {
-  return worldService.mutateEventObjects(mutator);
 }
 
 function getObjectEntry(objectId) {
@@ -1292,8 +1270,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Set the direction and gesture for a party member');
       var partyDirection = sc.operand[0];
       setPartyDirection(partyDirection);
-      mutateGlobalEntry('party', sc.operand[2], function(member) {
+      worldService.mutatePartyMember(sc.operand[2], function(member) {
+        if (!member) {
+          return member;
+        }
         member.frame = partyDirection * 3 + sc.operand[1];
+        return member;
       });
       break;
     case 0x0016:
@@ -1553,14 +1535,34 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0024:
       script.debug('[SCRIPT] Set the autoscript entry address for an event object');
-      if (sc.operand[0] !== 0) {
-        current.autoScript = sc.operand[1];
+      if (sc.operand[0] !== 0 && curEventObjectID > 0) {
+        var nextAutoScript = Number.isFinite(sc.operand[1]) ? sc.operand[1] : 0;
+        mutateEventObjectById(curEventObjectID, function(target) {
+          if (!target) {
+            return target;
+          }
+          target.autoScript = nextAutoScript;
+          return target;
+        });
+        if (current) {
+          current.autoScript = nextAutoScript;
+        }
       }
       break;
     case 0x0025:
       script.debug('[SCRIPT] Set the trigger sc entry address for an event object');
-      if (sc.operand[0] !== 0) {
-         current.triggerScript = sc.operand[1];
+      if (sc.operand[0] !== 0 && curEventObjectID > 0) {
+        var nextTriggerScript = Number.isFinite(sc.operand[1]) ? sc.operand[1] : 0;
+        mutateEventObjectById(curEventObjectID, function(target) {
+          if (!target) {
+            return target;
+          }
+          target.triggerScript = nextTriggerScript;
+          return target;
+        });
+        if (current) {
+          current.triggerScript = nextTriggerScript;
+        }
       }
       break;
     case 0x0026:
@@ -2694,26 +2696,29 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       if (sc.operand[0] > 0) {
         worldService.setFollowerCount(1);
         var followerIndex = getMaxPartyMemberIndex() + 1;
-        mutateGlobalEntry('party', followerIndex, function(member) {
-          if (member) {
-            member.playerRole = sc.operand[0];
+        worldService.mutatePartyMember(followerIndex, function(member) {
+          if (!member) {
+            return member;
           }
+          member.playerRole = sc.operand[0];
+          return member;
         });
         res.setLoadFlags(LoadFlag.PlayerSprite);
         yield res.loadResources();
         // Update the position and gesture for the follower
-        mutateGlobalEntry('party', followerIndex, function(member) {
+        worldService.mutatePartyMember(followerIndex, function(member) {
           if (!member) {
-            return;
+            return member;
           }
           var trailState = getTrailValue();
           var followerTrail = trailState && trailState.length > 3 ? trailState[3] : (trailState && trailState[trailState.length - 1]);
           if (!followerTrail) {
-            return;
+            return member;
           }
           member.x = followerTrail.x - getViewportX();
           member.y = followerTrail.y - getViewportY();
           member.frame = followerTrail.direction * 3;
+          return member;
         });
       } else {
         worldService.setFollowerCount(0);
@@ -2742,18 +2747,26 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x009A:
       script.debug('[SCRIPT] Set the state for multiple event objects');
-      mutateEventObjects(function(eventObjects) {
-        if (!eventObjects) {
-          return eventObjects;
+      if (!Number.isFinite(sc.operand[0]) || !Number.isFinite(sc.operand[1])) {
+        break;
+      }
+      var startId = Math.trunc(sc.operand[0]);
+      var endId = Math.trunc(sc.operand[1]);
+      if (endId < startId) {
+        break;
+      }
+      for (var rangeId = startId; rangeId <= endId; rangeId++) {
+        if (rangeId <= 0) {
+          continue;
         }
-        for (var idx = sc.operand[0]; idx <= sc.operand[1]; idx++) {
-          var target = eventObjects[idx - 1];
-          if (target) {
-            target.state = sc.operand[2];
+        worldService.mutateEventObjectById(rangeId, function(target) {
+          if (!target) {
+            return target;
           }
-        }
-        return eventObjects;
-      });
+          target.state = sc.operand[2];
+          return target;
+        });
+      }
       break;
     case 0x009B:
       script.debug('[SCRIPT] Fade to the current scene');
@@ -3242,6 +3255,9 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
   yield ui.endDialog();
   script.curEquipPart = -1;
 
+  if (!Number.isFinite(nextScriptEntry) || nextScriptEntry < 0) {
+    nextScriptEntry = 0;
+  }
   return nextScriptEntry;
 };
 

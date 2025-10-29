@@ -1,6 +1,6 @@
 import EventBus from './event-bus.js';
-import stateService from './state-service.js';
 import scriptService from './script-service.js';
+import worldService from './world-service.js';
 import {
   BattleComponents,
   createQueueEntryComponent
@@ -33,16 +33,6 @@ function sortByActorIndexDescending(registry, entities) {
     .sort(function(a, b) {
       return b.actor.index - a.actor.index;
     });
-}
-
-function getGlobalStore() {
-  if (typeof globalThis !== 'undefined' && globalThis.Global) {
-    return globalThis.Global;
-  }
-  if (typeof global !== 'undefined' && global.Global) {
-    return global.Global;
-  }
-  return null;
 }
 
 function getGameData() {
@@ -128,12 +118,27 @@ function getStatusCount() {
   return 9;
 }
 
+function getPartyList() {
+  var party = worldService.getParty();
+  if (!Array.isArray(party)) {
+    return [];
+  }
+  return party;
+}
+
 function getPartyEntry(index) {
-  var globalStore = getGlobalStore();
-  if (!globalStore || !Array.isArray(globalStore.party)) {
+  var party = getPartyList();
+  if (index < 0 || index >= party.length) {
     return null;
   }
-  return globalStore.party[index] || null;
+  return party[index] || null;
+}
+
+function getPlayerStatusRow(roleId) {
+  if (typeof roleId !== 'number' || roleId < 0) {
+    return null;
+  }
+  return worldService.getPlayerStatus(roleId);
 }
 
 function safeGetPlayerDexterity(roleId) {
@@ -175,7 +180,7 @@ export function recomputeTimeChargingUnit(context) {
     baseDexterity = 1;
   }
   var unit = Math.pow(baseDexterity + 5, 0.3) / baseDexterity;
-  var battleSpeed = stateService.getGlobal('battleSpeed') || 1;
+  var battleSpeed = worldService.getBattleSpeed() || 1;
   if (battleSpeed > 1) {
     unit /= (1 + (battleSpeed - 1) * 0.5);
   } else {
@@ -235,10 +240,7 @@ function getTimeChargingSpeed(dexterity, uiState, now) {
     return 0;
   }
   var speed = ensureTimeChargingUnit() * dexterity;
-  var globalStore = getGlobalStore();
-  if (globalStore && globalStore.autoBattle) {
-    speed *= 3;
-  } else if (typeof Global !== 'undefined' && Global && Global.autoBattle) {
+  if (worldService.getAutoBattle()) {
     speed *= 3;
   }
   return speed;
@@ -254,6 +256,7 @@ export function timeChargeSystem(runtime) {
   if (!registry || !state) {
     return;
   }
+  var party = getPartyList();
 
   ensureTimeChargingUnit();
 
@@ -285,8 +288,7 @@ export function timeChargeSystem(runtime) {
   var comState = typeof fighterStateEnum.Com === 'number' ? fighterStateEnum.Com : 1;
   var hidingTime = state.hidingTime || 0;
   var battleModule = runtime && runtime.battle;
-  var globalStore = getGlobalStore();
-  var autoBattleEnabled = Boolean(globalStore && globalStore.autoBattle);
+  var autoBattleEnabled = !!worldService.getAutoBattle();
 
   for (var i = 0; i < entities.length; i++) {
     var entityId = entities[i];
@@ -392,7 +394,7 @@ export function statusDecaySystem(runtime) {
 
   if (playerRoles.size > 0) {
     var rolesArray = Array.from(playerRoles);
-    stateService.mutateGlobal('playerStatus', function(statusMatrix) {
+    worldService.mutatePlayerStatus(function(statusMatrix) {
       if (!statusMatrix) {
         return statusMatrix;
       }
@@ -443,11 +445,7 @@ function getBattleState(battleService) {
   if (state) {
     return state;
   }
-  var globalStore = getGlobalStore();
-  if (globalStore && globalStore.battle) {
-    return globalStore.battle;
-  }
-  return null;
+  return worldService.getBattleState();
 }
 
 function setBattleFieldValue(battleService, field, value) {
@@ -610,22 +608,12 @@ function syncQueueEntryComponent(battleService, index, entry) {
 }
 
 function mutateInventory(mutator) {
-  return stateService.mutateGlobal('inventory', function(inventory) {
+  return worldService.mutateInventory(function(inventory) {
     if (!inventory || typeof mutator !== 'function') {
       return inventory;
     }
     mutator(inventory);
     return inventory;
-  });
-}
-
-function mutateGlobalValue(key, mutator) {
-  return stateService.mutateGlobal(key, function(current) {
-    if (typeof mutator !== 'function') {
-      return current;
-    }
-    var result = mutator(current);
-    return typeof result === 'undefined' ? current : result;
   });
 }
 
@@ -645,20 +633,25 @@ export function selectActionQueueSystem(runtime) {
     return;
   }
 
-  var globalStore = getGlobalStore();
-  if (!globalStore || !Array.isArray(globalStore.party)) {
-    return;
-  }
-  var maxPartyIndex = typeof globalStore.maxPartyMemberIndex === 'number'
-    ? globalStore.maxPartyMemberIndex
-    : (globalStore.party.length - 1);
+  var party = getPartyList();
+  var partyLength = party.length;
+  var rawMaxPartyIndex = worldService.getMaxPartyMemberIndex();
+  var maxPartyIndex = Math.max(
+    -1,
+    Math.min(
+      typeof rawMaxPartyIndex === 'number' ? rawMaxPartyIndex : (partyLength - 1),
+      partyLength - 1
+    )
+  );
   if (maxPartyIndex < 0) {
     return;
   }
 
+  var playerRolesData = (typeof GameData !== 'undefined' && GameData) ? GameData.playerRoles : null;
+
   var i;
   for (i = 0; i <= maxPartyIndex; i++) {
-    var partyEntry = globalStore.party[i];
+    var partyEntry = party[i];
     if (!partyEntry) {
       continue;
     }
@@ -666,10 +659,18 @@ export function selectActionQueueSystem(runtime) {
     if (playerRole == null) {
       continue;
     }
-    if (GameData.playerRoles.HP[playerRole] == 0 ||
-        globalStore.playerStatus[playerRole][PlayerStatus.Sleep] ||
-        globalStore.playerStatus[playerRole][PlayerStatus.Confused] ||
-        globalStore.playerStatus[playerRole][PlayerStatus.Paralyzed]) {
+    var statusRow = getPlayerStatusRow(playerRole);
+    var hpZero = playerRolesData && playerRolesData.HP ? playerRolesData.HP[playerRole] == 0 : false;
+    var asleep = statusRow && PlayerStatus && typeof PlayerStatus.Sleep === 'number'
+      ? statusRow[PlayerStatus.Sleep] > 0
+      : false;
+    var confused = statusRow && PlayerStatus && typeof PlayerStatus.Confused === 'number'
+      ? statusRow[PlayerStatus.Confused] > 0
+      : false;
+    var paralyzed = statusRow && PlayerStatus && typeof PlayerStatus.Paralyzed === 'number'
+      ? statusRow[PlayerStatus.Paralyzed] > 0
+      : false;
+    if (hpZero || asleep || confused || paralyzed) {
       continue;
     }
     var playerState = state.player && state.player[i];
@@ -748,7 +749,7 @@ export function selectActionQueueSystem(runtime) {
   }
 
   for (var playerIndex = 0; playerIndex <= maxPartyIndex; playerIndex++) {
-    var partyMember = globalStore.party[playerIndex];
+    var partyMember = party[playerIndex];
     if (!partyMember) {
       continue;
     }
@@ -757,13 +758,14 @@ export function selectActionQueueSystem(runtime) {
     if (!playerState || !playerState.action) {
       continue;
     }
+    var statusRowForRole = getPlayerStatusRow(roleId);
     var nextActionType = playerState.action.actionType;
     var nextState = playerState.state;
     var queueDexterity = 0;
 
-    if (GameData.playerRoles.HP[roleId] == 0 ||
-        globalStore.playerStatus[roleId][PlayerStatus.Sleep] > 0 ||
-        globalStore.playerStatus[roleId][PlayerStatus.Paralyzed] > 0) {
+    if ((playerRolesData && playerRolesData.HP ? playerRolesData.HP[roleId] == 0 : false) ||
+        (statusRowForRole && PlayerStatus && typeof PlayerStatus.Sleep === 'number' ? statusRowForRole[PlayerStatus.Sleep] > 0 : false) ||
+        (statusRowForRole && PlayerStatus && typeof PlayerStatus.Paralyzed === 'number' ? statusRowForRole[PlayerStatus.Paralyzed] > 0 : false)) {
       nextActionType = BattleActionType.Attack;
       nextState = FighterState.Act;
       queueDexterity = 0;
@@ -774,7 +776,7 @@ export function selectActionQueueSystem(runtime) {
       if (!dexterity || dexterity <= 0) {
         dexterity = safeGetPlayerDexterity(roleId);
       }
-      if (globalStore.playerStatus[roleId][PlayerStatus.Confused] > 0) {
+      if (statusRowForRole && PlayerStatus && typeof PlayerStatus.Confused === 'number' && statusRowForRole[PlayerStatus.Confused] > 0) {
         nextActionType = BattleActionType.Attack;
         nextState = FighterState.Act;
       }
@@ -850,6 +852,17 @@ export function* performActionPhaseSystem(runtime) {
     return;
   }
 
+  var partyEntries = getPartyList();
+  var rawMaxPartyIndexPerform = worldService.getMaxPartyMemberIndex();
+  var maxPartyMemberIndex = Math.max(
+    -1,
+    Math.min(
+      typeof rawMaxPartyIndexPerform === 'number' ? rawMaxPartyIndexPerform : (partyEntries.length - 1),
+      partyEntries.length - 1
+    )
+  );
+  var playerRolesData = (typeof GameData !== 'undefined' && GameData) ? GameData.playerRoles : null;
+
   var actionQueue = Array.isArray(state.actionQueue) ? state.actionQueue : [];
   var curActionIndex = state.curAction || 0;
   var queueEntry = actionQueue[curActionIndex];
@@ -857,8 +870,7 @@ export function* performActionPhaseSystem(runtime) {
   if (curActionIndex >= Const.MAX_ACTIONQUEUE_ITEMS ||
       !queueEntry ||
       queueEntry.dexterity == 0xFFFF) {
-    var maxPartyIndex = typeof Global !== 'undefined' && Global ? Global.maxPartyMemberIndex : -1;
-    for (var i = 0; i <= maxPartyIndex; i++) {
+    for (var i = 0; i <= maxPartyMemberIndex; i++) {
       mutatePlayerState(battleService, i, function(player) {
         if (player) {
           player.defending = false;
@@ -871,23 +883,27 @@ export function* performActionPhaseSystem(runtime) {
       battle.backupStat();
     }
 
-    for (var partyIndex = 0; partyIndex <= maxPartyIndex; partyIndex++) {
-      var partyRole = Global.party[partyIndex].playerRole;
+    for (var partyIndex = 0; partyIndex <= maxPartyMemberIndex; partyIndex++) {
+      var partyInfo = partyEntries[partyIndex];
+      if (!partyInfo) {
+        continue;
+      }
+      var partyRole = partyInfo.playerRole;
       for (var poisonSlot = 0; poisonSlot < Const.MAX_POISONS; poisonSlot++) {
-        if (Global.poisonStatus[poisonSlot][partyIndex].poisonID != 0) {
-          var currentSlot = poisonSlot;
-          var currentParty = partyIndex;
+        var poisonMatrix = worldService.getPoisonStatusMatrix();
+        var poisonRow = poisonMatrix ? poisonMatrix[poisonSlot] : null;
+        var poisonEntry = poisonRow ? poisonRow[partyIndex] : null;
+        if (poisonEntry && poisonEntry.poisonID !== 0) {
           var nextScriptEntry = yield* scriptService.runTriggerScript(
-            Global.poisonStatus[currentSlot][currentParty].poisonScript,
+            poisonEntry.poisonScript,
             partyRole
           );
-          mutateGlobalValue('poisonStatus', function(poisonStatus) {
-            if (poisonStatus &&
-                poisonStatus[currentSlot] &&
-                poisonStatus[currentSlot][currentParty]) {
-              poisonStatus[currentSlot][currentParty].poisonScript = nextScriptEntry;
+          worldService.mutatePoisonStatus(function(currentMatrix) {
+            var row = currentMatrix && currentMatrix[poisonSlot];
+            if (row && row[partyIndex]) {
+              row[partyIndex].poisonScript = nextScriptEntry;
             }
-            return poisonStatus;
+            return currentMatrix;
           });
         }
       }
@@ -1003,17 +1019,21 @@ export function* performActionPhaseSystem(runtime) {
   } else {
     var playerState = state.player && state.player[actionIndex];
     if (playerState && playerState.state == FighterState.Act) {
-      var playerRole = Global.party[actionIndex].playerRole;
+      var partyEntryForAction = partyEntries[actionIndex];
+      var playerRole = partyEntryForAction ? partyEntryForAction.playerRole : null;
       var updatedActionType = null;
 
-      if (GameData.playerRoles.HP[playerRole] == 0) {
-        if (Global.playerStatus[playerRole][PlayerStatus.Puppet] == 0) {
+      var statusRowAction = playerRole != null ? getPlayerStatusRow(playerRole) : null;
+      if (playerRole != null && playerRolesData && playerRolesData.HP && playerRolesData.HP[playerRole] == 0) {
+        if (!statusRowAction || !statusRowAction[PlayerStatus.Puppet]) {
           updatedActionType = BattleActionType.Pass;
         }
-      } else if (Global.playerStatus[playerRole][PlayerStatus.Sleep] > 0 ||
-                 Global.playerStatus[playerRole][PlayerStatus.Paralyzed] > 0) {
+      } else if (
+        (statusRowAction && PlayerStatus && typeof PlayerStatus.Sleep === 'number' && statusRowAction[PlayerStatus.Sleep] > 0) ||
+        (statusRowAction && PlayerStatus && typeof PlayerStatus.Paralyzed === 'number' && statusRowAction[PlayerStatus.Paralyzed] > 0)
+      ) {
         updatedActionType = BattleActionType.Pass;
-      } else if (Global.playerStatus[playerRole][PlayerStatus.Confused] > 0) {
+      } else if (statusRowAction && PlayerStatus && typeof PlayerStatus.Confused === 'number' && statusRowAction[PlayerStatus.Confused] > 0) {
         updatedActionType = BattleActionType.AttackMate;
       }
 
@@ -1235,9 +1255,9 @@ export function idleAnimationSystem(runtime) {
     return;
   }
 
-  var globalStore = getGlobalStore();
   var gameData = getGameData();
   var battleRuntime = runtime && runtime.battle;
+  var party = getPartyList();
 
   var playerEntities = registry.iterateEntitiesWith([
     BattleComponents.BattleActor,
@@ -1277,14 +1297,14 @@ export function idleAnimationSystem(runtime) {
     var roleId = null;
     if (statsComp && typeof statsComp.roleId === 'number') {
       roleId = statsComp.roleId;
-    } else if (globalStore && Array.isArray(globalStore.party) && globalStore.party[actorComp.index]) {
-      roleId = globalStore.party[actorComp.index].playerRole;
+    } else if (party && party[actorComp.index]) {
+      roleId = party[actorComp.index].playerRole;
     }
 
     var nextFrame = playerState.currentFrame || 0;
     var statusRow = statsComp && statsComp.extra ? statsComp.extra.statusRef : null;
-    if (!statusRow && globalStore && globalStore.playerStatus && roleId != null) {
-      statusRow = globalStore.playerStatus[roleId];
+    if (!statusRow && roleId != null) {
+      statusRow = getPlayerStatusRow(roleId);
     }
 
     if (roleId != null && gameData && gameData.playerRoles && gameData.playerRoles.HP) {
@@ -1398,8 +1418,7 @@ export function renderSceneSystem(runtime) {
     return;
   }
 
-  var globalStore = getGlobalStore();
-  var battleState = globalStore && globalStore.battle ? globalStore.battle : state;
+  var battleState = state;
   var background = battleState.background;
   var sceneBuf = battleState.sceneBuf;
 
@@ -1486,14 +1505,14 @@ export function renderSceneSystem(runtime) {
       }
       var statsComp = registry.getComponent(playerEntry.id, BattleComponents.Stats);
       var statusRow = statsComp && statsComp.extra ? statsComp.extra.statusRef : null;
-      var roleId = statsComp && typeof statsComp.roleId === 'number'
-        ? statsComp.roleId
-        : (globalStore && globalStore.party && globalStore.party[playerEntry.actor.index]
-            ? globalStore.party[playerEntry.actor.index].playerRole
+    var roleId = statsComp && typeof statsComp.roleId === 'number'
+      ? statsComp.roleId
+      : (party && party[playerEntry.actor.index]
+            ? party[playerEntry.actor.index].playerRole
             : null);
-      if (!statusRow && globalStore && roleId != null) {
-        statusRow = globalStore.playerStatus ? globalStore.playerStatus[roleId] : null;
-      }
+    if (!statusRow && roleId != null) {
+      statusRow = getPlayerStatusRow(roleId);
+    }
       var hpTable = getGameData() && getGameData().playerRoles ? getGameData().playerRoles.HP : null;
 
       if (statusRow &&
@@ -1529,11 +1548,11 @@ export function renderSceneSystem(runtime) {
       var statusRowConf = stats && stats.extra ? stats.extra.statusRef : null;
       var roleIdConf = stats && typeof stats.roleId === 'number'
         ? stats.roleId
-        : (globalStore && globalStore.party && globalStore.party[confusedEntry.actor.index]
-            ? globalStore.party[confusedEntry.actor.index].playerRole
+        : (party && party[confusedEntry.actor.index]
+            ? party[confusedEntry.actor.index].playerRole
             : null);
-      if (!statusRowConf && globalStore && roleIdConf != null) {
-        statusRowConf = globalStore.playerStatus ? globalStore.playerStatus[roleIdConf] : null;
+      if (!statusRowConf && roleIdConf != null) {
+        statusRowConf = getPlayerStatusRow(roleIdConf);
       }
       var hpTableConf = getGameData() && getGameData().playerRoles ? getGameData().playerRoles.HP : null;
 

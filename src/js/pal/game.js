@@ -7,30 +7,11 @@ import script from '../../services/script-service.js';
 import res from './res';
 import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';
-import stateService from '../../services/state-service.js';
 import worldService from '../../services/world-service.js';
 
 log.trace('game module load');
 
 var game = {};
-
-function setGlobalValue(key, value) {
-  return stateService.setGlobal(key, value);
-}
-
-function updateGlobalValues(patch) {
-  return stateService.updateGlobal(patch);
-}
-
-function mutateGlobalValue(key, mutator) {
-  return stateService.mutateGlobal(key, function(current) {
-    if (typeof mutator !== 'function') {
-      return current;
-    }
-    const result = mutator(current);
-    return typeof result === 'undefined' ? current : result;
-  });
-}
 
 function mutateExp(mutator) {
   return worldService.mutateExpState(function(exp) {
@@ -114,7 +95,7 @@ game.clearPlayerStatus = function() {
     }
     arr.push(st);
   }
-  setGlobalValue('playerStatus', arr);
+  worldService.setPlayerStatusStruct(arr);
 };
 
 game.loadDefaultGame = function*() {
@@ -124,20 +105,18 @@ game.loadDefaultGame = function*() {
   worldService.setObjectTable(readTypedArray(ObjectUnion, Files.SSS.readChunk(2)));
   worldService.setPlayerRoles(new PlayerRoles(Files.DATA.readChunk(3)));
   // Set some other default data.
-  updateGlobalValues({
-    cash: 0,
-    numMusic: 0,
-    numPalette: 0,
-    numScene: 1,
-    collectValue: 0,
-    nightPalette: false,
-    maxPartyMemberIndex: 0,
-    viewport: PAL_XY(0, 0),
-    layer: 0,
-    chaseRange: 1
-  });
+  worldService.setCash(0);
+  worldService.setMusicTrack(0);
+  worldService.setPaletteId(0);
+  worldService.setSceneId(1);
+  worldService.setCollectValue(0);
+  worldService.setNightPaletteFlag(false);
+  worldService.setMaxPartyMemberIndex(0);
+  worldService.setViewport(PAL_XY(0, 0));
+  worldService.setLayer(0);
+  worldService.setChaseRange(1);
   if (!PAL_CLASSIC) {
-    setGlobalValue('battleSpeed', 2);
+    worldService.setBattleSpeed(2);
   }
   worldService.setEnteringScene(true);
   //utils.extend(Global, {
@@ -213,45 +192,35 @@ game._loadGame = function(s) {
   //#endif
 
   // Get all the data from the saved game struct.
-  updateGlobalValues({
-    viewport: PAL_XY(s.viewportX, s.viewportY),
-    maxPartyMemberIndex: s.numPartyMember,
-    numScene: s.numScene,
-    nightPalette: (s.paletteOffset != 0),
-    partyDirection: s.partyDirection,
-    numMusic: s.numMusic,
-    numBattleMusic: s.numBattleMusic,
-    numBattleField: s.numBattleField,
-    screenWave: s.screenWave,
-    waveProgression: 0,
-    collectValue: s.collectValue,
-    layer: s.layer,
-    chaseRange: s.chaseRange,
-    chaseSpeedChangeCycles: s.chaseSpeedChangeCycles,
-    numFollower: s.numFollower,
-    cash: s.cash
-  });
+  worldService.setViewport(PAL_XY(s.viewportX, s.viewportY));
+  worldService.setMaxPartyMemberIndex(s.numPartyMember);
+  worldService.setSceneId(s.numScene);
+  worldService.setNightPaletteFlag(s.paletteOffset !== 0);
+  worldService.setPartyDirection(s.partyDirection);
+  worldService.setMusicTrack(s.numMusic);
+  worldService.setBattleMusicTrack(s.numBattleMusic);
+  worldService.setBattleFieldId(s.numBattleField);
+  worldService.setScreenWave(s.screenWave);
+  worldService.setWaveProgression(0);
+  worldService.setCollectValue(s.collectValue);
+  worldService.setLayer(s.layer);
+  worldService.setChaseRange(s.chaseRange);
+  worldService.setChaseSpeedChangeCycles(s.chaseSpeedChangeCycles);
+  worldService.setFollowerCount(s.numFollower);
+  worldService.setCash(s.cash);
   if (!PAL_CLASSIC) {
     var nextBattleSpeed = s.battleSpeed;
     if (nextBattleSpeed > 5 || nextBattleSpeed == 0) {
       nextBattleSpeed = 2;
     }
-    setGlobalValue('battleSpeed', nextBattleSpeed);
+    worldService.setBattleSpeed(nextBattleSpeed);
   }
-  //Global.party = s.party;
-  memcpy(Global.party.uint8Array, s.party.uint8Array, Global.party.uint8Array.length);
-  //Global.trail = s.trail;
-  memcpy(Global.trail.uint8Array, s.trail.uint8Array, Global.trail.uint8Array.length);
-  //Global.exp = s.exp;
-  memcpy(Global.exp.uint8Array, s.exp.uint8Array, Global.exp.uint8Array.length);
+  worldService.setPartyStruct(s.party);
+  worldService.setTrailStruct(s.trail);
+  worldService.setExpStruct(s.exp);
   worldService.setPlayerRoles(s.playerRoles);
-  //Global.poisonStatus = [];
-  memset(Global.poisonStatus.uint8Array, 0, Global.poisonStatus.uint8Array.length);
-  //for (var i=0; i<Const.MAX_POISONS; ++i){
-  //  Global.poisonStatus[i] = initTypedArray(PoisonStatus, Const.MAX_PLAYABLE_PLAYER_ROLES);
-  //}
-  memcpy(Global.inventory.uint8Array, s.inventory.uint8Array, Global.inventory.uint8Array.length);
-  //Global.inventory = s.inventory;
+  worldService.setPoisonStatusStruct(s.poisonStatus);
+  worldService.setInventoryStruct(s.inventory);
   worldService.setSceneTable(s.scene);
   worldService.setObjectTable(s.object);
   worldService.setEventObjectTable(s.eventObject);
@@ -267,37 +236,53 @@ game._loadGame = function(s) {
 game._saveGame = function() {
   var saveData = new SaveData();
 
-  saveData.viewportX = PAL_X(Global.viewport);
-  saveData.viewportY = PAL_Y(Global.viewport);
-  saveData.numPartyMember = Global.maxPartyMemberIndex;
-  saveData.numScene = Global.numScene;
-  saveData.paletteOffset = (Global.nightPalette ? 0x180 : 0);
-  saveData.partyDirection = Global.partyDirection;
-  saveData.numMusic = Global.numMusic;
-  saveData.numBattleMusic = Global.numBattleMusic;
-  saveData.numBattleField = Global.numBattleField;
-  saveData.screenWave = Global.screenWave;
-  saveData.collectValue = Global.collectValue;
-  saveData.layer = Global.layer;
-  saveData.chaseRange = Global.chaseRange;
-  saveData.chaseSpeedChangeCycles = Global.chaseSpeedChangeCycles;
-  saveData.numFollower = Global.numFollower;
-  saveData.cash = Global.cash;
+  var viewport = worldService.getViewport();
+  saveData.viewportX = PAL_X(viewport);
+  saveData.viewportY = PAL_Y(viewport);
+  saveData.numPartyMember = worldService.getMaxPartyMemberIndex();
+  saveData.numScene = worldService.getSceneId();
+  saveData.paletteOffset = worldService.getNightPaletteFlag() ? 0x180 : 0;
+  saveData.partyDirection = worldService.getPartyDirection();
+  saveData.numMusic = worldService.getMusicTrack();
+  saveData.numBattleMusic = worldService.getBattleMusicTrack();
+  saveData.numBattleField = worldService.getBattleFieldId();
+  saveData.screenWave = worldService.getScreenWave();
+  saveData.collectValue = worldService.getCollectValue();
+  saveData.layer = worldService.getLayer();
+  saveData.chaseRange = worldService.getChaseRange();
+  saveData.chaseSpeedChangeCycles = worldService.getChaseSpeedChangeCycles();
+  saveData.numFollower = worldService.getFollowerCount();
+  saveData.cash = worldService.getCash();
   if (!PAL_CLASSIC) {
-    saveData.battleSpeed = Global.battleSpeed;
+    saveData.battleSpeed = worldService.getBattleSpeed();
     if (saveData.battleSpeed > 5 || saveData.battleSpeed == 0) {
       saveData.battleSpeed = 2;
     }
   }
-  memcpy(saveData.party.uint8Array, Global.party.uint8Array, saveData.party.uint8Array.length);
-  memcpy(saveData.trail.uint8Array, Global.trail.uint8Array, saveData.trail.uint8Array.length);
-  memcpy(saveData.exp.uint8Array, Global.exp.uint8Array, saveData.exp.uint8Array.length);
+  var partyStruct = worldService.getPartyStruct();
+  if (partyStruct && partyStruct.uint8Array) {
+    saveData.party.uint8Array.set(partyStruct.uint8Array);
+  }
+  var trailStruct = worldService.getTrailStruct();
+  if (trailStruct && trailStruct.uint8Array) {
+    saveData.trail.uint8Array.set(trailStruct.uint8Array);
+  }
+  var expStruct = worldService.getExpState();
+  if (expStruct && expStruct.uint8Array) {
+    saveData.exp.uint8Array.set(expStruct.uint8Array);
+  }
   const playerRoles = worldService.getPlayerRoles();
   if (playerRoles && playerRoles.uint8Array) {
     memcpy(saveData.playerRoles.uint8Array, playerRoles.uint8Array, saveData.playerRoles.uint8Array.length);
   }
-  memcpy(saveData.poisonStatus.uint8Array, Global.poisonStatus.uint8Array, saveData.poisonStatus.uint8Array.length);
-  memcpy(saveData.inventory.uint8Array, Global.inventory.uint8Array, saveData.inventory.uint8Array.length);
+  var poisonStruct = worldService.getPoisonStatusStruct();
+  if (poisonStruct && poisonStruct.uint8Array) {
+    saveData.poisonStatus.uint8Array.set(poisonStruct.uint8Array);
+  }
+  var inventoryStruct = worldService.getInventoryStruct();
+  if (inventoryStruct && inventoryStruct.uint8Array) {
+    saveData.inventory.uint8Array.set(inventoryStruct.uint8Array);
+  }
   const sceneTable = worldService.getSceneTable();
   if (sceneTable && sceneTable.uint8Array) {
     memcpy(saveData.scene.uint8Array, sceneTable.uint8Array, saveData.scene.uint8Array.length);
@@ -349,14 +334,11 @@ game.initGameData = function*(slot) {
   }
 
   worldService.setGameStart(true);
-  updateGlobalValues({
-    needToFadeIn: false,
-    curInvMenuItem: 0,
-    inBattle: false
-  });
+  worldService.setNeedToFadeIn(false);
+  worldService.setInventoryMenuIndex(0);
+  worldService.setInBattle(false);
 
-  //game.clearPlayerStatus();
-  memset(Global.playerStatus.uint8Array, 0, Global.playerStatus.uint8Array.length);
+  worldService.resetPlayerStatusMatrix();
   yield script.updateEquipments();
 };
 
@@ -366,14 +348,11 @@ game._initGameData = function*(s) {
   game._loadGame(s);
 
   worldService.setGameStart(true);
-  updateGlobalValues({
-    needToFadeIn: false,
-    curInvMenuItem: 0,
-    inBattle: false
-  });
+  worldService.setNeedToFadeIn(false);
+  worldService.setInventoryMenuIndex(0);
+  worldService.setInBattle(false);
 
-  //game.clearPlayerStatus();
-  memset(Global.playerStatus.uint8Array, 0, Global.playerStatus.uint8Array.length);
+  worldService.resetPlayerStatusMatrix();
   yield script.updateEquipments();
 };
 
@@ -382,13 +361,11 @@ game._initGameData = function*(s) {
  */
 game.start = function*() {
   res.setLoadFlags(LoadFlag.Scene | LoadFlag.PlayerSprite);
-  if (!Global.enteringScene) {
+  if (!worldService.isEnteringScene()) {
     // pal.music.play(Global.musicNum, true, 1);
   }
-  updateGlobalValues({
-    needToFadeIn: true,
-    frameNum: 0
-  });
+  worldService.setNeedToFadeIn(true);
+  worldService.setFrameCount(0);
 
   input.init();
   input.clear();
