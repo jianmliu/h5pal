@@ -3,6 +3,8 @@ import input from './input';
 import scene from './scene';
 import uibattle from './uibattle';
 import worldService from '../../services/world-service.js';
+import { inventorySignals } from '../../state/slices/inventory.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
 
 log.trace('magicmenu module load');
 
@@ -25,6 +27,14 @@ var magicmenu = {
 
 var surface = null;
 var ui = null;
+
+const inventorySlice = inventorySignals();
+const cashSignal = inventorySlice.cash;
+
+function getCashValue() {
+  const value = cashSignal.value;
+  return typeof value === 'number' ? value : 0;
+}
 
 magicmenu.init = function*(surf, _ui) {
   log.debug('[UI] init magicmenu');
@@ -73,7 +83,7 @@ magicmenu.magicSelectMenuUpdate = function() {
     // Draw the cash amount.
     ui.createSingleLineBox(PAL_XY(0, 0), 5, false);
     ui.drawText(ui.getWord(ui.CASH_LABEL), PAL_XY(10, 10), 0, false, false);
-    ui.drawNumber(worldService.getCash(), 6, PAL_XY(49, 14), NumColor.Yellow, NumAlign.Right);
+    ui.drawNumber(getCashValue(), 6, PAL_XY(49, 14), NumColor.Yellow, NumAlign.Right);
 
     // Draw the MP of the selected magic.
     ui.createSingleLineBox(PAL_XY(215, 0), 5, false);
@@ -289,7 +299,7 @@ magicmenu.magicSelectMenu = function*(playerRole, inBattle, defaultMagic) {
     yield scene.makeScene();
 
     var w = 45;
-    var party = worldService.getParty();
+    var party = partyTrailAdapter.getPartyState();
     var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
     for (var i = 0; i <= maxPartyMemberIndex; i++) {
       var member = party[i];

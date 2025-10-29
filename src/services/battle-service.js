@@ -967,8 +967,8 @@ class BattleService extends EventBus {
     return worldService.getPlayerRoles();
   }
 
-  mutatePlayerRoles(mutator) {
-    return worldService.mutatePlayerRoles(mutator);
+  mutatePlayerRoles(mutator, options) {
+    return worldService.mutatePlayerRoles(mutator, options);
   }
 
   getPlayerHP(roleId) {

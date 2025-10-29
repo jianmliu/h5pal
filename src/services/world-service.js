@@ -1,5 +1,6 @@
 import EventBus from './event-bus.js';
 import stateService from './state-service.js';
+import reactiveContext from '../state/reactive-context.js';
 import {
   createEntityRegistry,
   WorldComponents,
@@ -19,6 +20,82 @@ import {
 import createWorldSystemManager from './world-systems.js';
 import { updateAutoBattle, getAutoBattleValue } from '../state/slices/auto-battle.js';
 import { updateFrameCount, getFrameCountValue } from '../state/slices/frame-count.js';
+import {
+  updateMainMenuIndex,
+  getMainMenuIndexValue,
+  updateSystemMenuIndex,
+  getSystemMenuIndexValue,
+  updateInventoryMenuIndex,
+  getInventoryMenuIndexValue,
+  updateNoMusicFlag,
+  getNoMusicFlagValue,
+  updateNoSoundFlag,
+  getNoSoundFlagValue
+} from '../state/slices/menu-selections.js';
+import {
+  updateViewportValue,
+  getViewportValue,
+  updatePartyOffsetValue,
+  getPartyOffsetValue,
+  updatePartyDirectionValue,
+  getPartyDirectionValue,
+  updateMaxPartyIndexValue,
+  getMaxPartyIndexValue
+} from '../state/slices/viewport.js';
+import {
+  updateInventoryValue,
+  updateCashValue,
+  updateLastUnequippedValue,
+  updateInventoryCapacityValue
+} from '../state/slices/inventory.js';
+import {
+  updatePlayerStatusMatrix,
+  mutatePlayerStatusMatrix,
+  getPlayerStatusMatrixValue,
+  updatePoisonStatusMatrix,
+  mutatePoisonStatusMatrix,
+  getPoisonStatusMatrixValue
+} from '../state/slices/status-matrices.js';
+import {
+  updatePartyValue as updatePartySliceValue,
+  updateTrailValue as updateTrailSliceValue,
+  updateFollowerCountValue as updateFollowerCountSliceValue
+} from '../state/slices/party-trail.js';
+import {
+  updateSceneIdValue,
+  updateEventObjectsValue,
+  updateCollisionStateValue
+} from '../state/slices/scene-events.js';
+import {
+  updateMusicTrackValue,
+  updateBattleMusicTrackValue,
+  updateBattleFieldIdValue,
+  updateScreenWaveValue,
+  updateWaveProgressionValue,
+  updatePaletteIdValue,
+  updateNeedToFadeInValue,
+  updateNightPaletteValue,
+  updateLayerValue,
+  resetAudioResourceSlice
+} from '../state/slices/audio-resources.js';
+import {
+  updateScriptEntriesValue,
+  updateObjectTableValue,
+  updateObjectDescValue,
+  resetScriptObjectSlice
+} from '../state/slices/script-objects.js';
+import {
+  updateEnemyTeamValue,
+  updateEnemyPositionValue,
+  updateBattleFieldValue,
+  resetBattleFormationSlice
+} from '../state/slices/battle-formation.js';
+import {
+  updatePlayerRolesValue,
+  updateEquipmentEffectValue,
+  resetPlayerStateSlice,
+  playerStateSignals
+} from '../state/slices/player-state.js';
 
 function getGlobalStore() {
   if (typeof globalThis !== 'undefined' && globalThis.Global) {
@@ -99,6 +176,11 @@ function resolveDirectionDefault() {
 
 const DEFAULT_PARTY_DIRECTION = resolveDirectionDefault();
 
+const playerStateSignalsRef = playerStateSignals();
+const playerRolesSignal = playerStateSignalsRef.roles;
+const equipmentEffectSignal = playerStateSignalsRef.equipmentEffect;
+
+
 class WorldService extends EventBus {
   constructor() {
     super();
@@ -151,10 +233,17 @@ class WorldService extends EventBus {
     this.entityMaps.mapMeta = null;
     this.entityMaps.mapTile = null;
     this.entityMaps.scriptRegister = null;
-    this.entityMaps.moveQueue = null;
+   this.entityMaps.moveQueue = null;
     this.entityMaps.collision = null;
     this._collisionState = null;
     this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
+    updateSceneIdValue(0, { source: 'worldService:dispose' });
+    updateEventObjectsValue([], { source: 'worldService:dispose' });
+    updateCollisionStateValue(null, { source: 'worldService:dispose' });
+    resetAudioResourceSlice();
+    resetScriptObjectSlice();
+    resetBattleFormationSlice();
+    resetPlayerStateSlice();
   }
 
   _ensureInitialised() {
@@ -252,6 +341,10 @@ class WorldService extends EventBus {
     this.syncMapTiles();
     this.syncEventObjects();
     this.syncScriptRegisters();
+    this.syncObjectStores();
+    this.syncBattleFormation();
+    this.syncPlayerRoles();
+    this.syncEquipmentEffects();
     this._ensureMoveQueue();
     this.syncReactiveGlobals();
   }
@@ -323,6 +416,7 @@ class WorldService extends EventBus {
       }
     });
 
+    updatePartySliceValue(party, { source: 'worldService:syncParty' });
     this.fire('partySynced', { size: party.length });
   }
 
@@ -343,6 +437,7 @@ class WorldService extends EventBus {
         component.stateRef = trail;
       }
     }
+    updateTrailSliceValue(trail, { source: 'worldService:syncTrail' });
     this.fire('trailSynced', { trail });
   }
 
@@ -357,6 +452,120 @@ class WorldService extends EventBus {
       ? globalStore.frameNum
       : this._getNumberGlobal('frameNum', 0);
     this._syncFrameCountValue(frameValue);
+
+    const mainMenuValue = globalStore && typeof globalStore.curMainMenuItem !== 'undefined'
+      ? globalStore.curMainMenuItem
+      : this._getNumberGlobal('curMainMenuItem', 0);
+    updateMainMenuIndex(mainMenuValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const systemMenuValue = globalStore && typeof globalStore.curSystemMenuItem !== 'undefined'
+      ? globalStore.curSystemMenuItem
+      : this._getNumberGlobal('curSystemMenuItem', 0);
+    updateSystemMenuIndex(systemMenuValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const inventoryMenuValue = globalStore && typeof globalStore.curInvMenuItem !== 'undefined'
+      ? globalStore.curInvMenuItem
+      : this._getNumberGlobal('curInvMenuItem', 0);
+    updateInventoryMenuIndex(inventoryMenuValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const noMusicValue = globalStore && typeof globalStore.noMusic !== 'undefined'
+      ? !!globalStore.noMusic
+      : this._getBooleanGlobal('noMusic', false);
+    updateNoMusicFlag(noMusicValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const noSoundValue = globalStore && typeof globalStore.noSound !== 'undefined'
+      ? !!globalStore.noSound
+      : this._getBooleanGlobal('noSound', false);
+    updateNoSoundFlag(noSoundValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const inventoryValue = stateService.getGlobal('inventory');
+    updateInventoryValue(Array.isArray(inventoryValue) ? inventoryValue : [], { emitEvent: false, source: 'worldService:sync', capacity: this.getInventoryCapacity() });
+
+    const cashValue = stateService.getGlobal('cash');
+    updateCashValue(typeof cashValue === 'number' ? Math.trunc(cashValue) : 0, { emitEvent: false, source: 'worldService:sync' });
+
+    const lastUnequippedValue = stateService.getGlobal('lastUnequippedItem');
+    updateLastUnequippedValue(typeof lastUnequippedValue === 'number' ? Math.trunc(lastUnequippedValue) : 0, { emitEvent: false, source: 'worldService:sync' });
+
+    const viewportValue = globalStore && typeof globalStore.viewport !== 'undefined'
+      ? globalStore.viewport
+      : stateService.getGlobal('viewport') || 0;
+    updateViewportValue(viewportValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const partyOffsetValue = globalStore && typeof globalStore.partyOffset !== 'undefined'
+      ? globalStore.partyOffset
+      : stateService.getGlobal('partyOffset') || 0;
+    updatePartyOffsetValue(partyOffsetValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const partyDirectionValue = globalStore && typeof globalStore.partyDirection !== 'undefined'
+      ? globalStore.partyDirection
+      : this.getPartyDirection();
+    updatePartyDirectionValue(partyDirectionValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const maxPartyIndexValue = globalStore && typeof globalStore.maxPartyMemberIndex !== 'undefined'
+      ? globalStore.maxPartyMemberIndex
+      : this.getMaxPartyMemberIndex();
+    updateMaxPartyIndexValue(maxPartyIndexValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const partyValue = globalStore && Array.isArray(globalStore.party)
+      ? globalStore.party
+      : (stateService.getGlobal('party') || []);
+    updatePartySliceValue(partyValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const trailValue = globalStore && Array.isArray(globalStore.trail)
+      ? globalStore.trail
+      : (stateService.getGlobal('trail') || []);
+    updateTrailSliceValue(trailValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const followerCountValue = globalStore && typeof globalStore.numFollower !== 'undefined'
+      ? globalStore.numFollower
+      : this._getNumberGlobal('numFollower', 0);
+    updateFollowerCountSliceValue(followerCountValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const musicTrackValue = globalStore && typeof globalStore.musicNum !== 'undefined'
+      ? globalStore.musicNum
+      : this._getNumberGlobal('musicNum', 0);
+    updateMusicTrackValue(musicTrackValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const battleMusicValue = globalStore && typeof globalStore.numBattleMusic !== 'undefined'
+      ? globalStore.numBattleMusic
+      : this._getNumberGlobal('numBattleMusic', 0);
+    updateBattleMusicTrackValue(battleMusicValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const battleFieldValue = globalStore && typeof globalStore.numBattleField !== 'undefined'
+      ? globalStore.numBattleField
+      : this._getNumberGlobal('numBattleField', 0);
+    updateBattleFieldIdValue(battleFieldValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const screenWaveValue = globalStore && typeof globalStore.screenWave !== 'undefined'
+      ? globalStore.screenWave
+      : this._getNumberGlobal('screenWave', 0);
+    updateScreenWaveValue(screenWaveValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const waveProgressValue = globalStore && typeof globalStore.waveProgression !== 'undefined'
+      ? globalStore.waveProgression
+      : this._getNumberGlobal('waveProgression', 0);
+    updateWaveProgressionValue(waveProgressValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const needFadeInValue = globalStore && typeof globalStore.needToFadeIn !== 'undefined'
+      ? !!globalStore.needToFadeIn
+      : this._getBooleanGlobal('needToFadeIn', false);
+    updateNeedToFadeInValue(needFadeInValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const paletteIdValue = globalStore && typeof globalStore.numPalette !== 'undefined'
+      ? globalStore.numPalette
+      : this._getNumberGlobal('numPalette', 0);
+    updatePaletteIdValue(paletteIdValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const nightPaletteValue = globalStore && typeof globalStore.nightPalette !== 'undefined'
+      ? !!globalStore.nightPalette
+      : this._getBooleanGlobal('nightPalette', false);
+    updateNightPaletteValue(nightPaletteValue, { emitEvent: false, source: 'worldService:sync' });
+
+    const layerValue = globalStore && typeof globalStore.layer !== 'undefined'
+      ? globalStore.layer
+      : this._getNumberGlobal('layer', 0);
+    updateLayerValue(layerValue, { emitEvent: false, source: 'worldService:sync' });
   }
 
   syncScene() {
@@ -401,6 +610,7 @@ class WorldService extends EventBus {
       mapId,
       map: mapRef
     });
+    updateSceneIdValue(typeof numScene === 'number' ? numScene : 0, { source: 'worldService:syncScene' });
 
     this.syncMapMeta();
     this.syncMapTiles();
@@ -445,6 +655,7 @@ class WorldService extends EventBus {
     this.entityMaps.mapMeta = sceneEntity;
     this.fire('mapMetaSynced', { sceneId: payload.sceneId, mapId: payload.mapId });
     this._collisionState = null;
+    updateCollisionStateValue(null, { source: 'worldService:syncMapMeta' });
   }
 
   syncMapTiles() {
@@ -488,10 +699,12 @@ class WorldService extends EventBus {
     this.entityMaps.mapTile = sceneEntity;
     this.fire('mapTilesSynced', { sceneId: payload.sceneId, mapId: payload.mapId });
     this._collisionState = null;
+    updateCollisionStateValue(null, { source: 'worldService:syncMapTiles' });
   }
 
   syncEventObjects() {
     this._ensureInitialised();
+    const registry = this.registry;
     const gameData = getGameDataStore();
     const eventObjects = gameData && gameData.eventObject ? gameData.eventObject : [];
     const sceneId = stateService.getGlobal('numScene');
@@ -515,6 +728,9 @@ class WorldService extends EventBus {
     this.fire('npcStatesSynced', { count: eventObjects.length, sceneId });
     this._collisionState = null;
     this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
+    const sceneEventObjects = this.getEventObjectsInCurrentScene();
+    updateEventObjectsValue(sceneEventObjects, { source: 'worldService:syncEventObjects' });
+    updateCollisionStateValue(null, { source: 'worldService:syncEventObjects' });
   }
 
   _syncEventObjectEntity(index, eventObject, sceneId = stateService.getGlobal('numScene')) {
@@ -602,10 +818,45 @@ class WorldService extends EventBus {
       }
     }
     this.fire('scriptRegistersSynced', { count: payload.count });
+    updateScriptEntriesValue(scriptEntries, { source: 'worldService:syncScriptRegisters' });
+  }
+
+  syncObjectStores() {
+    this._ensureInitialised();
+    const gameData = getGameDataStore();
+    const objectTable = gameData && gameData.object ? gameData.object : [];
+    updateObjectTableValue(objectTable, { source: 'worldService:syncObjectStores' });
+    const objectDesc = stateService.getGlobal('objectDesc');
+    updateObjectDescValue(typeof objectDesc === 'undefined' ? null : objectDesc, { source: 'worldService:syncObjectStores' });
+  }
+
+
+  syncPlayerRoles() {
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    updatePlayerRolesValue(store && store.playerRoles ? store.playerRoles : null, { source: 'worldService:syncPlayerRoles' });
+  }
+
+  syncEquipmentEffects() {
+    this._ensureInitialised();
+    updateEquipmentEffectValue(this._getEquipmentEffects() || [], { source: 'worldService:syncEquipmentEffects' });
+  }
+
+  syncBattleFormation() {
+    this._ensureInitialised();
+    const gameData = getGameDataStore();
+    const enemyTeam = gameData && Array.isArray(gameData.enemyTeam) ? gameData.enemyTeam : [];
+    updateEnemyTeamValue(enemyTeam, { source: 'worldService:syncBattleFormation' });
+    const enemyPositions = gameData && gameData.enemyPos ? gameData.enemyPos : null;
+    updateEnemyPositionValue(enemyPositions || null, { source: 'worldService:syncBattleFormation' });
+    const battleFields = gameData && Array.isArray(gameData.battleField) ? gameData.battleField : [];
+    updateBattleFieldValue(battleFields, { source: 'worldService:syncBattleFormation' });
   }
 
   setScriptEntries(entries) {
-    return this._replaceGameDataTable('scriptEntry', entries || []);
+    const resolved = this._replaceGameDataTable('scriptEntry', entries || []);
+    updateScriptEntriesValue(resolved || [], { source: 'worldService:setScriptEntries' });
+    return resolved;
   }
 
   getViewportComponent() {
@@ -732,27 +983,17 @@ class WorldService extends EventBus {
   getViewport() {
     this._ensureInitialised();
     const component = this.getViewportComponent() || this._ensureViewportComponent();
-    if (component && typeof component.value === 'number') {
-      return component.value;
-    }
-    const fallback = stateService.getGlobal('viewport') || 0;
-    if (component) {
-      component.value = fallback;
-    }
-    return fallback;
+    const value = component && typeof component.value === 'number' ? component.value : (stateService.getGlobal('viewport') || 0);
+    updateViewportValue(value, { emitEvent: false, source: 'worldService:get' });
+    return value;
   }
 
   getPartyOffset() {
     this._ensureInitialised();
     const component = this.getViewportComponent() || this._ensureViewportComponent();
-    if (component && typeof component.partyOffset === 'number') {
-      return component.partyOffset;
-    }
-    const fallback = stateService.getGlobal('partyOffset') || 0;
-    if (component) {
-      component.partyOffset = fallback;
-    }
-    return fallback;
+    const value = component && typeof component.partyOffset === 'number' ? component.partyOffset : (stateService.getGlobal('partyOffset') || 0);
+    updatePartyOffsetValue(value, { emitEvent: false, source: 'worldService:get' });
+    return value;
   }
 
   setViewport(value) {
@@ -761,6 +1002,7 @@ class WorldService extends EventBus {
     const resolved = Number.isFinite(value) ? value : 0;
     component.value = resolved;
     this.persistViewport();
+    updateViewportValue(resolved, { source: 'worldService' });
     return resolved;
   }
 
@@ -777,6 +1019,7 @@ class WorldService extends EventBus {
     const resolved = Number.isFinite(next) ? next : component.value;
     component.value = resolved;
     this.persistViewport();
+    updateViewportValue(resolved, { source: 'worldService' });
     return resolved;
   }
 
@@ -786,6 +1029,7 @@ class WorldService extends EventBus {
     const resolved = Number.isFinite(value) ? value : 0;
     component.partyOffset = resolved;
     this.persistViewport();
+    updatePartyOffsetValue(resolved, { source: 'worldService' });
     return resolved;
   }
 
@@ -802,6 +1046,7 @@ class WorldService extends EventBus {
     const resolved = Number.isFinite(next) ? next : component.partyOffset;
     component.partyOffset = resolved;
     this.persistViewport();
+    updatePartyOffsetValue(resolved, { source: 'worldService' });
     return resolved;
   }
 
@@ -854,10 +1099,13 @@ class WorldService extends EventBus {
     this._ensureInitialised();
     const value = stateService.getGlobal('maxPartyMemberIndex');
     if (typeof value === 'number') {
+      updateMaxPartyIndexValue(value, { emitEvent: false, source: 'worldService:get' });
       return value;
     }
     const party = this.getParty();
-    return party.length > 0 ? party.length - 1 : -1;
+    const fallback = party.length > 0 ? party.length - 1 : -1;
+    updateMaxPartyIndexValue(fallback, { emitEvent: false, source: 'worldService:get' });
+    return fallback;
   }
 
   mutateParty(mutator) {
@@ -879,12 +1127,20 @@ class WorldService extends EventBus {
   getInventory() {
     this._ensureInitialised();
     const inventory = stateService.getGlobal('inventory');
-    return Array.isArray(inventory) ? inventory : [];
+    const resolved = Array.isArray(inventory) ? inventory : [];
+    const capacity = this.getInventoryCapacity();
+    updateInventoryValue(resolved, { emitEvent: false, source: 'worldService:get', capacity });
+    return resolved;
   }
 
   getInventoryStruct() {
     this._ensureInitialised();
-    return stateService.getGlobal('inventory') || null;
+    const inventory = stateService.getGlobal('inventory');
+    const resolved = Array.isArray(inventory) ? inventory : (inventory || null);
+    if (resolved) {
+      updateInventoryValue(resolved, { emitEvent: false, source: 'worldService:get', capacity: this.getInventoryCapacity() });
+    }
+    return resolved;
   }
 
   mutateInventory(mutator) {
@@ -892,15 +1148,19 @@ class WorldService extends EventBus {
     if (typeof mutator !== 'function') {
       return null;
     }
-    return stateService.mutateGlobal('inventory', (inventory) => {
+    const result = stateService.mutateGlobal('inventory', (inventory) => {
       const current = Array.isArray(inventory) ? inventory : [];
-      const result = mutator(current);
-      return typeof result === 'undefined' ? current : result;
+      const next = mutator(current);
+      return typeof next === 'undefined' ? current : next;
     });
+    updateInventoryValue(Array.isArray(result) ? result : [], { source: 'worldService', capacity: this.getInventoryCapacity() });
+    return result;
   }
 
   setInventoryStruct(struct) {
-    return this._copyStructIntoGlobal('inventory', struct);
+    const resolved = this._copyStructIntoGlobal('inventory', struct);
+    updateInventoryValue(Array.isArray(resolved) ? resolved : [], { source: 'worldService', capacity: this.getInventoryCapacity() });
+    return resolved;
   }
 
   getInventorySlot(index) {
@@ -912,18 +1172,31 @@ class WorldService extends EventBus {
   }
 
   getInventoryCapacity() {
-    return MAX_INVENTORY || this.getInventory().length;
+    const globalInventory = stateService.getGlobal('inventory');
+    const fallback = Array.isArray(globalInventory) ? globalInventory.length : 0;
+    const capacity = (typeof Const !== 'undefined' && Const && typeof Const.MAX_INVENTORY === 'number')
+      ? Const.MAX_INVENTORY
+      : fallback;
+    updateInventoryCapacityValue(capacity, { emitEvent: false, source: 'worldService:get' });
+    return capacity;
   }
 
   getPlayerStatusMatrix() {
     this._ensureInitialised();
     const status = stateService.getGlobal('playerStatus');
-    return Array.isArray(status) ? status : [];
+    const resolved = Array.isArray(status) ? status : [];
+    updatePlayerStatusMatrix(resolved, { emitEvent: false, source: 'worldService:get' });
+    return resolved;
   }
 
   getPlayerStatusStruct() {
     this._ensureInitialised();
-    return stateService.getGlobal('playerStatus') || null;
+    const status = stateService.getGlobal('playerStatus');
+    const resolved = Array.isArray(status) ? status : (status || null);
+    if (resolved) {
+      updatePlayerStatusMatrix(resolved, { emitEvent: false, source: 'worldService:get' });
+    }
+    return resolved;
   }
 
   mutatePlayerStatus(mutator) {
@@ -931,11 +1204,13 @@ class WorldService extends EventBus {
     if (typeof mutator !== 'function') {
       return null;
     }
-    return stateService.mutateGlobal('playerStatus', (status) => {
+    const result = stateService.mutateGlobal('playerStatus', (status) => {
       const current = Array.isArray(status) ? status : [];
-      const result = mutator(current);
-      return typeof result === 'undefined' ? current : result;
+      const next = mutator(current);
+      return typeof next === 'undefined' ? current : next;
     });
+    updatePlayerStatusMatrix(Array.isArray(result) ? result : [], { source: 'worldService' });
+    return result;
   }
 
   mutatePlayerStatusEntry(roleId, mutator) {
@@ -1281,6 +1556,7 @@ class WorldService extends EventBus {
     component.state = resolvedState;
     component.version = (typeof component.version === 'number' ? component.version : 0) + 1;
     this._collisionState = component.state;
+    updateCollisionStateValue(this._collisionState, { source: 'worldService:setCollisionState' });
   }
 
   getCollisionState() {
@@ -1299,6 +1575,7 @@ class WorldService extends EventBus {
     if (!state || (expectedMapId != null && currentMapId !== expectedMapId)) {
       this.runSystems('collision', context);
     }
+    updateCollisionStateValue(this._collisionState, { emitEvent: false, source: 'worldService:ensureCollisionState' });
     return this._collisionState;
   }
 
@@ -1356,6 +1633,8 @@ class WorldService extends EventBus {
     this._collisionState = null;
     this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
     this.fire('eventObjectMutated', { id, sceneId: stateService.getGlobal('numScene'), state: updatedEntry });
+    updateEventObjectsValue(this.getEventObjectsInCurrentScene(), { source: 'worldService:mutateEventObject' });
+    updateCollisionStateValue(null, { source: 'worldService:mutateEventObject' });
     return updatedEntry;
   }
 
@@ -1490,6 +1769,10 @@ class WorldService extends EventBus {
       }
       return objects;
     });
+    if (updatedEntry) {
+      const store = getGameDataStore();
+      updateObjectTableValue(store && store.object ? store.object : [], { source: 'worldService:mutateObjectEntry' });
+    }
     return updatedEntry;
   }
 
@@ -1507,11 +1790,16 @@ class WorldService extends EventBus {
       snapshot = typeof result !== 'undefined' ? result : objects;
       return snapshot;
     });
+    if (snapshot) {
+      updateObjectTableValue(snapshot, { source: 'worldService:mutateObjects' });
+    }
     return snapshot;
   }
 
   setObjectTable(objects) {
-    return this._replaceGameDataTable('object', objects || []);
+    const resolved = this._replaceGameDataTable('object', objects || []);
+    updateObjectTableValue(resolved || [], { source: 'worldService:setObjectTable' });
+    return resolved;
   }
 
   getObjectTable() {
@@ -1544,7 +1832,9 @@ class WorldService extends EventBus {
   getPlayerRoles() {
     this._ensureInitialised();
     const store = getGameDataStore();
-    return store && store.playerRoles ? store.playerRoles : null;
+    const roles = store && store.playerRoles ? store.playerRoles : null;
+    updatePlayerRolesValue(roles, { emitEvent: false, source: 'worldService:getPlayerRoles' });
+    return roles;
   }
 
   getPlayerBattleSpriteNum(roleId) {
@@ -1654,7 +1944,9 @@ class WorldService extends EventBus {
   }
 
   setEnemyTeamTable(enemyTeams) {
-    return this._replaceGameDataTable('enemyTeam', enemyTeams || []);
+    const resolved = this._replaceGameDataTable('enemyTeam', enemyTeams || []);
+    updateEnemyTeamValue(resolved || [], { source: 'worldService:setEnemyTeamTable' });
+    return resolved;
   }
 
   getEnemyFormationPosition(index, maxEnemyIndex) {
@@ -1668,7 +1960,9 @@ class WorldService extends EventBus {
   }
 
   setEnemyPositionTable(enemyPositions) {
-    return this._replaceGameDataTable('enemyPos', enemyPositions || null);
+    const resolved = this._replaceGameDataTable('enemyPos', enemyPositions || null);
+    updateEnemyPositionValue(resolved || null, { source: 'worldService:setEnemyPositionTable' });
+    return resolved;
   }
 
   getBattleFieldEntry(id) {
@@ -1681,7 +1975,9 @@ class WorldService extends EventBus {
   }
 
   setBattleFieldTable(battleFields) {
-    return this._replaceGameDataTable('battleField', battleFields || []);
+    const resolved = this._replaceGameDataTable('battleField', battleFields || []);
+    updateBattleFieldValue(resolved || [], { source: 'worldService:setBattleFieldTable' });
+    return resolved;
   }
 
   getBattleEffectIndexRow(id) {
@@ -1698,10 +1994,12 @@ class WorldService extends EventBus {
   }
 
   setPlayerRoles(playerRoles) {
-    return this._replaceGameDataTable('playerRoles', playerRoles || null);
+    const resolved = this._replaceGameDataTable('playerRoles', playerRoles || null);
+    updatePlayerRolesValue(resolved || null, { source: 'worldService:setPlayerRoles' });
+    return resolved;
   }
 
-  mutatePlayerRoles(mutator) {
+  mutatePlayerRoles(mutator, options = {}) {
     this._ensureInitialised();
     if (typeof mutator !== 'function') {
       return null;
@@ -1715,6 +2013,16 @@ class WorldService extends EventBus {
       snapshot = typeof result !== 'undefined' ? result : playerRoles;
       return snapshot;
     });
+    if (snapshot) {
+      const updateOptions = {
+        source: 'worldService:mutatePlayerRoles',
+        ...options
+      };
+      if (!updateOptions.source) {
+        updateOptions.source = 'worldService:mutatePlayerRoles';
+      }
+      updatePlayerRolesValue(snapshot, updateOptions);
+    }
     return snapshot;
   }
 
@@ -1729,7 +2037,7 @@ class WorldService extends EventBus {
         roles.HP[roleId] = value;
       }
       return roles;
-    });
+    }, { source: 'worldService:setPlayerHP' });
   }
 
   adjustPlayerHP(roleId, delta) {
@@ -1749,7 +2057,7 @@ class WorldService extends EventBus {
         roles.MP[roleId] = value;
       }
       return roles;
-    });
+    }, { source: 'worldService:setPlayerMP' });
   }
 
   adjustPlayerMP(roleId, delta) {
@@ -1912,8 +2220,14 @@ class WorldService extends EventBus {
   }
 
   _getEquipmentEffects() {
+    const cached = equipmentEffectSignal.value;
+    if (Array.isArray(cached) && cached.length > 0) {
+      return cached;
+    }
     const store = getGlobalStore();
-    return store && store.equipmentEffect ? store.equipmentEffect : null;
+    const effects = store && store.equipmentEffect ? store.equipmentEffect : null;
+    updateEquipmentEffectValue(effects || [], { emitEvent: false, source: 'worldService:getEquipmentEffects' });
+    return effects;
   }
 
   getEquipmentEffects() {
@@ -1952,6 +2266,7 @@ class WorldService extends EventBus {
         entry.uint8Array.fill(0);
       }
     }
+    updateEquipmentEffectValue(Array.isArray(effects) ? effects.slice() : (effects || []), { source: 'worldService:resetEquipmentEffects' });
   }
 
   mutateEquipmentEffect(part, mutator) {
@@ -1970,9 +2285,9 @@ class WorldService extends EventBus {
     const result = mutator(entry);
     if (typeof result !== 'undefined' && result !== entry) {
       effects[part] = result;
-      return result;
     }
-    return entry;
+    updateEquipmentEffectValue(Array.isArray(effects) ? effects.slice() : (effects || []), { source: 'worldService:mutateEquipmentEffect' });
+    return typeof result !== 'undefined' ? result : entry;
   }
 
   _mutateEquipmentEffectWord(part, fieldIndex, roleId, updater) {
@@ -2000,16 +2315,22 @@ class WorldService extends EventBus {
   }
 
   setEquipmentEffectWord(part, fieldIndex, roleId, value) {
-    return this._mutateEquipmentEffectWord(part, fieldIndex, roleId, value);
+    const result = this._mutateEquipmentEffectWord(part, fieldIndex, roleId, value);
+    const effects = this._getEquipmentEffects();
+    updateEquipmentEffectValue(Array.isArray(effects) ? effects.slice() : (effects || []), { emitEvent: false, source: 'worldService:setEquipmentEffectWord' });
+    return result;
   }
 
   adjustEquipmentEffectWord(part, fieldIndex, roleId, delta) {
-    return this._mutateEquipmentEffectWord(part, fieldIndex, roleId, (current) => {
+    const result = this._mutateEquipmentEffectWord(part, fieldIndex, roleId, (current) => {
       const signedCurrent = toSignedWord(current);
       const signedDelta = toSignedWord(delta);
       const next = signedCurrent + signedDelta;
       return toUnsignedWord(next);
     });
+    const effects = this._getEquipmentEffects();
+    updateEquipmentEffectValue(Array.isArray(effects) ? effects.slice() : (effects || []), { emitEvent: false, source: 'worldService:adjustEquipmentEffectWord' });
+    return result;
   }
 
   clearEquipmentEffect(part, roleId) {
@@ -2029,6 +2350,8 @@ class WorldService extends EventBus {
     for (let field = 0; field < fields; field++) {
       this._mutateEquipmentEffectWord(part, field, roleId, 0);
     }
+    const effects = this._getEquipmentEffects();
+    updateEquipmentEffectValue(Array.isArray(effects) ? effects.slice() : (effects || []), { emitEvent: false, source: 'worldService:clearEquipmentEffect' });
   }
 
   adjustPlayerMaxHP(roleId, delta) {
@@ -2213,39 +2536,48 @@ class WorldService extends EventBus {
   getPartyDirection() {
     this._ensureInitialised();
     const dir = stateService.getGlobal('partyDirection');
-    return typeof dir === 'number' ? dir : DEFAULT_PARTY_DIRECTION;
+    const fallback = typeof dir === 'number' ? dir : DEFAULT_PARTY_DIRECTION;
+    updatePartyDirectionValue(fallback, { emitEvent: false, source: 'worldService:get' });
+    return fallback;
   }
 
   setPartyDirection(value) {
     this._ensureInitialised();
     const resolved = typeof value === 'number' ? value : DEFAULT_PARTY_DIRECTION;
     stateService.setGlobal('partyDirection', resolved);
+    updatePartyDirectionValue(resolved, { source: 'worldService' });
     return resolved;
   }
 
   getFollowerCount() {
     this._ensureInitialised();
     const count = stateService.getGlobal('numFollower');
-    return typeof count === 'number' ? count : 0;
+    const resolved = typeof count === 'number' ? count : 0;
+    updateFollowerCountSliceValue(resolved, { emitEvent: false, source: 'worldService:getFollowerCount' });
+    return resolved;
   }
 
   setFollowerCount(value) {
     this._ensureInitialised();
     const resolved = Number.isFinite(value) ? Math.max(0, value | 0) : 0;
     stateService.setGlobal('numFollower', resolved);
+    updateFollowerCountSliceValue(resolved, { source: 'worldService:setFollowerCount' });
     return resolved;
   }
 
   getScreenWave() {
     this._ensureInitialised();
     const wave = stateService.getGlobal('screenWave');
-    return typeof wave === 'number' ? wave : 0;
+    const resolved = typeof wave === 'number' ? wave : 0;
+    updateScreenWaveValue(resolved, { emitEvent: false, source: 'worldService:getScreenWave' });
+    return resolved;
   }
 
   setScreenWave(value) {
     this._ensureInitialised();
     const resolved = Number.isFinite(value) ? value | 0 : 0;
     stateService.setGlobal('screenWave', resolved);
+    updateScreenWaveValue(resolved, { source: 'worldService:setScreenWave' });
     return resolved;
   }
 
@@ -2255,82 +2587,100 @@ class WorldService extends EventBus {
     const adjustment = Number.isFinite(delta) ? delta : 0;
     const next = (current + adjustment) | 0;
     stateService.setGlobal('screenWave', next);
+    updateScreenWaveValue(next, { source: 'worldService:adjustScreenWave' });
     return next;
   }
 
   getWaveProgression() {
     this._ensureInitialised();
     const value = stateService.getGlobal('waveProgression');
-    return typeof value === 'number' ? value : 0;
+    const resolved = typeof value === 'number' ? value : 0;
+    updateWaveProgressionValue(resolved, { emitEvent: false, source: 'worldService:getWaveProgression' });
+    return resolved;
   }
 
   setWaveProgression(value) {
     this._ensureInitialised();
     const resolved = Number.isFinite(value) ? value | 0 : 0;
     stateService.setGlobal('waveProgression', resolved);
+    updateWaveProgressionValue(resolved, { source: 'worldService:setWaveProgression' });
     return resolved;
   }
 
   getNeedToFadeIn() {
     this._ensureInitialised();
-    return !!stateService.getGlobal('needToFadeIn');
+    const value = !!stateService.getGlobal('needToFadeIn');
+    updateNeedToFadeInValue(value, { emitEvent: false, source: 'worldService:getNeedToFadeIn' });
+    return value;
   }
 
   setNeedToFadeIn(value) {
     this._ensureInitialised();
     const resolved = !!value;
     stateService.setGlobal('needToFadeIn', resolved);
+    updateNeedToFadeInValue(resolved, { source: 'worldService:setNeedToFadeIn' });
     return resolved;
   }
 
   getPaletteId() {
     this._ensureInitialised();
     const value = stateService.getGlobal('numPalette');
-    return typeof value === 'number' ? value : 0;
+    const resolved = typeof value === 'number' ? value : 0;
+    updatePaletteIdValue(resolved, { emitEvent: false, source: 'worldService:getPaletteId' });
+    return resolved;
   }
 
   setPaletteId(value) {
     this._ensureInitialised();
     const resolved = Number.isFinite(value) ? value | 0 : 0;
     stateService.setGlobal('numPalette', resolved);
+    updatePaletteIdValue(resolved, { source: 'worldService:setPaletteId' });
     return resolved;
   }
 
   getNightPaletteFlag() {
     this._ensureInitialised();
-    return !!stateService.getGlobal('nightPalette');
+    const value = !!stateService.getGlobal('nightPalette');
+    updateNightPaletteValue(value, { emitEvent: false, source: 'worldService:getNightPalette' });
+    return value;
   }
 
   setNightPaletteFlag(value) {
     this._ensureInitialised();
     const resolved = !!value;
     stateService.setGlobal('nightPalette', resolved);
+    updateNightPaletteValue(resolved, { source: 'worldService:setNightPalette' });
     return resolved;
   }
 
   getLayer() {
     this._ensureInitialised();
     const layer = stateService.getGlobal('layer');
-    return typeof layer === 'number' ? layer : 0;
+    const resolved = typeof layer === 'number' ? layer : 0;
+    updateLayerValue(resolved, { emitEvent: false, source: 'worldService:getLayer' });
+    return resolved;
   }
 
   setLayer(value) {
     this._ensureInitialised();
     const resolved = Number.isFinite(value) ? value | 0 : 0;
     stateService.setGlobal('layer', resolved);
+    updateLayerValue(resolved, { source: 'worldService:setLayer' });
     return resolved;
   }
 
   getCash() {
     this._ensureInitialised();
-    const cash = stateService.getGlobal('cash');
-    return typeof cash === 'number' ? cash : 0;
+    const cash = this._getNumberGlobal('cash', 0);
+    updateCashValue(cash, { emitEvent: false, source: 'worldService:get' });
+    return cash;
   }
 
   setCash(value) {
     this._ensureInitialised();
     const resolved = Number.isFinite(value) ? Math.trunc(value) : 0;
     stateService.setGlobal('cash', resolved);
+    updateCashValue(resolved, { source: 'worldService' });
     return resolved;
   }
 
@@ -2344,6 +2694,7 @@ class WorldService extends EventBus {
       nextValue = next;
       return next;
     });
+    updateCashValue(typeof nextValue === 'number' ? nextValue : 0, { source: 'worldService' });
     return nextValue;
   }
 
@@ -2404,35 +2755,45 @@ class WorldService extends EventBus {
   }
 
   getObjectDescTable() {
-    return this._getValueGlobal('objectDesc', null);
+    const value = this._getValueGlobal('objectDesc', null);
+    updateObjectDescValue(typeof value === 'undefined' ? null : value, { emitEvent: false, source: 'worldService:getObjectDescTable' });
+    return value;
   }
 
   setObjectDescTable(value) {
-    return this._setValueGlobal('objectDesc', value);
+    const resolved = this._setValueGlobal('objectDesc', value);
+    updateObjectDescValue(typeof resolved === 'undefined' ? null : resolved, { source: 'worldService:setObjectDescTable' });
+    return resolved;
   }
 
   getInventoryMenuIndex() {
-    return this._getNumberGlobal('curInvMenuItem', 0);
+    return getInventoryMenuIndexValue(this._getNumberGlobal('curInvMenuItem', 0));
   }
 
   setInventoryMenuIndex(value) {
-    return this._setNumberGlobal('curInvMenuItem', value, 0);
+    const resolved = this._setNumberGlobal('curInvMenuItem', value, 0);
+    updateInventoryMenuIndex(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   getSystemMenuIndex() {
-    return this._getNumberGlobal('curSystemMenuItem', 0);
+    return getSystemMenuIndexValue(this._getNumberGlobal('curSystemMenuItem', 0));
   }
 
   setSystemMenuIndex(value) {
-    return this._setNumberGlobal('curSystemMenuItem', value, 0);
+    const resolved = this._setNumberGlobal('curSystemMenuItem', value, 0);
+    updateSystemMenuIndex(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   getMainMenuIndex() {
-    return this._getNumberGlobal('curMainMenuItem', 0);
+    return getMainMenuIndexValue(this._getNumberGlobal('curMainMenuItem', 0));
   }
 
   setMainMenuIndex(value) {
-    return this._setNumberGlobal('curMainMenuItem', value, 0);
+    const resolved = this._setNumberGlobal('curMainMenuItem', value, 0);
+    updateMainMenuIndex(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   getLastEventObjectId() {
@@ -2444,19 +2805,23 @@ class WorldService extends EventBus {
   }
 
   getNoMusicFlag() {
-    return this._getBooleanGlobal('noMusic', false);
+    return getNoMusicFlagValue(this._getBooleanGlobal('noMusic', false));
   }
 
   setNoMusicFlag(value) {
-    return this._setBooleanGlobal('noMusic', value);
+    const resolved = this._setBooleanGlobal('noMusic', value);
+    updateNoMusicFlag(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   getNoSoundFlag() {
-    return this._getBooleanGlobal('noSound', false);
+    return getNoSoundFlagValue(this._getBooleanGlobal('noSound', false));
   }
 
   setNoSoundFlag(value) {
-    return this._setBooleanGlobal('noSound', value);
+    const resolved = this._setBooleanGlobal('noSound', value);
+    updateNoSoundFlag(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   getCurrentMusicTrackId() {
@@ -2557,15 +2922,21 @@ class WorldService extends EventBus {
   }
 
   getLastUnequippedItem() {
-    return this._getNumberGlobal('lastUnequippedItem', 0);
+    const value = this._getNumberGlobal('lastUnequippedItem', 0);
+    updateLastUnequippedValue(value, { emitEvent: false, source: 'worldService:get' });
+    return value;
   }
 
   setLastUnequippedItem(value) {
-    return this._setNumberGlobal('lastUnequippedItem', value, 0);
+    const resolved = this._setNumberGlobal('lastUnequippedItem', value, 0);
+    updateLastUnequippedValue(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   setMaxPartyMemberIndex(value) {
-    return this._setNumberGlobal('maxPartyMemberIndex', value, 0);
+    const resolved = this._setNumberGlobal('maxPartyMemberIndex', value, 0);
+    updateMaxPartyIndexValue(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   isEnteringScene() {
@@ -2577,27 +2948,39 @@ class WorldService extends EventBus {
   }
 
   getMusicTrack() {
-    return this._getNumberGlobal('musicNum', 0);
+    const value = this._getNumberGlobal('musicNum', 0);
+    updateMusicTrackValue(value, { emitEvent: false, source: 'worldService:getMusicTrack' });
+    return value;
   }
 
   setMusicTrack(value) {
-    return this._setNumberGlobal('musicNum', value, 0);
+    const resolved = this._setNumberGlobal('musicNum', value, 0);
+    updateMusicTrackValue(resolved, { source: 'worldService:setMusicTrack' });
+    return resolved;
   }
 
   getBattleMusicTrack() {
-    return this._getNumberGlobal('numBattleMusic', 0);
+    const value = this._getNumberGlobal('numBattleMusic', 0);
+    updateBattleMusicTrackValue(value, { emitEvent: false, source: 'worldService:getBattleMusicTrack' });
+    return value;
   }
 
   setBattleMusicTrack(value) {
-    return this._setNumberGlobal('numBattleMusic', value, 0);
+    const resolved = this._setNumberGlobal('numBattleMusic', value, 0);
+    updateBattleMusicTrackValue(resolved, { source: 'worldService:setBattleMusicTrack' });
+    return resolved;
   }
 
   getBattleFieldId() {
-    return this._getNumberGlobal('numBattleField', 0);
+    const value = this._getNumberGlobal('numBattleField', 0);
+    updateBattleFieldIdValue(value, { emitEvent: false, source: 'worldService:getBattleFieldId' });
+    return value;
   }
 
   setBattleFieldId(value) {
-    return this._setNumberGlobal('numBattleField', value, 0);
+    const resolved = this._setNumberGlobal('numBattleField', value, 0);
+    updateBattleFieldIdValue(resolved, { source: 'worldService:setBattleFieldId' });
+    return resolved;
   }
 
   getBattleSpeed() {
@@ -2655,9 +3038,83 @@ class WorldService extends EventBus {
         break;
       case 'party':
         this.syncPartyMembers();
+        updatePartySliceValue(stateService.getGlobal('party') || [], { source: 'worldService:legacyGlobal' });
         break;
       case 'trail':
         this.syncTrail();
+        updateTrailSliceValue(stateService.getGlobal('trail') || [], { source: 'worldService:legacyGlobal' });
+        break;
+      case 'viewport':
+        updateViewportValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'partyOffset':
+        updatePartyOffsetValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'partyDirection':
+        updatePartyDirectionValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'maxPartyMemberIndex':
+        updateMaxPartyIndexValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'curMainMenuItem':
+        updateMainMenuIndex(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'curSystemMenuItem':
+        updateSystemMenuIndex(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'curInvMenuItem':
+        updateInventoryMenuIndex(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'noMusic':
+        updateNoMusicFlag(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'noSound':
+        updateNoSoundFlag(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'inventory':
+        updateInventoryValue(Array.isArray(payload.value) ? payload.value : [], { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'cash':
+        updateCashValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'lastUnequippedItem':
+        updateLastUnequippedValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'objectDesc':
+        updateObjectDescValue(typeof payload.value === 'undefined' ? null : payload.value, { source: 'worldService:legacyGlobal' });
+        break;
+      case 'equipmentEffect':
+        updateEquipmentEffectValue(payload.value || [], { source: 'worldService:legacyGlobal' });
+        break;
+      case 'musicNum':
+        updateMusicTrackValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'numBattleMusic':
+        updateBattleMusicTrackValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'numBattleField':
+        updateBattleFieldIdValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'screenWave':
+        updateScreenWaveValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'waveProgression':
+        updateWaveProgressionValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'needToFadeIn':
+        updateNeedToFadeInValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'numPalette':
+        updatePaletteIdValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'nightPalette':
+        updateNightPaletteValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'layer':
+        updateLayerValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'numFollower':
+        updateFollowerCountSliceValue(payload.value, { source: 'worldService:legacyGlobal' });
         break;
       case 'autoBattle':
         this._syncAutoBattleFlag(payload.value);
@@ -2668,6 +3125,7 @@ class WorldService extends EventBus {
         this.syncMapTiles();
         this.syncEventObjects();
         this.ensureCollisionState();
+        updateSceneIdValue(typeof payload.value === 'number' ? payload.value : (this.getSceneId() || 0), { source: 'worldService:legacyGlobal' });
         break;
       case 'frameNum':
         this._syncFrameCountValue(payload.value);
@@ -2695,6 +3153,7 @@ class WorldService extends EventBus {
         this.syncMapTiles();
         this.syncEventObjects();
         this.ensureCollisionState();
+        this.syncBattleFormation();
         break;
       case 'map':
         this.syncScene();
@@ -2702,9 +3161,21 @@ class WorldService extends EventBus {
         this.syncMapTiles();
         this.syncEventObjects();
         this.ensureCollisionState();
+        this.syncBattleFormation();
         break;
       case 'scriptEntry':
         this.syncScriptRegisters();
+        break;
+      case 'playerRoles':
+        this.syncPlayerRoles();
+        break;
+      case 'enemyTeam':
+      case 'enemyPos':
+      case 'battleField':
+        this.syncBattleFormation();
+        break;
+      case 'object':
+        updateObjectTableValue(getGameDataStore() && getGameDataStore().object ? getGameDataStore().object : [], { source: 'worldService:gameDataChanged' });
         break;
       default:
         break;

@@ -9,6 +9,13 @@ import battleService from '../../services/battle-service.js';
 import { recomputeTimeChargingUnit } from '../../services/battle-systems.js';
 import { BattleComponents } from '../../ecs/index.js';
 import worldService from '../../services/world-service.js';
+import { autoBattleSignal } from '../../state/slices/auto-battle.js';
+
+const autoBattleFlagSignal = autoBattleSignal();
+
+function isAutoBattleEnabled() {
+  return !!autoBattleFlagSignal.value;
+}
 
 function createMutableIndexedProxy(getter, setter, lengthGetter) {
   return new Proxy({}, {
@@ -1191,7 +1198,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
       });
     }
 
-    if (checkPlayers && !worldService.getAutoBattle()) {
+    if (checkPlayers && !isAutoBattleEnabled()) {
       for (var i = 0; i <= getMaxPartyIndex(); i++) {
         var w = getPartyMemberRole(i);
         var name;
@@ -2765,7 +2772,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
         yield battle.showPlayerPreMagicAnim(playerIndex, (GameData.magic[magicNum].type == MagicType.Summon));
 
-        if (!worldService.getAutoBattle()) {
+        if (!isAutoBattleEnabled()) {
           worldService.adjustPlayerMP(playerRole, -GameData.magic[magicNum].costMP);
           if (SHORT(worldService.getPlayerMP(playerRole)) < 0) {
             worldService.setPlayerMP(playerRole, 0);
@@ -3253,7 +3260,7 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
         }
       }
 
-      if (!worldService.getAutoBattle()) {
+      if (!isAutoBattleEnabled()) {
         battle.displayStatChange();
       }
 

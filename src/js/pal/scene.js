@@ -4,6 +4,7 @@ import Sprite from './sprite';
 import Map from './map';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
 
 log.trace('scene module load');
 
@@ -15,6 +16,75 @@ var scene = {
   applyWaveIndex: 0,
   currentSceneId: null
 };
+
+var partyStateCache = [];
+var trailStateCache = [];
+var followerCountCache = 0;
+var unsubscribePartyTrail = null;
+
+function handlePartyTrailEvent(event) {
+  if (!event) {
+    return;
+  }
+  switch (event.type) {
+    case 'snapshot':
+      partyStateCache = Array.isArray(event.party) ? event.party : partyStateCache;
+      trailStateCache = Array.isArray(event.trail) ? event.trail : trailStateCache;
+      followerCountCache = Number.isFinite(event.followerCount) ? event.followerCount : followerCountCache;
+      break;
+    case 'party':
+      partyStateCache = Array.isArray(event.value) ? event.value : partyStateCache;
+      break;
+    case 'trail':
+      trailStateCache = Array.isArray(event.value) ? event.value : trailStateCache;
+      break;
+    case 'followerCount':
+      followerCountCache = Number.isFinite(event.value) ? event.value : followerCountCache;
+      break;
+    case 'disposed':
+      if (typeof unsubscribePartyTrail === 'function') {
+        unsubscribePartyTrail();
+      }
+      unsubscribePartyTrail = null;
+      partyStateCache = [];
+      trailStateCache = [];
+      followerCountCache = 0;
+      break;
+    default:
+      break;
+  }
+}
+
+function ensurePartyTrailSubscription() {
+  if (unsubscribePartyTrail) {
+    return;
+  }
+  unsubscribePartyTrail = partyTrailAdapter.subscribe(handlePartyTrailEvent);
+}
+
+function getCachedPartyState() {
+  ensurePartyTrailSubscription();
+  if (!Array.isArray(partyStateCache)) {
+    partyStateCache = partyTrailAdapter.getPartyState();
+  }
+  return partyStateCache;
+}
+
+function getCachedTrailState() {
+  ensurePartyTrailSubscription();
+  if (!Array.isArray(trailStateCache)) {
+    trailStateCache = partyTrailAdapter.getTrailState();
+  }
+  return trailStateCache;
+}
+
+function getCachedFollowerCount() {
+  ensurePartyTrailSubscription();
+  if (!Number.isFinite(followerCountCache)) {
+    followerCountCache = partyTrailAdapter.getFollowerCount();
+  }
+  return followerCountCache;
+}
 
 var abs = Math.abs;
 var floor = Math.floor;
@@ -62,6 +132,7 @@ scene.init = function*(surf) {
   list.forEach(function(name) {
     Files[name] = resourceService.getMKF(name);
   });
+  ensurePartyTrailSubscription();
 };
 
 scene.makeScene = function*() {
@@ -79,7 +150,7 @@ scene.makeScene = function*() {
 };
 
 scene.getPlayerSprite = function(i) {
-  var party = worldService.getParty();
+  var party = getCachedPartyState();
   var player = party[i];
   if (!player) {
     return null;
@@ -87,7 +158,7 @@ scene.getPlayerSprite = function(i) {
   var playerID = player.playerRole;
   var spriteNum;
   var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
-  var followerCount = worldService.getFollowerCount();
+  var followerCount = getCachedFollowerCount();
   if (i > maxPartyMemberIndex && followerCount > 0) {
     // 如果是跟随者，那么spriteNum就是它的ID
     spriteNum = playerID;
@@ -111,6 +182,7 @@ scene.getPlayerSprite = function(i) {
  * Update the location and walking gesture of all the party members.
  */
 scene.updateParty = function() {
+  ensurePartyTrailSubscription();
   //log.trace('[Scene] updateParty');
   var viewport = worldService.getViewport();
   var partyOffset = worldService.getPartyOffset();
@@ -158,15 +230,16 @@ scene.updateParty = function() {
  * @param  {Boolean} walking  whether the party is walking or not.
  */
 scene.updatePartyGestures = function(walking) {
+  ensurePartyTrailSubscription();
   //log.trace('[Scene] updatePartyGestures ' + walking);
-  var party = worldService.getParty();
-  var trail = worldService.getTrail();
+  var party = getCachedPartyState();
+  var trail = getCachedTrailState();
   var playerRoles = worldService.getPlayerRoles();
   var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
   var viewport = worldService.getViewport();
   var partyOffset = worldService.getPartyOffset();
   var partyDirection = worldService.getPartyDirection();
-  var followerCount = worldService.getFollowerCount();
+  var followerCount = getCachedFollowerCount();
 
   if (!party.length || !trail.length) {
     return;
@@ -593,6 +666,7 @@ utils.extend(Scene.prototype, {
     });
   },
   renderSprites: function() {
+    ensurePartyTrailSubscription();
     worldService.runSystems(['collision', 'movement'], {
       mapCache: scene.mapCache,
       Files: typeof Files !== 'undefined' ? Files : null,
@@ -601,10 +675,10 @@ utils.extend(Scene.prototype, {
     var viewport = worldService.getViewport();
     var viewportX = PAL_X(viewport);
     var viewportY = PAL_Y(viewport);
-    var party = worldService.getParty();
+    var party = getCachedPartyState();
     var drawList = this.drawList || (this.drawList = []);
     var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
-    var followerCount = worldService.getFollowerCount();
+    var followerCount = getCachedFollowerCount();
 
     // Players
     var layer = worldService.getLayer();

@@ -22,7 +22,9 @@ const worldServiceMock = {
   getPoisonStatusMatrix: vi.fn(),
   getLevelUpExp: vi.fn(),
   getCash: vi.fn(() => 0),
-  isInBattle: vi.fn(() => false)
+  getFollowerCount: vi.fn(() => 0),
+  isInBattle: vi.fn(() => false),
+  getTrail: vi.fn(() => [])
 };
 
 const stateStore = {};

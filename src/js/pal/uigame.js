@@ -10,6 +10,9 @@ import input from './input';
 import music from './music';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
+import { menuSelectionSignals, audioToggleSignals } from '../../state/slices/menu-selections.js';
+import { inventorySignals } from '../../state/slices/inventory.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
 
 function getGlobalObject() {
   if (typeof global !== 'undefined') {
@@ -35,7 +38,7 @@ function requireGame() {
 }
 
 function getParty() {
-  return worldService.getParty();
+  return partyTrailAdapter.getPartyState();
 }
 
 function getPartyMember(index) {
@@ -53,7 +56,7 @@ function getMaxPartyMemberIndex() {
 }
 
 function getCash() {
-  return worldService.getCash();
+  return getCashValue();
 }
 
 function getObjectEntry(objectId) {
@@ -85,11 +88,11 @@ function getPoisonStatusMatrix() {
 }
 
 function getInventorySnapshot() {
-  return worldService.getInventory();
+  return getInventoryList();
 }
 
 function getInventorySlot(index) {
-  return worldService.getInventorySlot(index);
+  return getInventorySlotFromSignal(index);
 }
 
 function getObjectItemData(objectId) {
@@ -122,7 +125,7 @@ function setObjectScriptOnEquip(objectId, scriptId) {
 }
 
 function getLastUnequippedItem() {
-  return worldService.getLastUnequippedItem();
+  return lastUnequippedSignal.value;
 }
 
 function setLastUnequippedItem(value) {
@@ -132,6 +135,70 @@ function setLastUnequippedItem(value) {
 log.trace('uigame module load');
 
 var uigame = {};
+
+const menuSignals = menuSelectionSignals();
+const mainMenuIndexSignal = menuSignals.main;
+const systemMenuIndexSignal = menuSignals.system;
+const inventoryMenuIndexSignal = menuSignals.inventory;
+
+const inventorySlice = inventorySignals();
+const inventoryItemsSignal = inventorySlice.items;
+const cashSignal = inventorySlice.cash;
+const lastUnequippedSignal = inventorySlice.lastUnequipped;
+
+const audioSignals = audioToggleSignals();
+const noMusicSignal = audioSignals.noMusic;
+const noSoundSignal = audioSignals.noSound;
+
+function getMainMenuIndexValue() {
+  return mainMenuIndexSignal.value;
+}
+
+function getSystemMenuIndexValue() {
+  return systemMenuIndexSignal.value;
+}
+
+function getInventoryMenuIndexValue() {
+  return inventoryMenuIndexSignal.value;
+}
+
+function getInventoryList() {
+  const items = inventoryItemsSignal.value;
+  if (Array.isArray(items) && items.length > 0) {
+    return items;
+  }
+  if (typeof worldService.getInventory === 'function') {
+    const fallback = worldService.getInventory();
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      return fallback;
+    }
+  }
+  return Array.isArray(items) ? items : [];
+}
+
+function getInventorySlotFromSignal(index) {
+  const items = getInventoryList();
+  return (index >= 0 && index < items.length) ? items[index] : null;
+}
+
+function getCashValue() {
+  const value = cashSignal.value;
+  if (typeof worldService.getCash === 'function') {
+    const serviceValue = worldService.getCash();
+    if (typeof serviceValue === 'number' && serviceValue !== value) {
+      return serviceValue;
+    }
+  }
+  return typeof value === 'number' ? value : 0;
+}
+
+function isMusicDisabled() {
+  return !!noMusicSignal.value;
+}
+
+function isSoundDisabled() {
+  return !!noSoundSignal.value;
+}
 
 var surface = null;
 var ui = null;
@@ -391,7 +458,7 @@ uigame.systemMenu = function*() {
   surface.updateScreen(rect);
 
   // Perform the menu.
-  var curSystemMenuItem = worldService.getSystemMenuIndex();
+  var curSystemMenuItem = getSystemMenuIndexValue();
   if (typeof curSystemMenuItem !== 'number') {
     curSystemMenuItem = 0;
   }
@@ -444,7 +511,7 @@ uigame.systemMenu = function*() {
       break;
     case 3:
       // Music
-      var currentNoMusic = worldService.getNoMusicFlag();
+      var currentNoMusic = isMusicDisabled();
       const noMusic = !(yield uigame.switchMenu(!currentNoMusic));
       worldService.setNoMusicFlag(noMusic);
       /*
@@ -466,7 +533,7 @@ uigame.systemMenu = function*() {
       break;
     case 4:
       // Sound
-      var currentNoSound = worldService.getNoSoundFlag();
+      var currentNoSound = isSoundDisabled();
       const noSound = !(yield uigame.switchMenu(!currentNoSound));
       worldService.setNoSoundFlag(noSound);
       break;
@@ -712,13 +779,13 @@ uigame.inGameMenu = function*() {
   ];
 
   // Process the menu
-  var curMainMenuItem = worldService.getMainMenuIndex();
+  var curMainMenuItem = getMainMenuIndexValue();
   if (typeof curMainMenuItem !== 'number') {
     curMainMenuItem = 0;
   }
 
   while (true) {
-    var currentSelection = worldService.getMainMenuIndex();
+    var currentSelection = getMainMenuIndexValue();
     if (typeof currentSelection !== 'number') {
       currentSelection = curMainMenuItem;
     } else {

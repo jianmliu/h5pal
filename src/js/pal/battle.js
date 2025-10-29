@@ -12,6 +12,15 @@ import uibattle from './uibattle';
 import battleService from '../../services/battle-service.js';
 import createBattleSystemManager from '../../services/battle-systems.js';
 import worldService from '../../services/world-service.js';
+import {
+  getEnemyTeamEntry as getCachedEnemyTeamEntry,
+  getEnemyFormationPosition as getCachedEnemyFormationPosition,
+  getBattleFieldEntry as getCachedBattleFieldEntry,
+  getBattleFieldId as getCachedBattleFieldId,
+  getBattleMusicTrack as getCachedBattleMusicTrack,
+  getMusicTrack as getCachedMusicTrack,
+  isAutoBattleEnabled
+} from '../../services/battle-state-adapter.js';
 
 log.trace('battle module load');
 
@@ -191,7 +200,7 @@ BattlePlayer.prototype.reset = function(
   prevMP) {
   this.colorShift = colorShift || 0;
   this.timeMeter = timeMeter || 0.0;
-  this.timeSpeedModifier = timeSpeedModifier || 0.0;
+  this.timeSpeedModifier = (typeof timeSpeedModifier === 'number') ? timeSpeedModifier : 1.0;
   this.hidingTime = hidingTime || 0;
   this.sprite = sprite || 0;
   this.pos = pos || 0;
@@ -384,7 +393,7 @@ battle.main = function*() {
   yield surface.switchScreen(5);
 
   // Play the battle music
-  music.play(worldService.getBattleMusicTrack() || 0, true, 0);
+  music.play(getCachedBattleMusicTrack(), true, 0);
 
   // Fade in the screen when needed
   if (worldService.getNeedToFadeIn()) {
@@ -552,7 +561,7 @@ battle.loadBattleSprites = function() {
       enemyState.sprite = new Sprite(Files.ABC.decompressChunk(enemyID));
 
       // Set the default position for this enemy
-      var formationPos = worldService.getEnemyFormationPosition(enemyIndex, state.maxEnemyIndex);
+      var formationPos = getCachedEnemyFormationPosition(enemyIndex, state.maxEnemyIndex);
       var posX = formationPos ? formationPos.x : 0;
       var posYBase = formationPos ? formationPos.y : 0;
       var posY = posYBase + (enemyState.e ? enemyState.e.yPosOffset : 0);
@@ -678,7 +687,7 @@ battle.loadBattleBackground = function() {
   battleService.setBackground(background);
 
   // Load the picture
-  var buf = Files.FBP.decompressChunk(worldService.getBattleFieldId() || 0);
+  var buf = Files.FBP.decompressChunk(getCachedBattleFieldId() || 0);
 
   // Draw the picture to the surface.
   surface.blit(buf, background);
@@ -1004,8 +1013,8 @@ battle.start = function*(enemyTeam, isBoss) {
   var prevWaveProgression = worldService.getWaveProgression() || 0;
 
   worldService.setWaveProgression(0);
-  var battleFieldIndex = worldService.getBattleFieldId() || 0;
-  var battleFieldConfig = worldService.getBattleFieldEntry(battleFieldIndex);
+  var battleFieldIndex = getCachedBattleFieldId() || 0;
+  var battleFieldConfig = getCachedBattleFieldEntry(battleFieldIndex);
   worldService.setScreenWave(battleFieldConfig ? battleFieldConfig.screenWave : 0);
 
   var party = getParty();
@@ -1064,7 +1073,7 @@ battle.start = function*(enemyTeam, isBoss) {
     }
 
     var computedMaxEnemyIndex = -1;
-    var enemyTeamEntry = worldService.getEnemyTeamEntry(enemyTeam);
+    var enemyTeamEntry = getCachedEnemyTeamEntry(enemyTeam);
     var rawEnemyTeam = enemyTeamEntry ? enemyTeamEntry.enemy : null;
     var enemyTeamConfig;
     if (Array.isArray(rawEnemyTeam)) {
@@ -1150,7 +1159,7 @@ battle.start = function*(enemyTeam, isBoss) {
       state.UI.nextMsg = [];
       state.UI.msgShowTime = 0;
       state.UI.state = BattleUIState.Wait;
-      state.UI.autoAttack = !!worldService.getAutoBattle();
+      state.UI.autoAttack = isAutoBattleEnabled();
       state.UI.selectedIndex = 0;
       state.UI.prevEnemyTarget = 0;
       if (Array.isArray(state.UI.showNum)) {
@@ -1245,7 +1254,7 @@ battle.start = function*(enemyTeam, isBoss) {
 
   worldService.setInBattle(false);
 
-  music.play(worldService.getMusicTrack() || 0, true, 1);
+  music.play(getCachedMusicTrack(), true, 1);
 
   // Restore the screen waving effects
   worldService.setWaveProgression(prevWaveProgression);

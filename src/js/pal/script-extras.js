@@ -1,4 +1,8 @@
 import worldService from '../../services/world-service.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import { inventorySignals } from '../../state/slices/inventory.js';
+import { playerStateSignals } from '../../state/slices/player-state.js';
+import { statusSignals } from '../../state/slices/status-matrices.js';
 
 console.trace('script_extras module load');
 
@@ -6,11 +10,130 @@ var surface = null
 var abs = Math.abs;
 var floor = Math.floor;
 
+const inventorySlice = inventorySignals();
+const inventoryItemsSignal = inventorySlice.items;
+const inventoryCapacitySignal = inventorySlice.capacity;
+const cashSignal = inventorySlice.cash;
+
+const playerStateSlice = playerStateSignals();
+const playerRolesSignal = playerStateSlice.roles;
+const equipmentEffectSignal = playerStateSlice.equipmentEffect;
+
+const statusSlice = statusSignals();
+const playerStatusSignal = statusSlice.player;
+
+function getInventoryList() {
+  const items = inventoryItemsSignal.value;
+  if (Array.isArray(items) && items.length > 0) {
+    return items;
+  }
+  if (typeof worldService.getInventory === 'function') {
+    const fallback = worldService.getInventory();
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      return fallback;
+    }
+  }
+  return Array.isArray(items) ? items : [];
+}
+
+function getInventorySlotFromSignal(index) {
+  const items = getInventoryList();
+  return (index >= 0 && index < items.length) ? items[index] : null;
+}
+
+function getInventoryCapacityFromSignal() {
+  const value = inventoryCapacitySignal.value;
+  if (Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof worldService.getInventoryCapacity === 'function') {
+    const capacity = worldService.getInventoryCapacity();
+    if (Number.isFinite(capacity) && capacity > 0) {
+      return capacity;
+    }
+  }
+  return Const.MAX_INVENTORY;
+}
+
+function getCashValue() {
+  const value = cashSignal.value;
+  if (typeof worldService.getCash === 'function') {
+    const serviceValue = worldService.getCash();
+    if (Number.isFinite(serviceValue) && serviceValue !== value) {
+      return serviceValue;
+    }
+  }
+  return Number.isFinite(value) ? value : 0;
+}
+
+function getPlayerRolesSnapshot() {
+  const roles = playerRolesSignal.value;
+  return roles || worldService.getPlayerRoles();
+}
+
+function getPlayerRoleField(field) {
+  const roles = getPlayerRolesSnapshot();
+  if (!roles) {
+    return null;
+  }
+  return roles[field] || null;
+}
+
+function getPlayerRoleFieldValue(field, role, fallback) {
+  const arr = getPlayerRoleField(field);
+  if (!arr) {
+    return typeof fallback === 'undefined' ? 0 : fallback;
+  }
+  const value = arr[role];
+  return typeof value === 'undefined' ? (typeof fallback === 'undefined' ? 0 : fallback) : value;
+}
+
+function getPlayerHPValue(role) {
+  return getPlayerRoleFieldValue('HP', role, 0);
+}
+
+function getPlayerMaxHPValue(role) {
+  return getPlayerRoleFieldValue('maxHP', role, 0);
+}
+
+function getPlayerMPValue(role) {
+  return getPlayerRoleFieldValue('MP', role, 0);
+}
+
+function getPlayerMaxMPValue(role) {
+  return getPlayerRoleFieldValue('maxMP', role, 0);
+}
+
+function getPlayerAttackValue(role) {
+  return getPlayerRoleFieldValue('attackStrength', role, 0);
+}
+
+function getPlayerMagicValue(role) {
+  return getPlayerRoleFieldValue('magicStrength', role, 0);
+}
+
+function getPlayerDefenseValue(role) {
+  return getPlayerRoleFieldValue('defense', role, 0);
+}
+
+function getPlayerDexterityValue(role) {
+  return getPlayerRoleFieldValue('dexterity', role, 0);
+}
+
+function getPlayerFleeRateValue(role) {
+  return getPlayerRoleFieldValue('fleeRate', role, 0);
+}
+
+function getEquipmentEffectList() {
+  const effects = equipmentEffectSignal.value;
+  return Array.isArray(effects) ? effects : (effects || []);
+}
+
 var script_extras = {};
 var script = null;
 
 function getPartyIndexByRole(role) {
-  var party = worldService.getParty();
+  var party = partyTrailAdapter.getPartyState();
   for (var i = 0; i < party.length; i++) {
     if (party[i] && party[i].playerRole === role) {
       return i;
@@ -20,8 +143,16 @@ function getPartyIndexByRole(role) {
 }
 
 function getPlayerStatusValue(role, statusID) {
-  var row = worldService.getPlayerStatus(role);
-  return row && row[statusID] ? row[statusID] : 0;
+  var matrix = playerStatusSignal.value || [];
+  var row = matrix[role];
+  if (row) {
+    if (row.uint8Array) {
+      return row.uint8Array[statusID] || 0;
+    }
+    return row[statusID] || 0;
+  }
+  var fallback = worldService.getPlayerStatus(role);
+  return fallback && fallback[statusID] ? fallback[statusID] : 0;
 }
 
 function setPlayerStatusValue(role, statusID, value) {
@@ -34,7 +165,8 @@ function setPlayerStatusValue(role, statusID, value) {
 }
 
 function getEquipmentEffectScalar(part, field, role) {
-  var effect = worldService.getEquipmentEffect(part);
+  var effects = getEquipmentEffectList();
+  var effect = effects && effects[part];
   if (!effect || !effect[field]) {
     return 0;
   }
@@ -46,7 +178,8 @@ function getEquipmentEffectScalar(part, field, role) {
 }
 
 function getEquipmentEffectElemental(part, attr, role) {
-  var effect = worldService.getEquipmentEffect(part);
+  var effects = getEquipmentEffectList();
+  var effect = effects && effects[part];
   if (!effect || !effect.elementalResistance) {
     return 0;
   }
@@ -128,7 +261,7 @@ script_extras.init = function*(surf, _script) {
       });
     }
 
-    var currentHP = worldService.getPlayerHP(role);
+    var currentHP = getPlayerHPValue(role);
     var currentValue = getPlayerStatusValue(role, statusID);
     var hasteValue = getPlayerStatusValue(role, PlayerStatus.Haste);
     var slowValue = getPlayerStatusValue(role, PlayerStatus.Slow);
@@ -225,7 +358,7 @@ script_extras.init = function*(surf, _script) {
 
     var success = false;
     worldService.mutateInventory(function(inventory) {
-      var capacity = worldService.getInventoryCapacity() || Const.MAX_INVENTORY;
+      var capacity = getInventoryCapacityFromSignal();
       var index = 0;
       var found = false;
       while (index < capacity) {
@@ -289,7 +422,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getItemAmount = function(item) {
-    var inventory = worldService.getInventory();
+    var inventory = getInventoryList();
     for (var i = 0; i < inventory.length; ++i) {
       var slot = inventory[i];
       if (!slot) {
@@ -311,7 +444,7 @@ script_extras.init = function*(surf, _script) {
         return inventory;
       }
       var j = 0;
-      var capacity = worldService.getInventoryCapacity() || Const.MAX_INVENTORY;
+      var capacity = getInventoryCapacityFromSignal();
       for (var i = 0; i < capacity; ++i) {
         var slot = inventory[i];
         if (!slot || slot.item == 0) {
@@ -335,12 +468,12 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.increaseHPMP = function(role, HP, MP) {
-    var currentHP = worldService.getPlayerHP(role);
+    var currentHP = getPlayerHPValue(role);
     if (currentHP <= 0) {
       return false;
     }
 
-    var maxHP = worldService.getPlayerMaxHP(role);
+    var maxHP = getPlayerMaxHPValue(role);
     var nextHP = currentHP + HP;
     if (nextHP < 0) {
       nextHP = 0;
@@ -349,8 +482,8 @@ script_extras.init = function*(surf, _script) {
     }
     worldService.setPlayerHP(role, nextHP);
 
-    var currentMP = worldService.getPlayerMP(role);
-    var maxMP = worldService.getPlayerMaxMP(role);
+    var currentMP = getPlayerMPValue(role);
+    var maxMP = getPlayerMaxMPValue(role);
     var nextMP = currentMP + MP;
     if (nextMP < 0) {
       nextMP = 0;
@@ -495,7 +628,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getPlayerAttackStrength = function(role) {
-    var w = worldService.getPlayerAttackStrength(role);
+    var w = getPlayerAttackValue(role);
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
       w += getEquipmentEffectScalar(i, 'attackStrength', role);
     }
@@ -503,7 +636,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getPlayerMagicStrength = function(role) {
-    var w = worldService.getPlayerMagicStrength(role);
+    var w = getPlayerMagicValue(role);
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
       w += getEquipmentEffectScalar(i, 'magicStrength', role);
     }
@@ -511,7 +644,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getPlayerDefense = function(role) {
-    var w = worldService.getPlayerDefense(role);
+    var w = getPlayerDefenseValue(role);
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
       w += getEquipmentEffectScalar(i, 'defense', role);
     }
@@ -519,7 +652,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getPlayerDexterity = function(role) {
-    var w = worldService.getPlayerDexterity(role);
+    var w = getPlayerDexterityValue(role);
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
       w += getEquipmentEffectScalar(i, 'dexterity', role);
     }
@@ -527,7 +660,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getPlayerFleeRate = function(role) {
-    var w = worldService.getPlayerFleeRate(role);
+    var w = getPlayerFleeRateValue(role);
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
       w += getEquipmentEffectScalar(i, 'fleeRate', role);
     }
@@ -535,7 +668,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getPlayerPoisonResistance = function(role) {
-    var roles = worldService.getPlayerRoles();
+    var roles = getPlayerRolesSnapshot();
     var w = roles && roles.poisonResistance ? roles.poisonResistance[role] || 0 : 0;
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
       w += getEquipmentEffectScalar(i, 'poisonResistance', role);
@@ -544,7 +677,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getPlayerElementalResistance = function(role, attr) {
-    var base = worldService.getPlayerRoles();
+    var base = getPlayerRolesSnapshot();
     var w = base && base.elementalResistance && base.elementalResistance[attr]
       ? base.elementalResistance[attr][role] || 0
       : 0;
@@ -559,7 +692,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getPlayerBattleSprite = function(role) {
-    var roles = worldService.getPlayerRoles();
+    var roles = getPlayerRolesSnapshot();
     var w = roles && roles.spriteNumInBattle ? roles.spriteNumInBattle[role] || 0 : 0;
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
       var effect = worldService.getEquipmentEffect(i);
@@ -573,7 +706,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.getPlayerCooperativeMagic = function(role) {
-    var roles = worldService.getPlayerRoles();
+    var roles = getPlayerRolesSnapshot();
     var w = roles && roles.cooperativeMagic ? roles.cooperativeMagic[role] || 0 : 0;
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
       var effect = worldService.getEquipmentEffect(i);
@@ -642,13 +775,13 @@ script_extras.init = function*(surf, _script) {
 
     worldService.setPlayerLevel(role, targetLevel);
 
-    var maxHP = worldService.getPlayerMaxHP(role);
-    var maxMP = worldService.getPlayerMaxMP(role);
-    var attack = worldService.getPlayerAttackStrength(role);
-    var magic = worldService.getPlayerMagicStrength(role);
-    var defense = worldService.getPlayerDefense(role);
-    var dexterity = worldService.getPlayerDexterity(role);
-    var flee = worldService.getPlayerFleeRate(role);
+    var maxHP = getPlayerMaxHPValue(role);
+    var maxMP = getPlayerMaxMPValue(role);
+    var attack = getPlayerAttackValue(role);
+    var magic = getPlayerMagicValue(role);
+    var defense = getPlayerDefenseValue(role);
+    var dexterity = getPlayerDexterityValue(role);
+    var flee = getPlayerFleeRateValue(role);
 
     for (var i = 0; i < actualGain; i++) {
       // Increase player's stats
@@ -685,7 +818,7 @@ script_extras.init = function*(surf, _script) {
 
   function findIndexByPlayerRole(role) {
     var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
-    var party = worldService.getParty();
+    var party = partyTrailAdapter.getPartyState();
     for (var i=0; i<=maxPartyMemberIndex; ++i) {
       if (party[i] && party[i].playerRole == role) {
         return i;

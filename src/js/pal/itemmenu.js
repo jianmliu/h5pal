@@ -2,6 +2,9 @@ import utils from './utils';
 import input from './input';
 import scene from './scene';
 import worldService from '../../services/world-service.js';
+import { menuSelectionSignals } from '../../state/slices/menu-selections.js';
+import { inventorySignals } from '../../state/slices/inventory.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
 
 log.trace('itemmenu module load');
 
@@ -14,6 +17,46 @@ var itemmenu = {
 var surface = null;
 var ui = null;
 
+const menuSignals = menuSelectionSignals();
+const inventoryMenuSignal = menuSignals.inventory;
+
+const inventorySlice = inventorySignals();
+const inventoryItemsSignal = inventorySlice.items;
+const inventoryCapacitySignal = inventorySlice.capacity;
+
+function getInventoryList() {
+  const items = inventoryItemsSignal.value;
+  if (Array.isArray(items) && items.length > 0) {
+    return items;
+  }
+  if (typeof worldService.getInventory === 'function') {
+    const fallback = worldService.getInventory();
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      return fallback;
+    }
+  }
+  return Array.isArray(items) ? items : [];
+}
+
+function getInventorySlotFromSignal(index) {
+  const items = getInventoryList();
+  return (index >= 0 && index < items.length) ? items[index] : null;
+}
+
+function getInventoryCapacityFromSignal() {
+  const value = inventoryCapacitySignal.value;
+  if (Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof worldService.getInventoryCapacity === 'function') {
+    const serviceCapacity = worldService.getInventoryCapacity();
+    if (Number.isFinite(serviceCapacity) && serviceCapacity > 0) {
+      return serviceCapacity;
+    }
+  }
+  return Const.MAX_INVENTORY;
+}
+
 function setCurrentInventoryIndex(value) {
   worldService.setInventoryMenuIndex(value);
 }
@@ -23,7 +66,7 @@ function adjustCurrentInventoryIndex(delta) {
 }
 
 function getCurrentInventoryIndex() {
-  return worldService.getInventoryMenuIndex();
+  return inventoryMenuSignal.value;
 }
 
 function ensureInventorySlot(inventory, index) {
@@ -75,7 +118,7 @@ itemmenu.itemSelectMenuUpdate = function() {
   ui.createBox(PAL_XY(2, 0), 6, 17, 1, false);
 
   // Draw the texts in the current page
-  var inventory = worldService.getInventory();
+  var inventory = getInventoryList();
   var i = ~~(currentIndex / 3) * 3 - 3 * 4;
   if (i < 0) {
     i = 0;
@@ -208,7 +251,7 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
   script.compressInventory();
   // Count the total number of items in inventory
   itemmenu.numInventory = 0;
-  var inventorySnapshot = worldService.getInventory();
+  var inventorySnapshot = getInventoryList();
   while (itemmenu.numInventory < Const.MAX_INVENTORY &&
          inventorySnapshot[itemmenu.numInventory] &&
          inventorySnapshot[itemmenu.numInventory].item != 0) {
@@ -220,9 +263,9 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
       if (!Array.isArray(inventory)) {
         return inventory;
       }
-      var party = worldService.getParty();
+      var party = partyTrailAdapter.getPartyState();
       var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
-      var capacity = worldService.getInventoryCapacity() || Const.MAX_INVENTORY;
+      var capacity = getInventoryCapacityFromSignal();
       for (var i = 0; i <= maxPartyMemberIndex; i++) {
         var member = party[i];
         if (!member) {
@@ -249,7 +292,7 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
       }
       return inventory;
     });
-    inventorySnapshot = worldService.getInventory();
+    inventorySnapshot = getInventoryList();
   }
 };
 
@@ -259,7 +302,7 @@ itemmenu.itemSelectMenu = function*(onchange, itemFlags) {
   input.clear();
   if (onchange) {
     itemmenu.noDesc = true;
-    var initialSlot = worldService.getInventorySlot(prevIndex);
+    var initialSlot = getInventorySlotFromSignal(prevIndex);
     onchange(initialSlot ? initialSlot.item : 0);
   }
   while (true) {
@@ -289,7 +332,7 @@ itemmenu.itemSelectMenu = function*(onchange, itemFlags) {
     if (prevIndex != currentIndex) {
       if (currentIndex >= 0 && currentIndex < Const.MAX_INVENTORY) {
         if (onchange){
-          var slot = worldService.getInventorySlot(currentIndex);
+          var slot = getInventorySlotFromSignal(currentIndex);
           onchange(slot ? slot.item : 0);
         }
       }

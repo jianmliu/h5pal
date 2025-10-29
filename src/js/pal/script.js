@@ -8,8 +8,48 @@ import music from './music';
 import sound from './sound';
 import battleService from '../../services/battle-service.js';
 import worldService from '../../services/world-service.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
 
 log.trace('script module load');
+
+let partyStateCache = [];
+let trailStateCache = [];
+let partyTrailUnsubscribe = null;
+
+function handlePartyTrailUpdate(event) {
+  if (!event) {
+    return;
+  }
+  switch (event.type) {
+    case 'snapshot':
+      partyStateCache = Array.isArray(event.party) ? event.party : partyStateCache;
+      trailStateCache = Array.isArray(event.trail) ? event.trail : trailStateCache;
+      break;
+    case 'party':
+      partyStateCache = Array.isArray(event.value) ? event.value : partyStateCache;
+      break;
+    case 'trail':
+      trailStateCache = Array.isArray(event.value) ? event.value : trailStateCache;
+      break;
+    case 'disposed':
+      if (typeof partyTrailUnsubscribe === 'function') {
+        partyTrailUnsubscribe();
+      }
+      partyTrailUnsubscribe = null;
+      partyStateCache = [];
+      trailStateCache = [];
+      break;
+    default:
+      break;
+  }
+}
+
+function ensurePartyTrailBinding() {
+  if (partyTrailUnsubscribe) {
+    return;
+  }
+  partyTrailUnsubscribe = partyTrailAdapter.subscribe(handlePartyTrailUpdate);
+}
 
 function BATTLE() {
   if (battleService) {
@@ -211,7 +251,11 @@ function mutateTrailValue(mutator) {
 }
 
 function getTrailValue() {
-  return worldService.getTrail();
+  ensurePartyTrailBinding();
+  if (!Array.isArray(trailStateCache)) {
+    trailStateCache = partyTrailAdapter.getTrailState();
+  }
+  return trailStateCache;
 }
 
 function getPlayerEquipmentValue(slot, roleId) {
@@ -465,7 +509,11 @@ function cloneEventObjectById(targetId, index) {
 }
 
 function getPartyState() {
-  return worldService.getParty();
+  ensurePartyTrailBinding();
+  if (!Array.isArray(partyStateCache)) {
+    partyStateCache = partyTrailAdapter.getPartyState();
+  }
+  return partyStateCache;
 }
 
 function getPartyMember(index) {

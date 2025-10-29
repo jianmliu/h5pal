@@ -9,6 +9,8 @@ import input from './input';
 import uigame from './uigame';
 import battleServiceDefault from '../../services/battle-service.js';
 import worldService from '../../services/world-service.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import { autoBattleSignal } from '../../state/slices/auto-battle.js';
 
 log.trace('uibattle module load');
 
@@ -91,6 +93,7 @@ var itemmenu = null;
 var magicmenu = null;
 var battleService = battleServiceDefault;
 var battleServiceSubscription = null;
+var autoBattleFlagSignal = autoBattleSignal();
 
 function BATTLE() {
   var state = battleService.getState && battleService.getState();
@@ -368,8 +371,7 @@ function getAutoBattle(component) {
   if (uiComponent && typeof uiComponent.autoBattle !== 'undefined') {
     return !!uiComponent.autoBattle;
   }
-  var autoBattle = worldService.getAutoBattle();
-  return typeof autoBattle !== 'undefined' ? !!autoBattle : false;
+  return !!autoBattleFlagSignal.value;
 }
 
 function getUIStateObject() {
@@ -397,10 +399,7 @@ function getUIProp(prop, fallback, component) {
     if (typeof uiComponent.autoBattle !== 'undefined') {
       return !!uiComponent.autoBattle;
     }
-    var autoBattle = worldService.getAutoBattle();
-    if (typeof autoBattle !== 'undefined') {
-      return !!autoBattle;
-    }
+    return !!autoBattleFlagSignal.value;
   }
   var uiState = uiComponent.stateRef || getUIStateObject();
   if (uiState && Object.prototype.hasOwnProperty.call(uiState, prop)) {
@@ -410,7 +409,7 @@ function getUIProp(prop, fallback, component) {
 }
 
 function getPartyMember(index) {
-  var party = worldService.getParty();
+  var party = partyTrailAdapter.getPartyState();
   if (!Array.isArray(party)) {
     return null;
   }
