@@ -3,6 +3,7 @@ import { BattleComponents } from '../src/ecs/index.js';
 import worldService from '../src/services/world-service.js';
 import stateService from '../src/services/state-service.js';
 import scriptService from '../src/services/script-service.js';
+import reactiveContext from '../src/state/reactive-context.js';
 
 const initMock = vi.fn(function* (...args) {
   yield { type: 'initStep', args };
@@ -40,6 +41,7 @@ describe('BattleService', () => {
   const root = globalThis;
 
   beforeEach(async () => {
+    reactiveContext.dispose();
     initMock.mockClear();
     startMock.mockClear();
     wonMock.mockClear();
@@ -51,7 +53,7 @@ describe('BattleService', () => {
     battleService.state = null;
     battleService.module = null;
     battleService._globalAccessorInstalled = false;
-    root.Global = {};
+    root.Global = { autoBattle: false, frameNum: 0 };
     root.Global.playerStatus = [];
     root.Global.poisonStatus = [];
     battleService.bindModule(battleModuleMock);
@@ -61,6 +63,7 @@ describe('BattleService', () => {
 
   afterEach(() => {
     worldService.dispose();
+    reactiveContext.dispose();
     stateService.updateGlobal({
       cash: undefined,
       party: undefined,
@@ -202,7 +205,7 @@ describe('BattleService', () => {
       { playerRole: 3 },
       { playerRole: 4 }
     ];
-    root.Global.autoBattle = false;
+    worldService.setAutoBattle(false);
     root.Global.playerStatus[3] = new Array(9).fill(0);
     root.Global.playerStatus[4] = new Array(9).fill(0);
 
@@ -345,7 +348,7 @@ describe('BattleService', () => {
     battleService.replaceState(sampleState);
     root.Global.maxPartyMemberIndex = 0;
     root.Global.party = [{ playerRole: 3 }];
-    root.Global.autoBattle = false;
+    worldService.setAutoBattle(false);
     root.Global.playerStatus[3] = new Array(9).fill(0);
 
     battleService.initialiseBattleEntities();
@@ -366,10 +369,9 @@ describe('BattleService', () => {
     }));
     expect(uiComponent.state).toBe(2);
     expect(uiComponent.selectedIndex).toBe(3);
-    expect(uiComponent.autoBattle).toBe(root.Global.autoBattle);
+    expect(uiComponent.autoBattle).toBe(worldService.getAutoBattle());
 
-    root.Global.autoBattle = true;
-    battleService.syncUIComponent();
+    worldService.setAutoBattle(true);
     expect(battleService.getUIComponent().autoBattle).toBe(true);
 
     battleService.updateUI(function(ui) {
@@ -465,7 +467,7 @@ describe('BattleService', () => {
     battleService.replaceState(battleState);
     root.Global.maxPartyMemberIndex = 0;
     root.Global.party = [{ playerRole: 0 }];
-    root.Global.autoBattle = false;
+    worldService.setAutoBattle(false);
     root.Global.playerStatus[0] = new Array(9).fill(0);
     battleService.initialiseBattleEntities();
 

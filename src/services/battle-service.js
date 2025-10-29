@@ -17,6 +17,7 @@ import {
   createQueueEntryComponent,
   createUIStateComponent
 } from '../ecs/index.js';
+import { autoBattleStream, getAutoBattleValue } from '../state/slices/auto-battle.js';
 
 function ensureGameGlobal() {
   let store = stateService.getGlobal();
@@ -46,7 +47,7 @@ function getPlayerStatusRow(roleId) {
 }
 
 function getAutoBattleFlag() {
-  return !!worldService.getAutoBattle();
+  return !!getAutoBattleValue(false);
 }
 
 class BattleService extends EventBus {
@@ -65,6 +66,8 @@ class BattleService extends EventBus {
       ui: null
     };
     this.systemManager = null;
+    this._autoBattleSubscription = null;
+    this._ensureAutoBattleSubscription();
   }
 
   bindModule(moduleRef) {
@@ -76,6 +79,18 @@ class BattleService extends EventBus {
     this.module = moduleRef;
     this._installGlobalAccessor();
     this._syncStateFromGlobal();
+  }
+
+  _ensureAutoBattleSubscription() {
+    if (this._autoBattleSubscription && typeof this._autoBattleSubscription.unsubscribe === 'function') {
+      this._autoBattleSubscription.unsubscribe();
+    }
+    const stream = autoBattleStream();
+    if (stream && typeof stream.subscribe === 'function') {
+      this._autoBattleSubscription = stream.subscribe(() => {
+        this.syncUIComponent();
+      });
+    }
   }
 
   _syncStateFromGlobal() {
@@ -258,6 +273,7 @@ class BattleService extends EventBus {
 
   initialiseBattleEntities() {
     this.resetEntityRegistry();
+    this._ensureAutoBattleSubscription();
     const state = this.getState();
     if (!state) {
       return;

@@ -17,6 +17,8 @@ import {
   createCollisionStateComponent
 } from '../ecs/index.js';
 import createWorldSystemManager from './world-systems.js';
+import { updateAutoBattle, getAutoBattleValue } from '../state/slices/auto-battle.js';
+import { updateFrameCount, getFrameCountValue } from '../state/slices/frame-count.js';
 
 function getGlobalStore() {
   if (typeof globalThis !== 'undefined' && globalThis.Global) {
@@ -161,6 +163,16 @@ class WorldService extends EventBus {
     }
   }
 
+  _syncAutoBattleFlag(value) {
+    const resolved = typeof value === 'boolean' ? value : this._getBooleanGlobal('autoBattle', false);
+    updateAutoBattle(resolved, { emitEvent: false, source: 'worldService:sync' });
+  }
+
+  _syncFrameCountValue(value) {
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : this._getNumberGlobal('frameNum', 0);
+    updateFrameCount(resolved, { emitEvent: false, source: 'worldService:sync' });
+  }
+
   _replaceGameDataTable(key, value) {
     this._ensureInitialised();
     stateService.setGameData(key, value);
@@ -241,6 +253,7 @@ class WorldService extends EventBus {
     this.syncEventObjects();
     this.syncScriptRegisters();
     this._ensureMoveQueue();
+    this.syncReactiveGlobals();
   }
 
   syncViewport() {
@@ -331,6 +344,19 @@ class WorldService extends EventBus {
       }
     }
     this.fire('trailSynced', { trail });
+  }
+
+  syncReactiveGlobals() {
+    const globalStore = stateService.getGlobal();
+    const autoBattleValue = globalStore && typeof globalStore.autoBattle !== 'undefined'
+      ? !!globalStore.autoBattle
+      : this._getBooleanGlobal('autoBattle', false);
+    this._syncAutoBattleFlag(autoBattleValue);
+
+    const frameValue = globalStore && typeof globalStore.frameNum !== 'undefined'
+      ? globalStore.frameNum
+      : this._getNumberGlobal('frameNum', 0);
+    this._syncFrameCountValue(frameValue);
   }
 
   syncScene() {
@@ -2442,11 +2468,13 @@ class WorldService extends EventBus {
   }
 
   getAutoBattle() {
-    return this._getBooleanGlobal('autoBattle', false);
+    return getAutoBattleValue(this._getBooleanGlobal('autoBattle', false));
   }
 
   setAutoBattle(value) {
-    return this._setBooleanGlobal('autoBattle', value);
+    const resolved = this._setBooleanGlobal('autoBattle', value);
+    updateAutoBattle(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   getChaseRange() {
@@ -2490,15 +2518,19 @@ class WorldService extends EventBus {
   }
 
   getFrameCount() {
-    return this._getNumberGlobal('frameNum', 0);
+    return getFrameCountValue(this._getNumberGlobal('frameNum', 0));
   }
 
   setFrameCount(value) {
-    return this._setNumberGlobal('frameNum', value, 0);
+    const resolved = this._setNumberGlobal('frameNum', value, 0);
+    updateFrameCount(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   incrementFrameCount(delta = 1) {
-    return this._adjustNumberGlobal('frameNum', delta, 0);
+    const resolved = this._adjustNumberGlobal('frameNum', delta, 0);
+    updateFrameCount(resolved, { source: 'worldService' });
+    return resolved;
   }
 
   isInBattle() {
@@ -2590,15 +2622,15 @@ class WorldService extends EventBus {
   }
 
   getFrameNum() {
-    return this._getNumberGlobal('frameNum', 0);
+    return this.getFrameCount();
   }
 
   setFrameNum(value) {
-    return this._setNumberGlobal('frameNum', value, 0);
+    return this.setFrameCount(value);
   }
 
   adjustFrameNum(delta) {
-    return this._adjustNumberGlobal('frameNum', delta, 0);
+    return this.incrementFrameCount(delta);
   }
 
   isGameStart() {
@@ -2627,12 +2659,18 @@ class WorldService extends EventBus {
       case 'trail':
         this.syncTrail();
         break;
+      case 'autoBattle':
+        this._syncAutoBattleFlag(payload.value);
+        break;
       case 'numScene':
         this.syncScene();
         this.syncMapMeta();
         this.syncMapTiles();
         this.syncEventObjects();
         this.ensureCollisionState();
+        break;
+      case 'frameNum':
+        this._syncFrameCountValue(payload.value);
         break;
       default:
         break;

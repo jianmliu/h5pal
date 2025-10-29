@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import worldService from '../src/services/world-service.js';
 import stateService from '../src/services/state-service.js';
+import reactiveContext from '../src/state/reactive-context.js';
+import { autoBattleSignal, autoBattleStream } from '../src/state/slices/auto-battle.js';
+import { frameCountSignal, frameCountStream } from '../src/state/slices/frame-count.js';
 
 function createTrailEntry() {
   return { x: 0, y: 0, direction: 0 };
@@ -8,6 +11,7 @@ function createTrailEntry() {
 
 describe('world service', () => {
   beforeEach(() => {
+    reactiveContext.dispose();
     globalThis.PAL_X = (pos) => pos & 0xFFFF;
     globalThis.PAL_Y = (pos) => (pos >>> 16) & 0xFFFF;
     globalThis.PAL_XY = (x, y) => ((y & 0xFFFF) << 16) | (x & 0xFFFF);
@@ -30,7 +34,9 @@ describe('world service', () => {
       numScene: 1,
       maxPartyMemberIndex: 1,
       partyDirection: 0,
-      equipmentEffect: [{ spriteNumInBattle: [0, 101] }]
+      equipmentEffect: [{ spriteNumInBattle: [0, 101] }],
+      autoBattle: false,
+      frameNum: 0
     };
 
     globalThis.GameData = {
@@ -57,6 +63,7 @@ describe('world service', () => {
 
   afterEach(() => {
     worldService.dispose();
+    reactiveContext.dispose();
   });
 
   it('initialises viewport and party structures', () => {
@@ -171,5 +178,35 @@ describe('world service', () => {
 
     worldService.setBattleSpeed(3);
     expect(worldService.getBattleSpeed()).toBe(3);
+  });
+
+  it('synchronises autoBattle with reactive adapters', () => {
+    worldService.init();
+    const observed = [];
+    const subscription = autoBattleStream().subscribe((value) => observed.push(value));
+    expect(autoBattleSignal().value).toBe(false);
+    worldService.setAutoBattle(true);
+    expect(worldService.getAutoBattle()).toBe(true);
+    expect(autoBattleSignal().value).toBe(true);
+    worldService.setAutoBattle(false);
+    expect(worldService.getAutoBattle()).toBe(false);
+    expect(autoBattleSignal().value).toBe(false);
+    expect(observed).toEqual([false, true, false]);
+    subscription.unsubscribe();
+  });
+
+  it('updates frame count signal when mutated', () => {
+    worldService.init();
+    const updates = [];
+    const subscription = frameCountStream().subscribe((value) => updates.push(value));
+    expect(frameCountSignal().value).toBe(0);
+    worldService.setFrameCount(12);
+    expect(worldService.getFrameCount()).toBe(12);
+    expect(frameCountSignal().value).toBe(12);
+    worldService.incrementFrameCount(3);
+    expect(worldService.getFrameCount()).toBe(15);
+    expect(frameCountSignal().value).toBe(15);
+    expect(updates).toEqual([0, 12, 15]);
+    subscription.unsubscribe();
   });
 });

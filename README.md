@@ -85,6 +85,7 @@ h5pal
 
 * ES6 and [babel](http://babeljs.io/)
 * ES6 [generator/yield](http://jimliu.net/2014/11/28/a-brief-look-at-es6-generator-function/) and [co](https://github.com/tj/co)
+* 逐步将 PAL 的运行时迁移到响应式状态管理。参见 `docs/reactive-migration-guide.md` 了解切片模式和示例。
 
 ## License
 
