@@ -4,9 +4,7 @@ const MUSIC_TRACK_KEY = 'world.audio.musicTrack';
 const BATTLE_MUSIC_TRACK_KEY = 'world.audio.battleMusicTrack';
 const BATTLE_FIELD_KEY = 'world.audio.battleFieldId';
 const SCREEN_WAVE_KEY = 'world.audio.screenWave';
-const WAVE_PROGRESSION_KEY = 'world.audio.waveProgression';
 const PALETTE_ID_KEY = 'world.audio.paletteId';
-const NEED_FADE_IN_KEY = 'world.audio.needToFadeIn';
 const NIGHT_PALETTE_KEY = 'world.audio.nightPalette';
 const LAYER_KEY = 'world.audio.layer';
 
@@ -19,15 +17,21 @@ function ensureBooleanSignal(key, fallback = false) {
   return reactiveContext.ensureSignal(key, !!fallback);
 }
 
+function getNumberSignalValue(key, fallback = 0) {
+  return ensureNumberSignal(key, fallback).value;
+}
+
+function getBooleanSignalValue(key, fallback = false) {
+  return ensureBooleanSignal(key, fallback).value;
+}
+
 export function audioResourceSignals() {
   return {
     musicTrack: ensureNumberSignal(MUSIC_TRACK_KEY, 0),
     battleMusicTrack: ensureNumberSignal(BATTLE_MUSIC_TRACK_KEY, 0),
     battleFieldId: ensureNumberSignal(BATTLE_FIELD_KEY, 0),
     screenWave: ensureNumberSignal(SCREEN_WAVE_KEY, 0),
-    waveProgression: ensureNumberSignal(WAVE_PROGRESSION_KEY, 0),
     paletteId: ensureNumberSignal(PALETTE_ID_KEY, 0),
-    needToFadeIn: ensureBooleanSignal(NEED_FADE_IN_KEY, false),
     nightPalette: ensureBooleanSignal(NIGHT_PALETTE_KEY, false),
     layer: ensureNumberSignal(LAYER_KEY, 0)
   };
@@ -85,10 +89,6 @@ export function updateScreenWaveValue(value, options = {}) {
   return updateNumberSignal(SCREEN_WAVE_KEY, value, options);
 }
 
-export function updateWaveProgressionValue(value, options = {}) {
-  return updateNumberSignal(WAVE_PROGRESSION_KEY, value, options);
-}
-
 export function updatePaletteIdValue(value, options = {}) {
   return updateNumberSignal(PALETTE_ID_KEY, value, options);
 }
@@ -97,12 +97,24 @@ export function updateLayerValue(value, options = {}) {
   return updateNumberSignal(LAYER_KEY, value, options);
 }
 
-export function updateNeedToFadeInValue(value, options = {}) {
-  return updateBooleanSignal(NEED_FADE_IN_KEY, value, options);
-}
-
 export function updateNightPaletteValue(value, options = {}) {
   return updateBooleanSignal(NIGHT_PALETTE_KEY, value, options);
+}
+
+export function getScreenWaveValue(fallback = 0) {
+  return getNumberSignalValue(SCREEN_WAVE_KEY, fallback);
+}
+
+export function getPaletteIdValue(fallback = 0) {
+  return getNumberSignalValue(PALETTE_ID_KEY, fallback);
+}
+
+export function getLayerValue(fallback = 0) {
+  return getNumberSignalValue(LAYER_KEY, fallback);
+}
+
+export function getNightPaletteValue(fallback = false) {
+  return getBooleanSignalValue(NIGHT_PALETTE_KEY, fallback);
 }
 
 export function resetAudioResourceSlice() {
@@ -110,9 +122,7 @@ export function resetAudioResourceSlice() {
   reactiveContext.setSignal(BATTLE_MUSIC_TRACK_KEY, 0);
   reactiveContext.setSignal(BATTLE_FIELD_KEY, 0);
   reactiveContext.setSignal(SCREEN_WAVE_KEY, 0);
-  reactiveContext.setSignal(WAVE_PROGRESSION_KEY, 0);
   reactiveContext.setSignal(PALETTE_ID_KEY, 0);
-  reactiveContext.setSignal(NEED_FADE_IN_KEY, false);
   reactiveContext.setSignal(NIGHT_PALETTE_KEY, false);
   reactiveContext.setSignal(LAYER_KEY, 0);
 }

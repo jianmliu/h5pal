@@ -11,6 +11,7 @@ import worldService from '../../services/world-service.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import { gameFlagSignals } from '../../state/slices/game-flags.js';
+import { viewportSignals } from '../../state/slices/viewport.js';
 
 log.trace('script module load');
 
@@ -24,6 +25,10 @@ const collectSignal = gameFlagSlice.collect;
 const chaseRangeSignal = gameFlagSlice.chaseRange;
 const chaseCyclesSignal = gameFlagSlice.chaseSpeedChangeCycles;
 const battleSpeedSignal = gameFlagSlice.battleSpeed;
+const viewportSlice = viewportSignals();
+const viewportSignal = viewportSlice.viewport;
+const partyOffsetSignal = viewportSlice.partyOffset;
+const partyDirectionSignal = viewportSlice.partyDirection;
 
 function handlePartyTrailUpdate(event) {
   if (!event) {
@@ -97,170 +102,12 @@ function BATTLE() {
   return {};
 }
 
-function setGlobalValue(key, value) {
-  switch (key) {
-    case 'cash':
-      return worldService.setCash(value);
-    case 'autoBattle':
-      return worldService.setAutoBattle(value);
-    case 'chaseRange':
-      return worldService.setChaseRange(value);
-    case 'chaseSpeedChangeCycles':
-      return worldService.setChaseSpeedChangeCycles(value);
-    case 'collectValue':
-      return worldService.setCollectValue(value);
-    case 'curPlayingRNG':
-      return worldService.setCurPlayingRng(value);
-    case 'frameNum':
-      return worldService.setFrameCount(value);
-    case 'inBattle':
-      return worldService.setInBattle(value);
-    case 'currentSaveSlot':
-      return worldService.setCurrentSaveSlot(value);
-    case 'lastUnequippedItem':
-      return worldService.setLastUnequippedItem(value);
-    case 'maxPartyMemberIndex':
-      return worldService.setMaxPartyMemberIndex(value);
-    case 'numScene':
-      return worldService.setSceneId(value);
-    case 'enteringScene':
-      return worldService.setEnteringScene(value);
-    case 'nightPalette':
-      return worldService.setNightPaletteFlag(value);
-    case 'musicNum':
-      return worldService.setMusicTrack(value);
-    case 'numBattleMusic':
-      return worldService.setBattleMusicTrack(value);
-    case 'numBattleField':
-      return worldService.setBattleFieldId(value);
-    case 'playerStatus':
-      return worldService.setPlayerStatusStruct(value);
-    case 'battleSpeed':
-      return worldService.setBattleSpeed(value);
-    default:
-      warnLog('[SCRIPT] setGlobalValue skipped unknown key "' + key + '"');
-      return undefined;
-  }
-}
-
-function mutateGlobalValue(key, mutator) {
-  if (key === 'cash') {
-    if (typeof mutator !== 'function') {
-      const value = cashSignal.value;
-      return Number.isFinite(value) ? value : worldService.getCash();
-    }
-    var cachedValue = cashSignal.value;
-    var current = Number.isFinite(cachedValue) ? cachedValue : worldService.getCash();
-    var next = mutator(current);
-    if (typeof next === 'undefined') {
-      return current;
-    }
-    return worldService.setCash(next);
-  }
-  if (key === 'collectValue') {
-    if (typeof mutator !== 'function') {
-      const value = collectSignal.value;
-      return Number.isFinite(value) ? value : worldService.getCollectValue();
-    }
-    var cachedCollect = collectSignal.value;
-    var currentCollect = Number.isFinite(cachedCollect) ? cachedCollect : worldService.getCollectValue();
-    var updatedCollect = mutator(currentCollect);
-    if (typeof updatedCollect === 'undefined') {
-      return currentCollect;
-    }
-    return worldService.setCollectValue(updatedCollect);
-  }
-  if (key === 'chaseRange') {
-    if (typeof mutator !== 'function') {
-      const value = chaseRangeSignal.value;
-      return Number.isFinite(value) ? value : worldService.getChaseRange();
-    }
-    var cachedRange = chaseRangeSignal.value;
-    var currentRange = Number.isFinite(cachedRange) ? cachedRange : worldService.getChaseRange();
-    var nextRange = mutator(currentRange);
-    if (typeof nextRange === 'undefined') {
-      return currentRange;
-    }
-    return worldService.setChaseRange(nextRange);
-  }
-  if (key === 'chaseSpeedChangeCycles') {
-    if (typeof mutator !== 'function') {
-      const value = chaseCyclesSignal.value;
-      return Number.isFinite(value) ? value : worldService.getChaseSpeedChangeCycles();
-    }
-    var cachedCycles = chaseCyclesSignal.value;
-    var currentCycles = Number.isFinite(cachedCycles) ? cachedCycles : worldService.getChaseSpeedChangeCycles();
-    var nextCycles = mutator(currentCycles);
-    if (typeof nextCycles === 'undefined') {
-      return currentCycles;
-    }
-    return worldService.setChaseSpeedChangeCycles(nextCycles);
-  }
-  if (key === 'battleSpeed') {
-    if (typeof mutator !== 'function') {
-      const value = battleSpeedSignal.value;
-      return Number.isFinite(value) ? value : worldService.getBattleSpeed();
-    }
-    var cachedSpeed = battleSpeedSignal.value;
-    var currentSpeed = Number.isFinite(cachedSpeed) ? cachedSpeed : worldService.getBattleSpeed();
-    var nextSpeed = mutator(currentSpeed);
-    if (typeof nextSpeed === 'undefined') {
-      return currentSpeed;
-    }
-    return worldService.setBattleSpeed(nextSpeed);
-  }
-  if (key === 'frameNum') {
-    if (typeof mutator !== 'function') {
-      return worldService.getFrameCount();
-    }
-    var currentFrame = worldService.getFrameCount();
-    var nextFrame = mutator(currentFrame);
-    if (typeof nextFrame === 'undefined') {
-      return currentFrame;
-    }
-    return worldService.setFrameCount(nextFrame);
-  }
-  if (key === 'currentSaveSlot') {
-    if (typeof mutator !== 'function') {
-      return worldService.getCurrentSaveSlot();
-    }
-    var currentSlot = worldService.getCurrentSaveSlot();
-    var nextSlot = mutator(currentSlot);
-    if (typeof nextSlot === 'undefined') {
-      return currentSlot;
-    }
-    return worldService.setCurrentSaveSlot(nextSlot);
-  }
-  if (key === 'party') {
-    return worldService.mutateParty(mutator);
-  }
-  if (key === 'poisonStatus') {
-    if (typeof mutator !== 'function') {
-      return worldService.getPoisonStatusMatrix();
-    }
-    return worldService.mutatePoisonStatus(function(status) {
-      const result = mutator(status);
-      return typeof result === 'undefined' ? status : result;
-    });
-  }
-  warnLog('[SCRIPT] mutateGlobalValue skipped unknown key "' + key + '"');
-  return undefined;
-}
-
-function adjustGlobalNumber(key, delta) {
-  if (key === 'cash') {
-    return worldService.adjustCash(delta);
-  }
-  if (key === 'collectValue') {
-    return worldService.adjustCollectValue(delta);
-  }
-  return mutateGlobalValue(key, function(value) {
-    var next = (value || 0) + delta;
-    return next;
-  });
-}
 
 function getViewportValue() {
+  const value = viewportSignal.value;
+  if (Number.isFinite(value)) {
+    return value;
+  }
   return worldService.getViewport();
 }
 
@@ -269,6 +116,10 @@ function setViewportValue(value) {
 }
 
 function getPartyOffsetValue() {
+  const value = partyOffsetSignal.value;
+  if (Number.isFinite(value)) {
+    return value;
+  }
   return worldService.getPartyOffset();
 }
 
@@ -668,6 +519,10 @@ function getCashValue() {
 }
 
 function getPartyDirection() {
+  const value = partyDirectionSignal.value;
+  if (Number.isFinite(value)) {
+    return value;
+  }
   return worldService.getPartyDirection();
 }
 
@@ -697,10 +552,6 @@ function mutatePlayerRoles(mutator) {
 
 function mutateMagic(mutator) {
   return worldService.mutateMagicTable(mutator);
-}
-
-function mutateObjects(mutator) {
-  return worldService.mutateObjects(mutator);
 }
 
 function getObjectEntry(objectId) {
@@ -1391,7 +1242,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         if (w !== 0) {
           script.addItemToInventory(w, 1);
         }
-        setGlobalValue('lastUnequippedItem', w);
+        worldService.setLastUnequippedItem(w);
       }
       break;
     case 0x0019:
@@ -1504,7 +1355,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         // not enough cash
         scriptEntry = sc.operand[1] - 1;
       } else {
-        adjustGlobalNumber('cash', SHORT(sc.operand[0]));
+        worldService.adjustCash(SHORT(sc.operand[0]));
       }
       break;
     case 0x001F:
@@ -1859,7 +1710,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0033:
       script.debug('[SCRIPT] collect the enemy for items');
       if (BATTLE().enemy[eventObjectID].e.collectValue !== 0) {
-        adjustGlobalNumber('collectValue', BATTLE().enemy[eventObjectID].e.collectValue);
+        worldService.adjustCollectValue(BATTLE().enemy[eventObjectID].e.collectValue);
       } else {
         scriptEntry = sc.operand[0] - 1;
       }
@@ -1879,7 +1730,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
             i = collectValue;
           }
         }
-        adjustGlobalNumber('collectValue', -i);
+        worldService.adjustCollectValue(-i);
         i--;
         var storeItemId = getStoreItemId(0, i);
         if (storeItemId) {
@@ -1908,7 +1759,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0036:
       script.debug('[SCRIPT] Set the current playing RNG animation');
-      setGlobalValue('curPlayingRNG', sc.operand[0]);
+      worldService.setCurPlayingRng(sc.operand[0]);
       break;
     case 0x0037:
       script.debug('[SCRIPT] Play RNG animation');
@@ -1984,7 +1835,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0043:
       script.debug('[SCRIPT] Set background music');
-      setGlobalValue('musicNum', sc.operand[0]);
+      worldService.setMusicTrack(sc.operand[0]);
       music.play(sc.operand[0], (sc.operand[0] != 0x3D), sc.operand[1]);
       break;
     case 0x0044:
@@ -1993,7 +1844,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0045:
       script.debug('[SCRIPT] Set battle music');
-      setGlobalValue('numBattleMusic', sc.operand[0]);
+      worldService.setBattleMusicTrack(sc.operand[0]);
       break;
     case 0x0046:
       script.debug('[SCRIPT] Set the party position on the map');
@@ -2013,7 +1864,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       var viewportX = PAL_X(viewportPos);
       var viewportY = PAL_Y(viewportPos);
       var direction = getPartyDirection();
-      mutateGlobalValue('party', function(party) {
+      worldService.mutateParty(function(party) {
         mutateTrailValue(function(trail) {
           var currentX = partyStartX;
           var currentY = partyStartY;
@@ -2050,7 +1901,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x004A:
       script.debug('[SCRIPT] Set the current battlefield');
-      setGlobalValue('numBattleField', sc.operand[0]);
+      worldService.setBattleFieldId(sc.operand[0]);
       break;
     case 0x004B:
       script.debug('[SCRIPT] Nullify the event object for a short while');
@@ -2149,9 +2000,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Change to the specified scene');
       if (sc.operand[0] > 0 && sc.operand[0] <= Const.MAX_SCENES && getSceneIdValue() !== sc.operand[0]) {
         // Set data to load the scene in the next frame
-        setGlobalValue('numScene', sc.operand[0]);
+        worldService.setSceneId(sc.operand[0]);
         res.setLoadFlags(LoadFlag.Scene);
-        setGlobalValue('enteringScene', true);
+        worldService.setEnteringScene(true);
         worldService.setLayer(0);
       }
       break;
@@ -2214,13 +2065,13 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0062:
       script.debug('[SCRIPT] Pause enemy chasing for a while');
-      setGlobalValue('chaseSpeedChangeCycles', sc.operand[0]);
-      setGlobalValue('chaseRange', 0);
+      worldService.setChaseSpeedChangeCycles(sc.operand[0]);
+      worldService.setChaseRange(0);
       break;
     case 0x0063:
       script.debug('[SCRIPT] Speed up enemy chasing for a while');
-      setGlobalValue('chaseSpeedChangeCycles', sc.operand[0]);
-      setGlobalValue('chaseRange', 3);
+      worldService.setChaseSpeedChangeCycles(sc.operand[0]);
+      worldService.setChaseRange(3);
       break;
     case 0x0064:
       script.debug('[SCRIPT] Jump if enemy\'s HP is more than the specified percentage');
@@ -2375,9 +2226,9 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0075:
       script.debug('[SCRIPT] Set the player party');
-      setGlobalValue('maxPartyMemberIndex', 0);
+      worldService.setMaxPartyMemberIndex(0);
       var assignedCount = 0;
-      mutateGlobalValue('party', function(party) {
+      worldService.mutateParty(function(party) {
         if (!party) {
           return party;
         }
@@ -2398,7 +2249,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         }
         return party;
       });
-      setGlobalValue('maxPartyMemberIndex', assignedCount > 0 ? assignedCount - 1 : 0);
+      worldService.setMaxPartyMemberIndex(assignedCount > 0 ? assignedCount - 1 : 0);
       // Reload the player sprites
       res.setLoadFlags(LoadFlag.PlayerSprite);
       yield res.loadResources();
@@ -2414,7 +2265,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Stop current playing music');
       // WARNING TODO
       // yield music.play(0, false, (sc.operand[0] == 0) ? 2.0 : sc.operand[0] * 2);
-      setGlobalValue('musicNum', 0);
+      worldService.setMusicTrack(0);
       break;
     case 0x0078:
       script.debug('[SCRIPT] unknown 0x0078')
@@ -2549,7 +2400,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0080:
       script.debug('[SCRIPT] Toggle day/night palette');
       var toggledNightPalette = !getNightPaletteFlag();
-      setGlobalValue('nightPalette', toggledNightPalette);
+      worldService.setNightPaletteFlag(toggledNightPalette);
       yield surface.paletteFade(getPaletteNumber(), toggledNightPalette, !sc.operand[0]);
       break;
     case 0x0081:
@@ -2659,7 +2510,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Set the base damage of magic according to amount of money'); // 扔钱。。
       var currentCash = getCashValue();
       i = (currentCash > 5000) ? 5000 : currentCash;
-      adjustGlobalNumber('cash', -i);
+      worldService.adjustCash(-i);
       j = getMagicNumberFromObject(sc.operand[0]);
       mutateMagic(function(magicData) {
         if (magicData && magicData[j]) {
@@ -2673,7 +2524,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x008A:
       script.debug('[SCRIPT] Enable Auto-Battle for next battle');
-      setGlobalValue('autoBattle', true);
+      worldService.setAutoBattle(true);
       break;
     case 0x008B:
       script.debug('[SCRIPT] change the current palette');
@@ -2694,19 +2545,12 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x008F:
       script.debug('[SCRIPT] Halve the cash amount');
-      mutateGlobalValue('cash', function(cash) {
-        cash = cash || 0;
-        return ~~(cash / 2);
-      });
+      var halvedCash = Math.trunc(worldService.getCash() / 2);
+      worldService.setCash(halvedCash);
       break;
     case 0x0090:
       script.debug('[SCRIPT] Set the object script');
-      // WARNING 偏移量不一定对
-      mutateObjects(function(objects) {
-        if (objects && objects[sc.operand[0]]) {
-          objects[sc.operand[0]].data[2 + sc.operand[2]] = sc.operand[1];
-        }
-      });
+      worldService.setObjectScriptValue(sc.operand[0], 2 + sc.operand[2], sc.operand[1]);
       break;
     case 0x0091:
       script.debug('[SCRIPT] Jump if the enemy is not alone');
@@ -3253,7 +3097,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
         } else {
           scriptEntry++;
         }
-        setGlobalValue('autoBattle', false);
+        worldService.setAutoBattle(false);
         break;
       case 0x0008:
         script.debug('[SCRIPT] Replace the entry with the next instruction');

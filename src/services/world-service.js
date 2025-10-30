@@ -71,13 +71,21 @@ import {
   updateBattleMusicTrackValue,
   updateBattleFieldIdValue,
   updateScreenWaveValue,
-  updateWaveProgressionValue,
   updatePaletteIdValue,
-  updateNeedToFadeInValue,
   updateNightPaletteValue,
   updateLayerValue,
+  getScreenWaveValue,
+  getPaletteIdValue,
+  getNightPaletteValue,
+  getLayerValue,
   resetAudioResourceSlice
 } from '../state/slices/audio-resources.js';
+import {
+  updateWaveProgressionValue,
+  updateNeedToFadeInValue,
+  getWaveProgressionValue,
+  getNeedToFadeInValue
+} from '../state/slices/time-flags.js';
 import {
   updateScriptEntriesValue,
   updateObjectTableValue,
@@ -100,7 +108,11 @@ import {
   updateCollectValue,
   updateChaseRangeValue,
   updateChaseSpeedCyclesValue,
-  updateBattleSpeedValue
+  updateBattleSpeedValue,
+  getCollectValue as getCollectFlagValue,
+  getChaseRangeValue as getChaseRangeFlagValue,
+  getChaseSpeedCyclesValue as getChaseSpeedFlagValue,
+  getBattleSpeedValue as getBattleSpeedFlagValue
 } from '../state/slices/game-flags.js';
 
 function getGlobalStore() {
@@ -266,6 +278,59 @@ class WorldService extends EventBus {
   _syncFrameCountValue(value) {
     const resolved = Number.isFinite(value) ? Math.trunc(value) : this._getNumberGlobal('frameNum', 0);
     updateFrameCount(resolved, { emitEvent: false, source: 'worldService:sync' });
+  }
+
+  _cloneTrailSnapshot(trail) {
+    if (!Array.isArray(trail)) {
+      return [];
+    }
+    return trail.map((entry) => {
+      if (entry && typeof entry === 'object') {
+        return { ...entry };
+      }
+      return typeof entry === 'undefined' ? null : entry;
+    });
+  }
+
+  _applyTrailReplacement(target, source) {
+    if (!Array.isArray(target) || !Array.isArray(source) || target === source) {
+      return target;
+    }
+
+    if (target.length !== source.length) {
+      target.length = source.length;
+    }
+
+    for (let index = 0; index < source.length; index++) {
+      const sourceEntry = source[index];
+      if (!sourceEntry || typeof sourceEntry !== 'object') {
+        target[index] = typeof sourceEntry === 'undefined' ? null : sourceEntry;
+        continue;
+      }
+
+      const destination = target[index];
+      if (destination && typeof destination === 'object') {
+        if (Object.prototype.hasOwnProperty.call(sourceEntry, 'x')) {
+          destination.x = sourceEntry.x;
+        }
+        if (Object.prototype.hasOwnProperty.call(sourceEntry, 'y')) {
+          destination.y = sourceEntry.y;
+        }
+        if (Object.prototype.hasOwnProperty.call(sourceEntry, 'direction')) {
+          destination.direction = sourceEntry.direction;
+        }
+        Object.keys(sourceEntry).forEach((key) => {
+          if (key === 'x' || key === 'y' || key === 'direction') {
+            return;
+          }
+          destination[key] = sourceEntry[key];
+        });
+      } else {
+        target[index] = { ...sourceEntry };
+      }
+    }
+
+    return target;
   }
 
   _replaceGameDataTable(key, value) {
@@ -1070,13 +1135,25 @@ class WorldService extends EventBus {
 
   mutateTrail(mutator) {
     this._ensureInitialised();
+    if (typeof mutator !== 'function') {
+      return stateService.getGlobal('trail');
+    }
+    let applied = null;
     const result = stateService.mutateGlobal('trail', (current) => {
-      if (!current || typeof mutator !== 'function') {
+      if (!Array.isArray(current)) {
+        applied = current;
         return current;
       }
-      mutator(current);
+      const output = mutator(current);
+      if (Array.isArray(output) && output !== current) {
+        this._applyTrailReplacement(current, output);
+      }
+      applied = current;
       return current;
     });
+    const trailRef = Array.isArray(applied) ? applied : (Array.isArray(result) ? result : stateService.getGlobal('trail'));
+    const snapshot = this._cloneTrailSnapshot(trailRef);
+    updateTrailSliceValue(snapshot, { source: 'worldService:mutateTrail' });
     this.syncTrail();
     return result;
   }
@@ -1087,7 +1164,13 @@ class WorldService extends EventBus {
   }
 
   setTrailStruct(struct) {
-    return this._copyStructIntoGlobal('trail', struct, () => this.syncTrail());
+    const result = this._copyStructIntoGlobal('trail', struct, () => this.syncTrail());
+    const trail = this.getTrail();
+    const snapshot = Array.isArray(trail)
+      ? trail.map((entry) => (entry && typeof entry === 'object' ? { ...entry } : entry))
+      : [];
+    updateTrailSliceValue(snapshot, { source: 'worldService:setTrailStruct' });
+    return result;
   }
 
   getPartyMember(index) {
@@ -1792,6 +1875,43 @@ class WorldService extends EventBus {
       updateObjectTableValue(store && store.object ? store.object : [], { source: 'worldService:mutateObjectEntry' });
     }
     return updatedEntry;
+  }
+
+  setObjectScriptValue(objectId, dataIndex, value) {
+    if (typeof objectId !== 'number' || objectId < 0) {
+      return null;
+    }
+    const index = Number.isFinite(dataIndex) ? Math.trunc(dataIndex) : null;
+    if (index === null || index < 0) {
+      return null;
+    }
+    return this.mutateObjectEntry(objectId, (entry) => {
+      if (!entry || !entry.data) {
+        return entry;
+      }
+      const currentData = entry.data;
+      let nextData;
+      if (Array.isArray(currentData)) {
+        nextData = currentData.slice();
+      } else if (ArrayBuffer.isView(currentData) && typeof currentData.slice === 'function') {
+        nextData = currentData.slice();
+      } else if (typeof currentData === 'object') {
+        nextData = { ...currentData };
+      } else {
+        return entry;
+      }
+
+      if (typeof nextData.length === 'number') {
+        if (index >= nextData.length) {
+          return entry;
+        }
+        nextData[index] = value;
+      } else {
+        nextData[index] = value;
+      }
+
+      return nextData === currentData ? entry : { ...entry, data: nextData };
+    });
   }
 
   mutateObjects(mutator) {
@@ -2567,104 +2687,91 @@ class WorldService extends EventBus {
 
   getScreenWave() {
     this._ensureInitialised();
-    const wave = stateService.getGlobal('screenWave');
-    const resolved = typeof wave === 'number' ? wave : 0;
+    const resolved = this._getNumberGlobal('screenWave', getScreenWaveValue(0));
     updateScreenWaveValue(resolved, { emitEvent: false, source: 'worldService:getScreenWave' });
     return resolved;
   }
 
   setScreenWave(value) {
     this._ensureInitialised();
-    const resolved = Number.isFinite(value) ? value | 0 : 0;
-    stateService.setGlobal('screenWave', resolved);
+    const resolved = this._setNumberGlobal('screenWave', value, getScreenWaveValue(0));
     updateScreenWaveValue(resolved, { source: 'worldService:setScreenWave' });
     return resolved;
   }
 
   adjustScreenWave(delta) {
     this._ensureInitialised();
-    const current = this.getScreenWave();
-    const adjustment = Number.isFinite(delta) ? delta : 0;
-    const next = (current + adjustment) | 0;
-    stateService.setGlobal('screenWave', next);
-    updateScreenWaveValue(next, { source: 'worldService:adjustScreenWave' });
-    return next;
+    const resolved = this._adjustNumberGlobal('screenWave', delta, getScreenWaveValue(0));
+    updateScreenWaveValue(resolved, { source: 'worldService:adjustScreenWave' });
+    return resolved;
   }
 
   getWaveProgression() {
     this._ensureInitialised();
-    const value = stateService.getGlobal('waveProgression');
-    const resolved = typeof value === 'number' ? value : 0;
+    const resolved = this._getNumberGlobal('waveProgression', getWaveProgressionValue(0));
     updateWaveProgressionValue(resolved, { emitEvent: false, source: 'worldService:getWaveProgression' });
     return resolved;
   }
 
   setWaveProgression(value) {
     this._ensureInitialised();
-    const resolved = Number.isFinite(value) ? value | 0 : 0;
-    stateService.setGlobal('waveProgression', resolved);
+    const resolved = this._setNumberGlobal('waveProgression', value, getWaveProgressionValue(0));
     updateWaveProgressionValue(resolved, { source: 'worldService:setWaveProgression' });
     return resolved;
   }
 
   getNeedToFadeIn() {
     this._ensureInitialised();
-    const value = !!stateService.getGlobal('needToFadeIn');
-    updateNeedToFadeInValue(value, { emitEvent: false, source: 'worldService:getNeedToFadeIn' });
-    return value;
+    const resolved = this._getBooleanGlobal('needToFadeIn', getNeedToFadeInValue(false));
+    updateNeedToFadeInValue(resolved, { emitEvent: false, source: 'worldService:getNeedToFadeIn' });
+    return resolved;
   }
 
   setNeedToFadeIn(value) {
     this._ensureInitialised();
-    const resolved = !!value;
-    stateService.setGlobal('needToFadeIn', resolved);
+    const resolved = this._setBooleanGlobal('needToFadeIn', value);
     updateNeedToFadeInValue(resolved, { source: 'worldService:setNeedToFadeIn' });
     return resolved;
   }
 
   getPaletteId() {
     this._ensureInitialised();
-    const value = stateService.getGlobal('numPalette');
-    const resolved = typeof value === 'number' ? value : 0;
+    const resolved = this._getNumberGlobal('numPalette', getPaletteIdValue(0));
     updatePaletteIdValue(resolved, { emitEvent: false, source: 'worldService:getPaletteId' });
     return resolved;
   }
 
   setPaletteId(value) {
     this._ensureInitialised();
-    const resolved = Number.isFinite(value) ? value | 0 : 0;
-    stateService.setGlobal('numPalette', resolved);
+    const resolved = this._setNumberGlobal('numPalette', value, getPaletteIdValue(0));
     updatePaletteIdValue(resolved, { source: 'worldService:setPaletteId' });
     return resolved;
   }
 
   getNightPaletteFlag() {
     this._ensureInitialised();
-    const value = !!stateService.getGlobal('nightPalette');
-    updateNightPaletteValue(value, { emitEvent: false, source: 'worldService:getNightPalette' });
-    return value;
+    const resolved = this._getBooleanGlobal('nightPalette', getNightPaletteValue(false));
+    updateNightPaletteValue(resolved, { emitEvent: false, source: 'worldService:getNightPalette' });
+    return resolved;
   }
 
   setNightPaletteFlag(value) {
     this._ensureInitialised();
-    const resolved = !!value;
-    stateService.setGlobal('nightPalette', resolved);
+    const resolved = this._setBooleanGlobal('nightPalette', value);
     updateNightPaletteValue(resolved, { source: 'worldService:setNightPalette' });
     return resolved;
   }
 
   getLayer() {
     this._ensureInitialised();
-    const layer = stateService.getGlobal('layer');
-    const resolved = typeof layer === 'number' ? layer : 0;
+    const resolved = this._getNumberGlobal('layer', getLayerValue(0));
     updateLayerValue(resolved, { emitEvent: false, source: 'worldService:getLayer' });
     return resolved;
   }
 
   setLayer(value) {
     this._ensureInitialised();
-    const resolved = Number.isFinite(value) ? value | 0 : 0;
-    stateService.setGlobal('layer', resolved);
+    const resolved = this._setNumberGlobal('layer', value, getLayerValue(0));
     updateLayerValue(resolved, { source: 'worldService:setLayer' });
     return resolved;
   }
@@ -2843,55 +2950,55 @@ class WorldService extends EventBus {
   }
 
   getChaseRange() {
-    const value = this._getNumberGlobal('chaseRange', 0);
+    const value = this._getNumberGlobal('chaseRange', getChaseRangeFlagValue(0));
     updateChaseRangeValue(value, { emitEvent: false, source: 'worldService:getChaseRange' });
     return value;
   }
 
   setChaseRange(value) {
-    const resolved = this._setNumberGlobal('chaseRange', value, 0);
+    const resolved = this._setNumberGlobal('chaseRange', value, getChaseRangeFlagValue(0));
     updateChaseRangeValue(resolved, { source: 'worldService:setChaseRange' });
     return resolved;
   }
 
   adjustChaseRange(delta) {
-    const resolved = this._adjustNumberGlobal('chaseRange', delta, 0);
+    const resolved = this._adjustNumberGlobal('chaseRange', delta, getChaseRangeFlagValue(0));
     updateChaseRangeValue(resolved, { source: 'worldService:adjustChaseRange' });
     return resolved;
   }
 
   getChaseSpeedChangeCycles() {
-    const value = this._getNumberGlobal('chaseSpeedChangeCycles', 0);
+    const value = this._getNumberGlobal('chaseSpeedChangeCycles', getChaseSpeedFlagValue(0));
     updateChaseSpeedCyclesValue(value, { emitEvent: false, source: 'worldService:getChaseSpeedChangeCycles' });
     return value;
   }
 
   setChaseSpeedChangeCycles(value) {
-    const resolved = this._setNumberGlobal('chaseSpeedChangeCycles', value, 0);
+    const resolved = this._setNumberGlobal('chaseSpeedChangeCycles', value, getChaseSpeedFlagValue(0));
     updateChaseSpeedCyclesValue(resolved, { source: 'worldService:setChaseSpeedChangeCycles' });
     return resolved;
   }
 
   adjustChaseSpeedChangeCycles(delta) {
-    const resolved = this._adjustNumberGlobal('chaseSpeedChangeCycles', delta, 0);
+    const resolved = this._adjustNumberGlobal('chaseSpeedChangeCycles', delta, getChaseSpeedFlagValue(0));
     updateChaseSpeedCyclesValue(resolved, { source: 'worldService:adjustChaseSpeedChangeCycles' });
     return resolved;
   }
 
   getCollectValue() {
-    const value = this._getNumberGlobal('collectValue', 0);
+    const value = this._getNumberGlobal('collectValue', getCollectFlagValue(0));
     updateCollectValue(value, { emitEvent: false, source: 'worldService:getCollectValue' });
     return value;
   }
 
   setCollectValue(value) {
-    const resolved = this._setNumberGlobal('collectValue', value, 0);
+    const resolved = this._setNumberGlobal('collectValue', value, getCollectFlagValue(0));
     updateCollectValue(resolved, { source: 'worldService:setCollectValue' });
     return resolved;
   }
 
   adjustCollectValue(delta) {
-    const resolved = this._adjustNumberGlobal('collectValue', delta, 0);
+    const resolved = this._adjustNumberGlobal('collectValue', delta, getCollectFlagValue(0));
     updateCollectValue(resolved, { source: 'worldService:adjustCollectValue' });
     return resolved;
   }
@@ -2988,13 +3095,13 @@ class WorldService extends EventBus {
   }
 
   getBattleSpeed() {
-    const value = this._getNumberGlobal('battleSpeed', 2);
+    const value = this._getNumberGlobal('battleSpeed', getBattleSpeedFlagValue(2));
     updateBattleSpeedValue(value, { emitEvent: false, source: 'worldService:getBattleSpeed' });
     return value;
   }
 
   setBattleSpeed(value) {
-    const resolved = this._setNumberGlobal('battleSpeed', value, 2);
+    const resolved = this._setNumberGlobal('battleSpeed', value, getBattleSpeedFlagValue(2));
     updateBattleSpeedValue(resolved, { source: 'worldService:setBattleSpeed' });
     return resolved;
   }

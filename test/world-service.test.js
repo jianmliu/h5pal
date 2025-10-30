@@ -10,8 +10,25 @@ import {
 } from '../src/state/slices/menu-selections.js';
 import { inventorySignals } from '../src/state/slices/inventory.js';
 import { sceneEventSignals } from '../src/state/slices/scene-events.js';
-import { audioResourceSignals } from '../src/state/slices/audio-resources.js';
-import { gameFlagSignals } from '../src/state/slices/game-flags.js';
+import {
+  audioResourceSignals,
+  getScreenWaveValue as getScreenWaveSliceValue,
+  getPaletteIdValue as getPaletteSliceValue,
+  getNightPaletteValue as getNightPaletteSliceValue,
+  getLayerValue as getLayerSliceValue
+} from '../src/state/slices/audio-resources.js';
+import {
+  timeFlagSignals,
+  getWaveProgressionValue as getWaveProgressionSliceValue,
+  getNeedToFadeInValue as getNeedToFadeInSliceValue
+} from '../src/state/slices/time-flags.js';
+import {
+  gameFlagSignals,
+  getCollectValue as getCollectFlagSliceValue,
+  getChaseRangeValue as getChaseRangeSliceValue,
+  getChaseSpeedCyclesValue as getChaseSpeedSliceValue,
+  getBattleSpeedValue as getBattleSpeedSliceValue
+} from '../src/state/slices/game-flags.js';
 import { scriptObjectSignals } from '../src/state/slices/script-objects.js';
 import { battleFormationSignals } from '../src/state/slices/battle-formation.js';
 import {
@@ -97,8 +114,8 @@ describe('world service', () => {
         { metadata: { name: 'map1' } }
       ],
       object: [
-        { item: { flags: 0, scriptOnUse: 123 } },
-        { item: { flags: 0, scriptOnUse: 456 } }
+        { item: { flags: 0, scriptOnUse: 123 }, data: [0, 1, 2, 3, 4] },
+        { item: { flags: 0, scriptOnUse: 456 }, data: [5, 6, 7, 8, 9] }
       ],
       scriptEntry: [
         { opcode: 1, operand: [0, 0, 0] },
@@ -466,9 +483,7 @@ describe('world service', () => {
       battleMusicTrack,
       battleFieldId,
       screenWave,
-      waveProgression,
       paletteId,
-      needToFadeIn,
       nightPalette,
       layer
     } = audioResourceSignals();
@@ -477,9 +492,7 @@ describe('world service', () => {
     expect(battleMusicTrack.value).toBe(Global.numBattleMusic);
     expect(battleFieldId.value).toBe(Global.numBattleField);
     expect(screenWave.value).toBe(Global.screenWave);
-    expect(waveProgression.value).toBe(Global.waveProgression);
     expect(paletteId.value).toBe(Global.numPalette);
-    expect(needToFadeIn.value).toBe(true);
     expect(nightPalette.value).toBe(false);
     expect(layer.value).toBe(Global.layer);
 
@@ -497,12 +510,6 @@ describe('world service', () => {
     worldService.adjustScreenWave(5);
     expect(screenWave.value).toBe(17);
 
-    worldService.setWaveProgression(21);
-    expect(waveProgression.value).toBe(21);
-
-    worldService.setNeedToFadeIn(false);
-    expect(needToFadeIn.value).toBe(false);
-
     worldService.setNightPaletteFlag(true);
     expect(nightPalette.value).toBe(true);
 
@@ -511,6 +518,30 @@ describe('world service', () => {
 
     worldService.setLayer(9);
     expect(layer.value).toBe(9);
+  });
+
+  it('keeps time flag signals synchronized', () => {
+    worldService.init();
+    const {
+      frameCount,
+      needToFadeIn,
+      waveProgression
+    } = timeFlagSignals();
+
+    expect(frameCount.value).toBe(0);
+    expect(needToFadeIn.value).toBe(Global.needToFadeIn);
+    expect(waveProgression.value).toBe(Global.waveProgression);
+
+    worldService.setFrameCount(11);
+    expect(frameCount.value).toBe(11);
+    worldService.incrementFrameCount(4);
+    expect(frameCount.value).toBe(15);
+
+    worldService.setNeedToFadeIn(false);
+    expect(needToFadeIn.value).toBe(false);
+
+    worldService.setWaveProgression(23);
+    expect(waveProgression.value).toBe(23);
   });
 
   it('keeps game flag signals synchronized', () => {
@@ -546,6 +577,62 @@ describe('world service', () => {
     expect(battleSpeed.value).toBe(4);
   });
 
+  it('mirrors reactive flags to legacy globals', () => {
+    worldService.init();
+
+    worldService.setScreenWave(21);
+    expect(stateService.getGlobal('screenWave')).toBe(21);
+    expect(getScreenWaveSliceValue()).toBe(21);
+    worldService.adjustScreenWave(-3);
+    expect(stateService.getGlobal('screenWave')).toBe(18);
+    expect(getScreenWaveSliceValue()).toBe(18);
+
+    worldService.setWaveProgression(44);
+    expect(stateService.getGlobal('waveProgression')).toBe(44);
+    expect(getWaveProgressionSliceValue()).toBe(44);
+
+    worldService.setNeedToFadeIn(false);
+    expect(stateService.getGlobal('needToFadeIn')).toBe(false);
+    expect(getNeedToFadeInSliceValue()).toBe(false);
+
+    worldService.setPaletteId(19);
+    expect(stateService.getGlobal('numPalette')).toBe(19);
+    expect(getPaletteSliceValue()).toBe(19);
+
+    worldService.setNightPaletteFlag(true);
+    expect(stateService.getGlobal('nightPalette')).toBe(true);
+    expect(getNightPaletteSliceValue()).toBe(true);
+
+    worldService.setLayer(5);
+    expect(stateService.getGlobal('layer')).toBe(5);
+    expect(getLayerSliceValue()).toBe(5);
+
+    worldService.setCollectValue(33);
+    expect(stateService.getGlobal('collectValue')).toBe(33);
+    expect(getCollectFlagSliceValue()).toBe(33);
+    worldService.adjustCollectValue(-13);
+    expect(stateService.getGlobal('collectValue')).toBe(20);
+    expect(getCollectFlagSliceValue()).toBe(20);
+
+    worldService.setChaseRange(14);
+    expect(stateService.getGlobal('chaseRange')).toBe(14);
+    expect(getChaseRangeSliceValue()).toBe(14);
+    worldService.adjustChaseRange(6);
+    expect(stateService.getGlobal('chaseRange')).toBe(20);
+    expect(getChaseRangeSliceValue()).toBe(20);
+
+    worldService.setChaseSpeedChangeCycles(18);
+    expect(stateService.getGlobal('chaseSpeedChangeCycles')).toBe(18);
+    expect(getChaseSpeedSliceValue()).toBe(18);
+    worldService.adjustChaseSpeedChangeCycles(-8);
+    expect(stateService.getGlobal('chaseSpeedChangeCycles')).toBe(10);
+    expect(getChaseSpeedSliceValue()).toBe(10);
+
+    worldService.setBattleSpeed(6);
+    expect(stateService.getGlobal('battleSpeed')).toBe(6);
+    expect(getBattleSpeedSliceValue()).toBe(6);
+  });
+
 
 
   it('synchronises script entries and object stores', () => {
@@ -566,6 +653,11 @@ describe('world service', () => {
       return entry;
     });
     expect(objectTable.value[0].item.scriptOnUse).toBe(999);
+
+    const originalData = objectTable.value[0].data;
+    worldService.setObjectScriptValue(0, 3, 777);
+    expect(objectTable.value[0].data[3]).toBe(777);
+    expect(objectTable.value[0].data).not.toBe(originalData);
 
     const newDesc = [{ id: 1, text: 'Updated' }];
     worldService.setObjectDescTable(newDesc);
