@@ -24,20 +24,11 @@ const playerStatusSignal = statusSlice.player;
 
 function getInventoryList() {
   const items = inventoryItemsSignal.value;
-  if (Array.isArray(items) && items.length > 0) {
-    return items;
-  }
-  if (typeof worldService.getInventory === 'function') {
-    const fallback = worldService.getInventory();
-    if (Array.isArray(fallback) && fallback.length > 0) {
-      return fallback;
-    }
-  }
   return Array.isArray(items) ? items : [];
 }
 
 function getInventorySlotFromSignal(index) {
-  const items = getInventoryList();
+  const items = inventoryItemsSignal.value;
   return (index >= 0 && index < items.length) ? items[index] : null;
 }
 
@@ -46,23 +37,11 @@ function getInventoryCapacityFromSignal() {
   if (Number.isFinite(value) && value > 0) {
     return value;
   }
-  if (typeof worldService.getInventoryCapacity === 'function') {
-    const capacity = worldService.getInventoryCapacity();
-    if (Number.isFinite(capacity) && capacity > 0) {
-      return capacity;
-    }
-  }
   return Const.MAX_INVENTORY;
 }
 
 function getCashValue() {
   const value = cashSignal.value;
-  if (typeof worldService.getCash === 'function') {
-    const serviceValue = worldService.getCash();
-    if (Number.isFinite(serviceValue) && serviceValue !== value) {
-      return serviceValue;
-    }
-  }
   return Number.isFinite(value) ? value : 0;
 }
 

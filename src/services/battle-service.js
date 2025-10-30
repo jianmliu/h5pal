@@ -18,6 +18,7 @@ import {
   createUIStateComponent
 } from '../ecs/index.js';
 import { autoBattleStream, getAutoBattleValue } from '../state/slices/auto-battle.js';
+import { updateBattleFlagsFromState, resetBattleFlagsSlice } from '../state/slices/battle-flags.js';
 
 function ensureGameGlobal() {
   let store = stateService.getGlobal();
@@ -68,6 +69,7 @@ class BattleService extends EventBus {
     this.systemManager = null;
     this._autoBattleSubscription = null;
     this._ensureAutoBattleSubscription();
+    resetBattleFlagsSlice();
   }
 
   bindModule(moduleRef) {
@@ -98,6 +100,7 @@ class BattleService extends EventBus {
     if (gameGlobal && gameGlobal.battle && this.rawState !== gameGlobal.battle.__raw__) {
       this.rawState = gameGlobal.battle.__raw__ || gameGlobal.battle;
       this.state = gameGlobal.battle;
+      this._syncBattleFlags('battleService:syncFromGlobal');
     }
     return this.state;
   }
@@ -188,6 +191,7 @@ class BattleService extends EventBus {
         service.rawState = nextState;
         service.state = service._wrapState(nextState);
         backingValue = service.state;
+        service._syncBattleFlags('battleService:globalAccessor');
         const payload = { previous, state: service.state };
         service.fire('stateChanged', payload);
         if (service.systemManager && typeof service.systemManager.onStateChanged === 'function') {
@@ -200,6 +204,7 @@ class BattleService extends EventBus {
     if (backingValue && !this.state) {
       this.rawState = backingValue.__raw__ || backingValue;
       this.state = backingValue;
+      this._syncBattleFlags('battleService:globalAccessor');
     }
   }
 
@@ -236,11 +241,13 @@ class BattleService extends EventBus {
       }
       this.rawState = nextState;
       this.state = this._wrapState(nextState);
+      this._syncBattleFlags('battleService:replaceState');
       stateService.setGlobal('battle', this.state);
       return this.state;
     }
     this.rawState = nextState;
     this.state = this._wrapState(nextState);
+    this._syncBattleFlags('battleService:replaceState');
     this.fire('stateChanged', { previous, state: this.state });
     return this.state;
   }
@@ -256,6 +263,7 @@ class BattleService extends EventBus {
     if (this.systemManager && typeof this.systemManager.onStateChanged === 'function') {
       this.systemManager.onStateChanged(payload);
     }
+    this._syncBattleFlags('battleService:updateState');
     return current;
   }
 
@@ -672,6 +680,10 @@ class BattleService extends EventBus {
     return yield* this._wrapGeneratorCall('enemyEscape', (...params) => ({ args: params }), ...args);
   }
 
+  _syncBattleFlags(source, emitEvent = true) {
+    updateBattleFlagsFromState(this.getState(), { source, emitEvent });
+  }
+
   emitStateChanged() {
     const state = this.getState();
     const payload = { previous: state, state };
@@ -679,6 +691,7 @@ class BattleService extends EventBus {
     if (this.systemManager && typeof this.systemManager.onStateChanged === 'function') {
       this.systemManager.onStateChanged(payload);
     }
+    this._syncBattleFlags('battleService:emitStateChanged');
   }
 
   withState(callback, options = {}) {
@@ -689,6 +702,8 @@ class BattleService extends EventBus {
     const result = callback(state);
     if (options.emit !== false) {
       this.emitStateChanged();
+    } else {
+      this._syncBattleFlags('battleService:withState', false);
     }
     if (typeof callback === 'function') {
       this.syncUIComponent();
@@ -711,6 +726,8 @@ class BattleService extends EventBus {
     target[key] = nextValue;
     if (options.emit !== false) {
       this.emitStateChanged();
+    } else {
+      this._syncBattleFlags('battleService:set', false);
     }
     return target[key];
   }

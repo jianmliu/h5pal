@@ -9,12 +9,21 @@ import sound from './sound';
 import battleService from '../../services/battle-service.js';
 import worldService from '../../services/world-service.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import { inventorySignals } from '../../state/slices/inventory.js';
+import { gameFlagSignals } from '../../state/slices/game-flags.js';
 
 log.trace('script module load');
 
 let partyStateCache = [];
 let trailStateCache = [];
 let partyTrailUnsubscribe = null;
+const inventorySlice = inventorySignals();
+const cashSignal = inventorySlice.cash;
+const gameFlagSlice = gameFlagSignals();
+const collectSignal = gameFlagSlice.collect;
+const chaseRangeSignal = gameFlagSlice.chaseRange;
+const chaseCyclesSignal = gameFlagSlice.chaseSpeedChangeCycles;
+const battleSpeedSignal = gameFlagSlice.battleSpeed;
 
 function handlePartyTrailUpdate(event) {
   if (!event) {
@@ -137,9 +146,11 @@ function setGlobalValue(key, value) {
 function mutateGlobalValue(key, mutator) {
   if (key === 'cash') {
     if (typeof mutator !== 'function') {
-      return worldService.getCash();
+      const value = cashSignal.value;
+      return Number.isFinite(value) ? value : worldService.getCash();
     }
-    var current = worldService.getCash();
+    var cachedValue = cashSignal.value;
+    var current = Number.isFinite(cachedValue) ? cachedValue : worldService.getCash();
     var next = mutator(current);
     if (typeof next === 'undefined') {
       return current;
@@ -148,9 +159,11 @@ function mutateGlobalValue(key, mutator) {
   }
   if (key === 'collectValue') {
     if (typeof mutator !== 'function') {
-      return worldService.getCollectValue();
+      const value = collectSignal.value;
+      return Number.isFinite(value) ? value : worldService.getCollectValue();
     }
-    var currentCollect = worldService.getCollectValue();
+    var cachedCollect = collectSignal.value;
+    var currentCollect = Number.isFinite(cachedCollect) ? cachedCollect : worldService.getCollectValue();
     var updatedCollect = mutator(currentCollect);
     if (typeof updatedCollect === 'undefined') {
       return currentCollect;
@@ -159,9 +172,11 @@ function mutateGlobalValue(key, mutator) {
   }
   if (key === 'chaseRange') {
     if (typeof mutator !== 'function') {
-      return worldService.getChaseRange();
+      const value = chaseRangeSignal.value;
+      return Number.isFinite(value) ? value : worldService.getChaseRange();
     }
-    var currentRange = worldService.getChaseRange();
+    var cachedRange = chaseRangeSignal.value;
+    var currentRange = Number.isFinite(cachedRange) ? cachedRange : worldService.getChaseRange();
     var nextRange = mutator(currentRange);
     if (typeof nextRange === 'undefined') {
       return currentRange;
@@ -170,14 +185,29 @@ function mutateGlobalValue(key, mutator) {
   }
   if (key === 'chaseSpeedChangeCycles') {
     if (typeof mutator !== 'function') {
-      return worldService.getChaseSpeedChangeCycles();
+      const value = chaseCyclesSignal.value;
+      return Number.isFinite(value) ? value : worldService.getChaseSpeedChangeCycles();
     }
-    var currentCycles = worldService.getChaseSpeedChangeCycles();
+    var cachedCycles = chaseCyclesSignal.value;
+    var currentCycles = Number.isFinite(cachedCycles) ? cachedCycles : worldService.getChaseSpeedChangeCycles();
     var nextCycles = mutator(currentCycles);
     if (typeof nextCycles === 'undefined') {
       return currentCycles;
     }
     return worldService.setChaseSpeedChangeCycles(nextCycles);
+  }
+  if (key === 'battleSpeed') {
+    if (typeof mutator !== 'function') {
+      const value = battleSpeedSignal.value;
+      return Number.isFinite(value) ? value : worldService.getBattleSpeed();
+    }
+    var cachedSpeed = battleSpeedSignal.value;
+    var currentSpeed = Number.isFinite(cachedSpeed) ? cachedSpeed : worldService.getBattleSpeed();
+    var nextSpeed = mutator(currentSpeed);
+    if (typeof nextSpeed === 'undefined') {
+      return currentSpeed;
+    }
+    return worldService.setBattleSpeed(nextSpeed);
   }
   if (key === 'frameNum') {
     if (typeof mutator !== 'function') {
@@ -529,11 +559,13 @@ function getSceneIdValue() {
 }
 
 function getChaseRangeValue() {
-  return worldService.getChaseRange();
+  const value = chaseRangeSignal.value;
+  return Number.isFinite(value) ? value : worldService.getChaseRange();
 }
 
 function getCollectValue() {
-  return worldService.getCollectValue();
+  const value = collectSignal.value;
+  return Number.isFinite(value) ? value : worldService.getCollectValue();
 }
 
 function getCurPlayingRNGValue() {
@@ -631,7 +663,8 @@ function getPartyOffsetY() {
 }
 
 function getCashValue() {
-  return worldService.getCash();
+  const value = cashSignal.value;
+  return Number.isFinite(value) ? value : 0;
 }
 
 function getPartyDirection() {

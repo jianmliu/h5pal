@@ -10,6 +10,7 @@ import uigame from './uigame';
 import battleServiceDefault from '../../services/battle-service.js';
 import worldService from '../../services/world-service.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { autoBattleSignal } from '../../state/slices/auto-battle.js';
 
 log.trace('uibattle module load');
@@ -288,7 +289,7 @@ function getObjectEntry(objectId) {
   if (objectId <= 0) {
     return null;
   }
-  return worldService.getObjectEntry(objectId);
+  return scriptObjectAdapter.getObjectEntry(objectId);
 }
 
 function getMagicEntry(magicId) {

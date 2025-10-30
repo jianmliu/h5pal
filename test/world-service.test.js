@@ -11,6 +11,7 @@ import {
 import { inventorySignals } from '../src/state/slices/inventory.js';
 import { sceneEventSignals } from '../src/state/slices/scene-events.js';
 import { audioResourceSignals } from '../src/state/slices/audio-resources.js';
+import { gameFlagSignals } from '../src/state/slices/game-flags.js';
 import { scriptObjectSignals } from '../src/state/slices/script-objects.js';
 import { battleFormationSignals } from '../src/state/slices/battle-formation.js';
 import {
@@ -75,7 +76,11 @@ describe('world service', () => {
       needToFadeIn: true,
       numPalette: 10,
       nightPalette: false,
-      layer: 3
+      layer: 3,
+      collectValue: 4,
+      chaseRange: 6,
+      chaseSpeedChangeCycles: 2,
+      battleSpeed: 2
     };
 
     globalThis.GameData = {
@@ -506,6 +511,39 @@ describe('world service', () => {
 
     worldService.setLayer(9);
     expect(layer.value).toBe(9);
+  });
+
+  it('keeps game flag signals synchronized', () => {
+    worldService.init();
+    const {
+      collect,
+      chaseRange,
+      chaseSpeedChangeCycles,
+      battleSpeed
+    } = gameFlagSignals();
+
+    expect(collect.value).toBe(Global.collectValue);
+    expect(chaseRange.value).toBe(Global.chaseRange);
+    expect(chaseSpeedChangeCycles.value).toBe(Global.chaseSpeedChangeCycles);
+    expect(battleSpeed.value).toBe(Global.battleSpeed);
+
+    worldService.setCollectValue(12);
+    expect(collect.value).toBe(12);
+    worldService.adjustCollectValue(-2);
+    expect(collect.value).toBe(10);
+
+    worldService.setChaseRange(14);
+    expect(chaseRange.value).toBe(14);
+    worldService.adjustChaseRange(3);
+    expect(chaseRange.value).toBe(17);
+
+    worldService.setChaseSpeedChangeCycles(5);
+    expect(chaseSpeedChangeCycles.value).toBe(5);
+    worldService.adjustChaseSpeedChangeCycles(2);
+    expect(chaseSpeedChangeCycles.value).toBe(7);
+
+    worldService.setBattleSpeed(4);
+    expect(battleSpeed.value).toBe(4);
   });
 
 

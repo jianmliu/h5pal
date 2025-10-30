@@ -10,6 +10,7 @@ import input from './input';
 import music from './music';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { menuSelectionSignals, audioToggleSignals } from '../../state/slices/menu-selections.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
@@ -60,7 +61,7 @@ function getCash() {
 }
 
 function getObjectEntry(objectId) {
-  return worldService.getObjectEntry(objectId) || null;
+  return scriptObjectAdapter.getObjectEntry(objectId) || null;
 }
 
 function getMagicEntry(magicId) {
@@ -164,16 +165,13 @@ function getInventoryMenuIndexValue() {
 
 function getInventoryList() {
   const items = inventoryItemsSignal.value;
-  if (Array.isArray(items) && items.length > 0) {
+  if (Array.isArray(items)) {
     return items;
   }
-  if (typeof worldService.getInventory === 'function') {
-    const fallback = worldService.getInventory();
-    if (Array.isArray(fallback) && fallback.length > 0) {
-      return fallback;
-    }
+  if (items && typeof items.length === 'number') {
+    return Array.from(items);
   }
-  return Array.isArray(items) ? items : [];
+  return [];
 }
 
 function getInventorySlotFromSignal(index) {
@@ -183,12 +181,6 @@ function getInventorySlotFromSignal(index) {
 
 function getCashValue() {
   const value = cashSignal.value;
-  if (typeof worldService.getCash === 'function') {
-    const serviceValue = worldService.getCash();
-    if (typeof serviceValue === 'number' && serviceValue !== value) {
-      return serviceValue;
-    }
-  }
   return typeof value === 'number' ? value : 0;
 }
 

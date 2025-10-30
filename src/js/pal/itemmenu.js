@@ -2,6 +2,7 @@ import utils from './utils';
 import input from './input';
 import scene from './scene';
 import worldService from '../../services/world-service.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { menuSelectionSignals } from '../../state/slices/menu-selections.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
@@ -26,16 +27,13 @@ const inventoryCapacitySignal = inventorySlice.capacity;
 
 function getInventoryList() {
   const items = inventoryItemsSignal.value;
-  if (Array.isArray(items) && items.length > 0) {
+  if (Array.isArray(items)) {
     return items;
   }
-  if (typeof worldService.getInventory === 'function') {
-    const fallback = worldService.getInventory();
-    if (Array.isArray(fallback) && fallback.length > 0) {
-      return fallback;
-    }
+  if (items && typeof items.length === 'number') {
+    return Array.from(items);
   }
-  return Array.isArray(items) ? items : [];
+  return [];
 }
 
 function getInventorySlotFromSignal(index) {
@@ -47,12 +45,6 @@ function getInventoryCapacityFromSignal() {
   const value = inventoryCapacitySignal.value;
   if (Number.isFinite(value) && value > 0) {
     return value;
-  }
-  if (typeof worldService.getInventoryCapacity === 'function') {
-    const serviceCapacity = worldService.getInventoryCapacity();
-    if (Number.isFinite(serviceCapacity) && serviceCapacity > 0) {
-      return serviceCapacity;
-    }
   }
   return Const.MAX_INVENTORY;
 }
@@ -134,7 +126,7 @@ itemmenu.itemSelectMenuUpdate = function() {
         j = 7;
         break;
       }
-      var objectEntry = worldService.getObjectEntry(object) || {};
+    var objectEntry = scriptObjectAdapter.getObjectEntry(object) || {};
       var objectFlags = objectEntry.item ? objectEntry.item.flags : 0;
       if (i == currentIndex) {
         if (!(objectFlags & itemmenu.itemFlags) ||
@@ -182,7 +174,7 @@ itemmenu.itemSelectMenuUpdate = function() {
 
   var currentSlot = inventory[currentIndex] || {};
   var object = currentSlot.item || 0;
-  var objectData = worldService.getObjectEntry(object);
+  var objectData = scriptObjectAdapter.getObjectEntry(object);
   var currentObjectFlags = objectData && objectData.item ? objectData.item.flags : 0;
   var bitmapId = objectData && objectData.item ? objectData.item.bitmap : 0;
 
@@ -200,7 +192,7 @@ itemmenu.itemSelectMenuUpdate = function() {
   }
 
   // Draw the description of the selected item
-  var objectDescTable = worldService.getObjectDescTable();
+  var objectDescTable = scriptObjectAdapter.getObjectDesc() || [];
   if (!itemmenu.noDesc && objectDescTable != null){
     var descObj = ui.getObjectDesc(objectDescTable, object);
     if (descObj) {
@@ -277,7 +269,7 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
           if (!equipId) {
             continue;
           }
-          var equipEntry = worldService.getObjectEntry(equipId);
+          var equipEntry = scriptObjectAdapter.getObjectEntry(equipId);
           var equipFlags = equipEntry && equipEntry.item ? equipEntry.item.flags : 0;
           if (equipFlags & ItemFlag.Usable) {
             if (itemmenu.numInventory < capacity) {

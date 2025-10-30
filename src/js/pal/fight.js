@@ -8,8 +8,13 @@ import utils from './utils';
 import battleService from '../../services/battle-service.js';
 import { recomputeTimeChargingUnit } from '../../services/battle-systems.js';
 import { BattleComponents } from '../../ecs/index.js';
-import worldService from '../../services/world-service.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { autoBattleSignal } from '../../state/slices/auto-battle.js';
+import {
+  getBattleFieldEntry as getCachedBattleFieldEntry,
+  getBattleFieldId as getCachedBattleFieldId
+} from '../../services/battle-state-adapter.js';
+import worldService from '../../services/world-service.js';
 
 const autoBattleFlagSignal = autoBattleSignal();
 
@@ -201,7 +206,7 @@ function createFightGameDataFacade() {
     null
   );
   const objectProxy = createReadonlyIndexedProxy(
-    (id) => worldService.getObjectEntry(id),
+    (id) => scriptObjectAdapter.getObjectEntry(id),
     null
   );
   const enemyProxy = createReadonlyIndexedProxy(
@@ -209,7 +214,7 @@ function createFightGameDataFacade() {
     null
   );
   const battleFieldProxy = createReadonlyIndexedProxy(
-    (id) => worldService.getBattleFieldEntry(id),
+    (id) => getCachedBattleFieldEntry(id),
     null
   );
   const battleEffectProxy = createReadonlyIndexedProxy(
@@ -323,11 +328,11 @@ function getPartyMemberRole(index) {
 }
 
 function getCurrentBattleFieldEntry() {
-  var fieldId = worldService.getBattleFieldId();
+  var fieldId = getCachedBattleFieldId();
   if (typeof fieldId !== 'number') {
     return null;
   }
-  return worldService.getBattleFieldEntry(fieldId) || null;
+  return getCachedBattleFieldEntry(fieldId) || null;
 }
 
 function getCurrentBattleFieldMagicEffect(index) {

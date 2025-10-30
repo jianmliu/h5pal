@@ -3,6 +3,7 @@ import input from './input';
 import scene from './scene';
 import uibattle from './uibattle';
 import worldService from '../../services/world-service.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 
@@ -76,7 +77,7 @@ magicmenu.magicSelectMenuUpdate = function() {
   // Create the box.
   ui.createBox(PAL_XY(10, 42), 4, 16, 1, false);
 
-  var objectDescTable = worldService.getObjectDescTable();
+  var objectDescTable = scriptObjectAdapter.getObjectDesc();
   var selectedSlot = magicmenu.magicItems[magicmenu.currentItem] || { MP: 0, magic: 0 };
 
   if (!objectDescTable) {
@@ -220,7 +221,7 @@ magicmenu.magicSelectMenuInit = function(playerRole, inBattle, defaultMagic) {
     if (!objectId) {
       continue;
     }
-    var objectEntry = worldService.getObjectEntry(objectId);
+    var objectEntry = scriptObjectAdapter.getObjectEntry(objectId);
     var magicData = objectEntry && objectEntry.magic ? objectEntry.magic : null;
     if (!magicData) {
       continue;

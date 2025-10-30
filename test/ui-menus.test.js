@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-
 const worldServiceMock = {
   getParty: vi.fn(),
   getMaxPartyMemberIndex: vi.fn(),
@@ -142,6 +141,27 @@ const scriptMock = {
 
 const objectStore = {};
 
+let updateInventoryValue;
+let updateInventoryCapacityValue;
+let updateCashValue;
+let resetInventorySlice;
+let inventorySignals;
+let updateObjectTableValue;
+let resetScriptObjectSlice;
+let updatePartyValue;
+let resetPartyTrailSlice;
+
+function syncScriptObjectSlice() {
+  const table = [];
+  Object.keys(objectStore).forEach((key) => {
+    const index = Number.parseInt(key, 10);
+    if (!Number.isNaN(index)) {
+      table[index] = objectStore[key];
+    }
+  });
+  updateObjectTableValue(table);
+}
+
 function installFileStubs() {
   const files = (typeof global.Files === 'object' && global.Files) ? global.Files : {};
   files.BALL = { readChunk: vi.fn(() => null) };
@@ -197,6 +217,24 @@ async function loadModules() {
 describe('ui menus (service-backed)', () => {
   beforeEach(async () => {
     vi.resetModules();
+    ({
+      updateInventoryValue,
+      updateInventoryCapacityValue,
+      updateCashValue,
+      resetInventorySlice,
+      inventorySignals
+    } = await import('../src/state/slices/inventory.js'));
+    ({
+      updateObjectTableValue,
+      resetScriptObjectSlice
+    } = await import('../src/state/slices/script-objects.js'));
+    ({
+      updatePartyValue,
+      resetPartyTrailSlice
+    } = await import('../src/state/slices/party-trail.js'));
+    resetInventorySlice();
+    resetScriptObjectSlice();
+    resetPartyTrailSlice();
     resetWorldService();
     resetStateService();
     resetInput();
@@ -276,6 +314,11 @@ describe('ui menus (service-backed)', () => {
 
     await loadModules();
     installFileStubs();
+    updateInventoryCapacityValue(Const.MAX_INVENTORY);
+    updateInventoryValue([]);
+    updateCashValue(0);
+    updateObjectTableValue([]);
+    updatePartyValue([]);
 
     // initialise modules with stubs
     itemmenu.init(surfaceStub, uiStub).next();
@@ -292,17 +335,24 @@ describe('ui menus (service-backed)', () => {
     worldServiceMock.getPlayerEquipment.mockReturnValue(200);
     objectStore[200] = { item: { flags: ItemFlag.Usable, bitmap: 0, scriptOnEquip: 123 } };
     objectStore[10] = { item: { flags: ItemFlag.Usable, bitmap: 0 } };
+    syncScriptObjectSlice();
+    updatePartyValue([{ playerRole: 1 }]);
     stateServiceMock.getGlobal.mockImplementation((key) => {
       if (key === 'inBattle') return false;
       return stateStore[key];
     });
     worldServiceMock.mutateInventory.mockImplementation((mutator) => mutator(inventory));
+    updateInventoryValue(inventory);
 
     itemmenu.itemSelectMenuInit(ItemFlag.Usable);
 
     expect(worldServiceMock.mutateInventory).toHaveBeenCalled();
     const extraSlot = inventory.find((slot) => slot.item === 200 && slot.amountInUse === -1);
-    expect(extraSlot).toBeTruthy();
+    expect(extraSlot).toEqual(expect.objectContaining({
+      item: 200,
+      amount: 0,
+      amountInUse: -1
+    }));
   });
 
   it('uigame.itemUseMenu returns selected role from worldService party', () => {
@@ -342,11 +392,15 @@ describe('ui menus (service-backed)', () => {
     worldServiceMock.getInventory.mockReturnValue(inventory);
     worldServiceMock.getCash.mockReturnValue(999);
     objectStore[300] = { item: { flags: 0, price: 123, bitmap: 45 } };
+    syncScriptObjectSlice();
+    updateInventoryValue(inventory);
+    const updatedCash = updateCashValue(999);
+    expect(updatedCash).toBe(999);
+    expect(inventorySignals().cash.value).toBe(999);
 
     uigame.buyMenu_onItemChange(300);
 
     const expectedCashPos = PAL_XY(69, 159);
     expect(uiStub.drawNumber).toHaveBeenCalledWith(999, 6, expectedCashPos, NumColor.Yellow, NumAlign.Right);
-    expect(worldServiceMock.getInventory).toHaveBeenCalled();
   });
 });

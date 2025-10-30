@@ -8,6 +8,11 @@ import res from './res';
 import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';
 import worldService from '../../services/world-service.js';
+import {
+  getMusicTrack as getCachedMusicTrack,
+  getBattleMusicTrack as getCachedBattleMusicTrack,
+  getBattleFieldId as getCachedBattleFieldId
+} from '../../services/battle-state-adapter.js';
 
 log.trace('game module load');
 
@@ -243,9 +248,9 @@ game._saveGame = function() {
   saveData.numScene = worldService.getSceneId();
   saveData.paletteOffset = worldService.getNightPaletteFlag() ? 0x180 : 0;
   saveData.partyDirection = worldService.getPartyDirection();
-  saveData.numMusic = worldService.getMusicTrack();
-  saveData.numBattleMusic = worldService.getBattleMusicTrack();
-  saveData.numBattleField = worldService.getBattleFieldId();
+  saveData.numMusic = getCachedMusicTrack();
+  saveData.numBattleMusic = getCachedBattleMusicTrack();
+  saveData.numBattleField = getCachedBattleFieldId();
   saveData.screenWave = worldService.getScreenWave();
   saveData.collectValue = worldService.getCollectValue();
   saveData.layer = worldService.getLayer();

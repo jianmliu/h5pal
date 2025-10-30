@@ -96,6 +96,12 @@ import {
   resetPlayerStateSlice,
   playerStateSignals
 } from '../state/slices/player-state.js';
+import {
+  updateCollectValue,
+  updateChaseRangeValue,
+  updateChaseSpeedCyclesValue,
+  updateBattleSpeedValue
+} from '../state/slices/game-flags.js';
 
 function getGlobalStore() {
   if (typeof globalThis !== 'undefined' && globalThis.Global) {
@@ -486,6 +492,18 @@ class WorldService extends EventBus {
 
     const lastUnequippedValue = stateService.getGlobal('lastUnequippedItem');
     updateLastUnequippedValue(typeof lastUnequippedValue === 'number' ? Math.trunc(lastUnequippedValue) : 0, { emitEvent: false, source: 'worldService:sync' });
+
+    const collectValue = stateService.getGlobal('collectValue');
+    updateCollectValue(typeof collectValue === 'number' ? Math.trunc(collectValue) : 0, { emitEvent: false, source: 'worldService:sync' });
+
+    const chaseRangeValue = stateService.getGlobal('chaseRange');
+    updateChaseRangeValue(typeof chaseRangeValue === 'number' ? Math.trunc(chaseRangeValue) : 0, { emitEvent: false, source: 'worldService:sync' });
+
+    const chaseCyclesValue = stateService.getGlobal('chaseSpeedChangeCycles');
+    updateChaseSpeedCyclesValue(typeof chaseCyclesValue === 'number' ? Math.trunc(chaseCyclesValue) : 0, { emitEvent: false, source: 'worldService:sync' });
+
+    const battleSpeedValue = stateService.getGlobal('battleSpeed');
+    updateBattleSpeedValue(typeof battleSpeedValue === 'number' ? Math.trunc(battleSpeedValue) : 2, { emitEvent: false, source: 'worldService:sync' });
 
     const viewportValue = globalStore && typeof globalStore.viewport !== 'undefined'
       ? globalStore.viewport
@@ -1934,15 +1952,6 @@ class WorldService extends EventBus {
     }
   }
 
-  getEnemyTeamEntry(id) {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    if (!store || !Array.isArray(store.enemyTeam)) {
-      return null;
-    }
-    return store.enemyTeam[id] || null;
-  }
-
   setEnemyTeamTable(enemyTeams) {
     const resolved = this._replaceGameDataTable('enemyTeam', enemyTeams || []);
     updateEnemyTeamValue(resolved || [], { source: 'worldService:setEnemyTeamTable' });
@@ -1963,15 +1972,6 @@ class WorldService extends EventBus {
     const resolved = this._replaceGameDataTable('enemyPos', enemyPositions || null);
     updateEnemyPositionValue(resolved || null, { source: 'worldService:setEnemyPositionTable' });
     return resolved;
-  }
-
-  getBattleFieldEntry(id) {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    if (!store || !Array.isArray(store.battleField)) {
-      return null;
-    }
-    return store.battleField[id] || null;
   }
 
   setBattleFieldTable(battleFields) {
@@ -2843,35 +2843,57 @@ class WorldService extends EventBus {
   }
 
   getChaseRange() {
-    return this._getNumberGlobal('chaseRange', 0);
+    const value = this._getNumberGlobal('chaseRange', 0);
+    updateChaseRangeValue(value, { emitEvent: false, source: 'worldService:getChaseRange' });
+    return value;
   }
 
   setChaseRange(value) {
-    return this._setNumberGlobal('chaseRange', value, 0);
+    const resolved = this._setNumberGlobal('chaseRange', value, 0);
+    updateChaseRangeValue(resolved, { source: 'worldService:setChaseRange' });
+    return resolved;
   }
 
   adjustChaseRange(delta) {
-    return this._adjustNumberGlobal('chaseRange', delta, 0);
+    const resolved = this._adjustNumberGlobal('chaseRange', delta, 0);
+    updateChaseRangeValue(resolved, { source: 'worldService:adjustChaseRange' });
+    return resolved;
   }
 
   getChaseSpeedChangeCycles() {
-    return this._getNumberGlobal('chaseSpeedChangeCycles', 0);
+    const value = this._getNumberGlobal('chaseSpeedChangeCycles', 0);
+    updateChaseSpeedCyclesValue(value, { emitEvent: false, source: 'worldService:getChaseSpeedChangeCycles' });
+    return value;
   }
 
   setChaseSpeedChangeCycles(value) {
-    return this._setNumberGlobal('chaseSpeedChangeCycles', value, 0);
+    const resolved = this._setNumberGlobal('chaseSpeedChangeCycles', value, 0);
+    updateChaseSpeedCyclesValue(resolved, { source: 'worldService:setChaseSpeedChangeCycles' });
+    return resolved;
+  }
+
+  adjustChaseSpeedChangeCycles(delta) {
+    const resolved = this._adjustNumberGlobal('chaseSpeedChangeCycles', delta, 0);
+    updateChaseSpeedCyclesValue(resolved, { source: 'worldService:adjustChaseSpeedChangeCycles' });
+    return resolved;
   }
 
   getCollectValue() {
-    return this._getNumberGlobal('collectValue', 0);
+    const value = this._getNumberGlobal('collectValue', 0);
+    updateCollectValue(value, { emitEvent: false, source: 'worldService:getCollectValue' });
+    return value;
   }
 
   setCollectValue(value) {
-    return this._setNumberGlobal('collectValue', value, 0);
+    const resolved = this._setNumberGlobal('collectValue', value, 0);
+    updateCollectValue(resolved, { source: 'worldService:setCollectValue' });
+    return resolved;
   }
 
   adjustCollectValue(delta) {
-    return this._adjustNumberGlobal('collectValue', delta, 0);
+    const resolved = this._adjustNumberGlobal('collectValue', delta, 0);
+    updateCollectValue(resolved, { source: 'worldService:adjustCollectValue' });
+    return resolved;
   }
 
   getCurPlayingRng() {
@@ -2947,34 +2969,16 @@ class WorldService extends EventBus {
     return this._setBooleanGlobal('enteringScene', value);
   }
 
-  getMusicTrack() {
-    const value = this._getNumberGlobal('musicNum', 0);
-    updateMusicTrackValue(value, { emitEvent: false, source: 'worldService:getMusicTrack' });
-    return value;
-  }
-
   setMusicTrack(value) {
     const resolved = this._setNumberGlobal('musicNum', value, 0);
     updateMusicTrackValue(resolved, { source: 'worldService:setMusicTrack' });
     return resolved;
   }
 
-  getBattleMusicTrack() {
-    const value = this._getNumberGlobal('numBattleMusic', 0);
-    updateBattleMusicTrackValue(value, { emitEvent: false, source: 'worldService:getBattleMusicTrack' });
-    return value;
-  }
-
   setBattleMusicTrack(value) {
     const resolved = this._setNumberGlobal('numBattleMusic', value, 0);
     updateBattleMusicTrackValue(resolved, { source: 'worldService:setBattleMusicTrack' });
     return resolved;
-  }
-
-  getBattleFieldId() {
-    const value = this._getNumberGlobal('numBattleField', 0);
-    updateBattleFieldIdValue(value, { emitEvent: false, source: 'worldService:getBattleFieldId' });
-    return value;
   }
 
   setBattleFieldId(value) {
@@ -2984,11 +2988,15 @@ class WorldService extends EventBus {
   }
 
   getBattleSpeed() {
-    return this._getNumberGlobal('battleSpeed', 2);
+    const value = this._getNumberGlobal('battleSpeed', 2);
+    updateBattleSpeedValue(value, { emitEvent: false, source: 'worldService:getBattleSpeed' });
+    return value;
   }
 
   setBattleSpeed(value) {
-    return this._setNumberGlobal('battleSpeed', value, 2);
+    const resolved = this._setNumberGlobal('battleSpeed', value, 2);
+    updateBattleSpeedValue(resolved, { source: 'worldService:setBattleSpeed' });
+    return resolved;
   }
 
   getMaxSpriteDrawLimit() {
@@ -3080,6 +3088,15 @@ class WorldService extends EventBus {
       case 'lastUnequippedItem':
         updateLastUnequippedValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
+      case 'collectValue':
+        updateCollectValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'chaseRange':
+        updateChaseRangeValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'chaseSpeedChangeCycles':
+        updateChaseSpeedCyclesValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
       case 'objectDesc':
         updateObjectDescValue(typeof payload.value === 'undefined' ? null : payload.value, { source: 'worldService:legacyGlobal' });
         break;
@@ -3094,6 +3111,9 @@ class WorldService extends EventBus {
         break;
       case 'numBattleField':
         updateBattleFieldIdValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'battleSpeed':
+        updateBattleSpeedValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'screenWave':
         updateScreenWaveValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
