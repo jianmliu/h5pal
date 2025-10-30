@@ -11,7 +11,22 @@ import battleServiceDefault from '../../services/battle-service.js';
 import worldService from '../../services/world-service.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
+import gameDataAdapter from '../../services/game-data-adapter.js';
+import {
+  getBattleStateSnapshot,
+  subscribeBattleState
+} from '../../services/battle-state-adapter.js';
+import {
+  getPlayerHP as getPlayerHPValue,
+  getPlayerMaxHP as getPlayerMaxHPValue,
+  getPlayerMP as getPlayerMPValue,
+  getPlayerMaxMP as getPlayerMaxMPValue,
+  getPlayerMagicAt as getPlayerMagicAtValue,
+  getPlayerStatusRow as getPlayerStatusRowValue,
+  getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex
+} from '../../services/player-state-adapter.js';
 import { autoBattleSignal } from '../../state/slices/auto-battle.js';
+import { statusSignals } from '../../state/slices/status-matrices.js';
 
 log.trace('uibattle module load');
 
@@ -95,14 +110,16 @@ var magicmenu = null;
 var battleService = battleServiceDefault;
 var battleServiceSubscription = null;
 var autoBattleFlagSignal = autoBattleSignal();
+var statusSlice = statusSignals();
+var poisonStatusSignal = statusSlice.poison;
+var battleStateUnsubscribe = null;
+var battleStateCache = null;
 
 function BATTLE() {
-  var state = battleService.getState && battleService.getState();
-  if (state) {
-    return state;
+  if (!battleStateCache) {
+    battleStateCache = getBattleStateSnapshot() || {};
   }
-  var fallback = worldService.getBattleState();
-  return fallback || {};
+  return battleStateCache;
 }
 
 function snapshotUIState(component) {
@@ -252,12 +269,12 @@ function setPlayer(index, mutator) {
 }
 
 function getMaxPartyMemberIndex() {
-  var index = worldService.getMaxPartyMemberIndex();
+  var index = getCachedMaxPartyMemberIndex();
   return typeof index === 'number' ? index : -1;
 }
 
 function getPlayerStatusRow(roleId) {
-  return worldService.getPlayerStatus(roleId) || [];
+  return getPlayerStatusRowValue(roleId) || [];
 }
 
 function getPlayerStatusValue(roleId, statusIndex) {
@@ -274,7 +291,7 @@ function playerHasStatus(roleId, statusIndex) {
 }
 
 function getPoisonStatusEntry(poisonIndex, partyIndex) {
-  var matrix = worldService.getPoisonStatusMatrix();
+  var matrix = poisonStatusSignal.value;
   if (!Array.isArray(matrix)) {
     return null;
   }
@@ -296,7 +313,7 @@ function getMagicEntry(magicId) {
   if (magicId <= 0) {
     return null;
   }
-  return worldService.getMagicEntry(magicId);
+  return gameDataAdapter.getMagicEntry(magicId);
 }
 
 function isPlayerAvailable(index) {
@@ -380,11 +397,11 @@ function getUIStateObject() {
   if (component && component.stateRef) {
     return component.stateRef;
   }
-  var state = battleService.getState();
+  var state = battleService.getState && battleService.getState();
   if (state && state.UI) {
     return state.UI;
   }
-  var fallback = worldService.getBattleState();
+  var fallback = getBattleStateSnapshot();
   if (fallback && fallback.UI) {
     return fallback.UI;
   }
@@ -439,23 +456,23 @@ function getCurrentPlayerRole(fallbackRole, component) {
 }
 
 function getPlayerHP(roleId) {
-  return worldService.getPlayerHP(roleId);
+  return getPlayerHPValue(roleId);
 }
 
 function getPlayerMaxHP(roleId) {
-  return worldService.getPlayerMaxHP(roleId);
+  return getPlayerMaxHPValue(roleId);
 }
 
 function getPlayerMP(roleId) {
-  return worldService.getPlayerMP(roleId);
+  return getPlayerMPValue(roleId);
 }
 
 function getPlayerMaxMP(roleId) {
-  return worldService.getPlayerMaxMP(roleId);
+  return getPlayerMaxMPValue(roleId);
 }
 
 function getPlayerMagicSlot(slotIndex, roleId) {
-  return worldService.getPlayerMagicAt(slotIndex, roleId);
+  return getPlayerMagicAtValue(slotIndex, roleId);
 }
 
 function adjustInventoryUsage(itemId, delta) {
@@ -479,6 +496,9 @@ function adjustInventoryUsage(itemId, delta) {
 
 uibattle.init = function*(surf, _battle, _ui) {
   log.debug('[BATTLE] init uibattle');
+  if (typeof uibattle.dispose === 'function') {
+    uibattle.dispose();
+  }
   battle = _battle;
   ui = _ui;
   itemmenu = ui.itemmenu;
@@ -497,6 +517,24 @@ uibattle.init = function*(surf, _battle, _ui) {
     battleService.on('stateChanged', handler);
     battleServiceSubscription = handler;
   }
+
+  if (typeof battleStateUnsubscribe === 'function') {
+    battleStateUnsubscribe();
+    battleStateUnsubscribe = null;
+  }
+  battleStateCache = getBattleStateSnapshot() || {};
+  battleStateUnsubscribe = subscribeBattleState((event) => {
+    if (!event) {
+      return;
+    }
+    if (event.type === 'disposed') {
+      battleStateCache = null;
+      return;
+    }
+    if (event.state) {
+      battleStateCache = event.state;
+    }
+  });
 };
 
 var ShowNum = uibattle.ShowNum = function() {
@@ -1737,6 +1775,19 @@ uibattle.showNum = function(num, pos, color) {
       }
     }
   });
+};
+
+uibattle.dispose = function() {
+  if (battleServiceSubscription && battleService && typeof battleService.off === 'function') {
+    battleService.off('stateMutated', battleServiceSubscription);
+    battleService.off('stateChanged', battleServiceSubscription);
+    battleServiceSubscription = null;
+  }
+  if (typeof battleStateUnsubscribe === 'function') {
+    battleStateUnsubscribe();
+    battleStateUnsubscribe = null;
+  }
+  battleStateCache = null;
 };
 
 export default uibattle;

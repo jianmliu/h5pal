@@ -1,6 +1,92 @@
 import { battleFormationSignals } from '../state/slices/battle-formation.js';
 import { audioResourceSignals } from '../state/slices/audio-resources.js';
 import { autoBattleSignal } from '../state/slices/auto-battle.js';
+import battleService from './battle-service.js';
+import worldService from './world-service.js';
+
+const stateListeners = new Set();
+let stateSubscriptions = [];
+let battleStateCache = null;
+
+function notifyState(event) {
+  stateListeners.forEach((listener) => {
+    if (typeof listener !== 'function') {
+      return;
+    }
+    try {
+      listener(event);
+    } catch (err) {
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('[battleStateAdapter] listener error', err);
+      }
+    }
+  });
+}
+
+function refreshBattleStateCache(source) {
+  if (battleService && typeof battleService.getState === 'function') {
+    const proxiedState = battleService.getState();
+    if (proxiedState) {
+      battleStateCache = proxiedState;
+      return battleStateCache;
+    }
+  }
+  if (worldService && typeof worldService.getBattleState === 'function') {
+    const fallback = worldService.getBattleState();
+    if (fallback) {
+      battleStateCache = fallback;
+      return battleStateCache;
+    }
+  }
+  if (source === 'dispose') {
+    battleStateCache = null;
+  }
+  return battleStateCache;
+}
+
+function ensureBattleStateSubscription() {
+  if (stateSubscriptions.length > 0) {
+    return;
+  }
+  refreshBattleStateCache('init');
+  if (!battleService || typeof battleService.on !== 'function') {
+    return;
+  }
+  const handleStateChanged = () => {
+    const previous = battleStateCache;
+    const next = refreshBattleStateCache('stateChanged') || null;
+    notifyState({
+      type: 'stateChanged',
+      state: next || {},
+      previous: previous || {}
+    });
+  };
+  const handleStateMutated = () => {
+    const previous = battleStateCache;
+    const next = refreshBattleStateCache('stateMutated') || null;
+    notifyState({
+      type: 'stateMutated',
+      state: next || {},
+      previous: previous || {}
+    });
+  };
+  battleService.on('stateChanged', handleStateChanged);
+  battleService.on('stateMutated', handleStateMutated);
+  stateSubscriptions = [
+    () => battleService.off('stateChanged', handleStateChanged),
+    () => battleService.off('stateMutated', handleStateMutated)
+  ];
+}
+
+function teardownBattleStateSubscription() {
+  stateSubscriptions.forEach((dispose) => {
+    if (typeof dispose === 'function') {
+      dispose();
+    }
+  });
+  stateSubscriptions = [];
+  refreshBattleStateCache('dispose');
+}
 
 function getBattleFormationSignal(key) {
   const signals = battleFormationSignals();
@@ -70,4 +156,27 @@ export function getEnemyTeamSignal() {
 
 export function getBattleFieldsSignal() {
   return getBattleFormationSignal('battleFields');
+}
+
+export function getBattleStateSnapshot() {
+  return refreshBattleStateCache('snapshot') || {};
+}
+
+export function subscribeBattleState(listener) {
+  if (typeof listener !== 'function') {
+    return () => {};
+  }
+  ensureBattleStateSubscription();
+  stateListeners.add(listener);
+  listener({
+    type: 'snapshot',
+    state: getBattleStateSnapshot()
+  });
+  return () => {
+    stateListeners.delete(listener);
+    if (stateListeners.size === 0) {
+      notifyState({ type: 'disposed' });
+      teardownBattleStateSubscription();
+    }
+  };
 }

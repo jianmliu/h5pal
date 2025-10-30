@@ -105,6 +105,13 @@ import {
   playerStateSignals
 } from '../state/slices/player-state.js';
 import {
+  updateMagicTableValue,
+  updateStoreTableValue,
+  updateExpStateValue,
+  updateEnemyTableValue,
+  updateBattleEffectTableValue
+} from '../state/slices/game-data.js';
+import {
   updateCollectValue,
   updateChaseRangeValue,
   updateChaseSpeedCyclesValue,
@@ -909,8 +916,14 @@ class WorldService extends EventBus {
     const gameData = getGameDataStore();
     const objectTable = gameData && gameData.object ? gameData.object : [];
     updateObjectTableValue(objectTable, { source: 'worldService:syncObjectStores' });
+    const magicTable = gameData && Array.isArray(gameData.magic) ? gameData.magic : [];
+    updateMagicTableValue(magicTable, { source: 'worldService:syncObjectStores' });
+    const storeTable = gameData && Array.isArray(gameData.store) ? gameData.store : [];
+    updateStoreTableValue(storeTable, { source: 'worldService:syncObjectStores' });
     const objectDesc = stateService.getGlobal('objectDesc');
     updateObjectDescValue(typeof objectDesc === 'undefined' ? null : objectDesc, { source: 'worldService:syncObjectStores' });
+    const expState = stateService.getGlobal('exp');
+    updateExpStateValue(expState || null, { source: 'worldService:syncObjectStores' });
   }
 
 
@@ -1838,15 +1851,6 @@ class WorldService extends EventBus {
     return results;
   }
 
-  getObjectEntry(id) {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    if (!store || !Array.isArray(store.object)) {
-      return null;
-    }
-    return store.object[id] || null;
-  }
-
   mutateObjectEntry(id, mutator) {
     this._ensureInitialised();
     if (typeof mutator !== 'function') {
@@ -1960,11 +1964,16 @@ class WorldService extends EventBus {
       snapshot = typeof result !== 'undefined' ? result : magicData;
       return snapshot;
     });
+    if (snapshot) {
+      updateMagicTableValue(snapshot, { source: 'worldService:mutateMagicTable' });
+    }
     return snapshot;
   }
 
   setMagicTable(magicTable) {
-    return this._replaceGameDataTable('magic', magicTable || []);
+    const resolved = this._replaceGameDataTable('magic', magicTable || []);
+    updateMagicTableValue(resolved || [], { source: 'worldService:setMagicTable' });
+    return resolved;
   }
 
   getPlayerRoles() {
@@ -2041,7 +2050,9 @@ class WorldService extends EventBus {
   }
 
   setStoreTable(stores) {
-    return this._replaceGameDataTable('store', stores || []);
+    const resolved = this._replaceGameDataTable('store', stores || []);
+    updateStoreTableValue(resolved || [], { source: 'worldService:setStoreTable' });
+    return resolved;
   }
 
   getEnemyEntry(id) {
@@ -2054,7 +2065,9 @@ class WorldService extends EventBus {
   }
 
   setEnemyTable(enemies) {
-    return this._replaceGameDataTable('enemy', enemies || []);
+    const resolved = this._replaceGameDataTable('enemy', enemies || []);
+    updateEnemyTableValue(resolved || [], { source: 'worldService:setEnemyTable' });
+    return resolved;
   }
 
   copyEnemyTemplate(enemyId) {
@@ -2110,7 +2123,9 @@ class WorldService extends EventBus {
   }
 
   setBattleEffectIndexTable(battleEffectIndex) {
-    return this._replaceGameDataTable('battleEffectIndex', battleEffectIndex || []);
+    const resolved = this._replaceGameDataTable('battleEffectIndex', battleEffectIndex || []);
+    updateBattleEffectTableValue(resolved || [], { source: 'worldService:setBattleEffectIndexTable' });
+    return resolved;
   }
 
   setPlayerRoles(playerRoles) {
@@ -2613,21 +2628,27 @@ class WorldService extends EventBus {
 
   getExpState() {
     this._ensureInitialised();
-    return stateService.getGlobal('exp');
+    const expState = stateService.getGlobal('exp');
+    updateExpStateValue(expState || null, { emitEvent: false, source: 'worldService:getExpState' });
+    return expState;
   }
 
   mutateExpState(mutator) {
     this._ensureInitialised();
-    return stateService.mutateGlobal('exp', (exp) => {
+    const result = stateService.mutateGlobal('exp', (exp) => {
       if (exp && typeof mutator === 'function') {
         mutator(exp);
       }
       return exp;
     });
+    updateExpStateValue(result || null, { source: 'worldService:mutateExpState' });
+    return result;
   }
 
   setExpStruct(struct) {
-    return this._copyStructIntoGlobal('exp', struct);
+    const resolved = this._copyStructIntoGlobal('exp', struct);
+    updateExpStateValue(resolved || null, { source: 'worldService:setExpStruct' });
+    return resolved;
   }
 
   getLevelUpExp(level) {

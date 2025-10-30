@@ -1,9 +1,23 @@
 import worldService from '../../services/world-service.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
-import { playerStateSignals } from '../../state/slices/player-state.js';
-import { statusSignals } from '../../state/slices/status-matrices.js';
-
+import {
+  getPlayerRolesSnapshot,
+  getPlayerRoleFieldValue,
+  getPlayerHP as getPlayerHPValue,
+  getPlayerMaxHP as getPlayerMaxHPValue,
+  getPlayerMP as getPlayerMPValue,
+  getPlayerMaxMP as getPlayerMaxMPValue,
+  getPlayerAttackStrength as getPlayerAttackValue,
+  getPlayerMagicStrength as getPlayerMagicValue,
+  getPlayerDefense as getPlayerDefenseValue,
+  getPlayerDexterity as getPlayerDexterityValue,
+  getPlayerFleeRate as getPlayerFleeRateValue,
+  getEquipmentEffectScalar as getEquipmentEffectScalarFromAdapter,
+  getEquipmentEffectElemental as getEquipmentEffectElementalFromAdapter,
+  getPlayerStatusValue as getPlayerStatusValueFromAdapter
+} from '../../services/player-state-adapter.js';
 console.trace('script_extras module load');
 
 var surface = null
@@ -15,12 +29,9 @@ const inventoryItemsSignal = inventorySlice.items;
 const inventoryCapacitySignal = inventorySlice.capacity;
 const cashSignal = inventorySlice.cash;
 
-const playerStateSlice = playerStateSignals();
-const playerRolesSignal = playerStateSlice.roles;
-const equipmentEffectSignal = playerStateSlice.equipmentEffect;
-
-const statusSlice = statusSignals();
-const playerStatusSignal = statusSlice.player;
+const getEquipmentEffectScalar = getEquipmentEffectScalarFromAdapter;
+const getEquipmentEffectElemental = getEquipmentEffectElementalFromAdapter;
+const getPlayerStatusValue = getPlayerStatusValueFromAdapter;
 
 function getInventoryList() {
   const items = inventoryItemsSignal.value;
@@ -45,69 +56,6 @@ function getCashValue() {
   return Number.isFinite(value) ? value : 0;
 }
 
-function getPlayerRolesSnapshot() {
-  const roles = playerRolesSignal.value;
-  return roles || worldService.getPlayerRoles();
-}
-
-function getPlayerRoleField(field) {
-  const roles = getPlayerRolesSnapshot();
-  if (!roles) {
-    return null;
-  }
-  return roles[field] || null;
-}
-
-function getPlayerRoleFieldValue(field, role, fallback) {
-  const arr = getPlayerRoleField(field);
-  if (!arr) {
-    return typeof fallback === 'undefined' ? 0 : fallback;
-  }
-  const value = arr[role];
-  return typeof value === 'undefined' ? (typeof fallback === 'undefined' ? 0 : fallback) : value;
-}
-
-function getPlayerHPValue(role) {
-  return getPlayerRoleFieldValue('HP', role, 0);
-}
-
-function getPlayerMaxHPValue(role) {
-  return getPlayerRoleFieldValue('maxHP', role, 0);
-}
-
-function getPlayerMPValue(role) {
-  return getPlayerRoleFieldValue('MP', role, 0);
-}
-
-function getPlayerMaxMPValue(role) {
-  return getPlayerRoleFieldValue('maxMP', role, 0);
-}
-
-function getPlayerAttackValue(role) {
-  return getPlayerRoleFieldValue('attackStrength', role, 0);
-}
-
-function getPlayerMagicValue(role) {
-  return getPlayerRoleFieldValue('magicStrength', role, 0);
-}
-
-function getPlayerDefenseValue(role) {
-  return getPlayerRoleFieldValue('defense', role, 0);
-}
-
-function getPlayerDexterityValue(role) {
-  return getPlayerRoleFieldValue('dexterity', role, 0);
-}
-
-function getPlayerFleeRateValue(role) {
-  return getPlayerRoleFieldValue('fleeRate', role, 0);
-}
-
-function getEquipmentEffectList() {
-  const effects = equipmentEffectSignal.value;
-  return Array.isArray(effects) ? effects : (effects || []);
-}
-
 var script_extras = {};
 var script = null;
 
@@ -121,19 +69,6 @@ function getPartyIndexByRole(role) {
   return -1;
 }
 
-function getPlayerStatusValue(role, statusID) {
-  var matrix = playerStatusSignal.value || [];
-  var row = matrix[role];
-  if (row) {
-    if (row.uint8Array) {
-      return row.uint8Array[statusID] || 0;
-    }
-    return row[statusID] || 0;
-  }
-  var fallback = worldService.getPlayerStatus(role);
-  return fallback && fallback[statusID] ? fallback[statusID] : 0;
-}
-
 function setPlayerStatusValue(role, statusID, value) {
   worldService.mutatePlayerStatusEntry(role, function(statusRow) {
     if (statusRow) {
@@ -141,32 +76,6 @@ function setPlayerStatusValue(role, statusID, value) {
     }
     return statusRow;
   });
-}
-
-function getEquipmentEffectScalar(part, field, role) {
-  var effects = getEquipmentEffectList();
-  var effect = effects && effects[part];
-  if (!effect || !effect[field]) {
-    return 0;
-  }
-  var collection = effect[field];
-  if (!collection) {
-    return 0;
-  }
-  return collection[role] || 0;
-}
-
-function getEquipmentEffectElemental(part, attr, role) {
-  var effects = getEquipmentEffectList();
-  var effect = effects && effects[part];
-  if (!effect || !effect.elementalResistance) {
-    return 0;
-  }
-  var row = effect.elementalResistance[attr];
-  if (!row) {
-    return 0;
-  }
-  return row[role] || 0;
 }
 
 script_extras.init = function*(surf, _script) {
@@ -180,7 +89,7 @@ script_extras.init = function*(surf, _script) {
       for (var j=0; j<Const.MAX_PLAYER_EQUIPMENTS; ++j) {
         var w = worldService.getPlayerEquipment(j, i);
         if (w != 0) {
-          var obj = worldService.getObjectEntry(w);
+          var obj = scriptObjectAdapter.getObjectEntry(w);
           if (!obj || !obj.item) {
             continue;
           }
@@ -217,7 +126,7 @@ script_extras.init = function*(surf, _script) {
             if (!poisonId) {
               continue;
             }
-            var data = worldService.getObjectEntry(poisonId);
+            var data = scriptObjectAdapter.getObjectEntry(poisonId);
             var level = data && data.poison ? data.poison.poisonLevel : 0;
             if (level < 99) {
               entry.poisonID = 0;
@@ -502,7 +411,7 @@ script_extras.init = function*(surf, _script) {
       if (slotIndex < Const.MAX_POISONS) {
         var targetRow = poisonStatus[slotIndex];
         if (targetRow && targetRow[index]) {
-          var poisonObject = worldService.getObjectEntry(poisonID);
+          var poisonObject = scriptObjectAdapter.getObjectEntry(poisonID);
           var poisonData = poisonObject && poisonObject.poison ? poisonObject.poison : null;
           targetRow[index].poisonID = poisonID;
           targetRow[index].poisonScript = poisonData ? poisonData.playerScript : 0;
@@ -553,7 +462,7 @@ script_extras.init = function*(surf, _script) {
         if (poisonId == 0) {
           continue;
         }
-        var data = worldService.getObjectEntry(poisonId);
+        var data = scriptObjectAdapter.getObjectEntry(poisonId);
         var poisonData = data && data.poison ? data.poison : null;
         if (poisonData && poisonData.poisonLevel <= maxLevel) {
           entry.poisonID = 0;
@@ -575,7 +484,7 @@ script_extras.init = function*(surf, _script) {
         continue;
       }
       var p = row[index];
-      var data = worldService.getObjectEntry(p.poisonID);
+      var data = scriptObjectAdapter.getObjectEntry(p.poisonID);
       var poisonInfo = data && data.poison ? data.poison : null;
       var w = poisonInfo ? poisonInfo.poisonLevel : 0;
       if (w >= 99) {

@@ -9,6 +9,11 @@ import sound from './sound';
 import battleService from '../../services/battle-service.js';
 import worldService from '../../services/world-service.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
+import {
+  getBattleStateSnapshot,
+  subscribeBattleState
+} from '../../services/battle-state-adapter.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import { gameFlagSignals } from '../../state/slices/game-flags.js';
 import { viewportSignals } from '../../state/slices/viewport.js';
@@ -18,6 +23,8 @@ log.trace('script module load');
 let partyStateCache = [];
 let trailStateCache = [];
 let partyTrailUnsubscribe = null;
+let battleStateCache = null;
+let battleStateUnsubscribe = null;
 const inventorySlice = inventorySignals();
 const cashSignal = inventorySlice.cash;
 const gameFlagSlice = gameFlagSignals();
@@ -65,41 +72,40 @@ function ensurePartyTrailBinding() {
   partyTrailUnsubscribe = partyTrailAdapter.subscribe(handlePartyTrailUpdate);
 }
 
+function handleBattleStateUpdate(event) {
+  if (!event) {
+    return;
+  }
+  if (event.type === 'disposed') {
+    battleStateCache = null;
+    return;
+  }
+  if (event.state) {
+    battleStateCache = event.state;
+  }
+}
+
+function ensureBattleStateBinding() {
+  if (battleStateUnsubscribe) {
+    return;
+  }
+  battleStateCache = getBattleStateSnapshot() || {};
+  battleStateUnsubscribe = subscribeBattleState(handleBattleStateUpdate);
+}
+
 function BATTLE() {
-  if (battleService) {
-    if (typeof battleService.getState === 'function') {
-      const proxyState = battleService.getState();
-      if (proxyState) {
-        battleService.rawState = proxyState.__raw__ || proxyState;
-        battleService.state = proxyState;
-        return proxyState;
-      }
-    }
-    if (!battleService.state && battleService.rawState) {
-      if (typeof battleService._wrapState === 'function') {
-        battleService.state = battleService._wrapState(battleService.rawState);
-      } else {
-        battleService.state = battleService.rawState;
-      }
-    }
-    if (battleService.state) {
-      return battleService.state;
+  ensureBattleStateBinding();
+  if (battleService && typeof battleService.getState === 'function') {
+    const proxyState = battleService.getState();
+    if (proxyState) {
+      battleStateCache = proxyState;
+      return proxyState;
     }
   }
-  const fallback = worldService.getBattleState();
-  if (fallback) {
-    if (battleService) {
-      battleService.rawState = fallback.__raw__ || fallback;
-      if (typeof battleService._wrapState === 'function') {
-        battleService.state = battleService._wrapState(battleService.rawState);
-      } else {
-        battleService.state = battleService.rawState;
-      }
-      return battleService.state;
-    }
-    return fallback;
+  if (!battleStateCache) {
+    battleStateCache = getBattleStateSnapshot() || {};
   }
-  return {};
+  return battleStateCache;
 }
 
 
@@ -555,7 +561,7 @@ function mutateMagic(mutator) {
 }
 
 function getObjectEntry(objectId) {
-  return worldService.getObjectEntry(objectId) || null;
+  return scriptObjectAdapter.getObjectEntry(objectId) || null;
 }
 
 function getEnemyEntry(enemyId) {

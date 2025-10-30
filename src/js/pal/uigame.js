@@ -11,9 +11,30 @@ import music from './music';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
+import gameDataAdapter from '../../services/game-data-adapter.js';
+import {
+  getPlayerNameId,
+  getPlayerHP,
+  getPlayerMaxHP,
+  getPlayerMP,
+  getPlayerMaxMP,
+  getPlayerLevel,
+  getPlayerAttackStrength,
+  getPlayerMagicStrength,
+  getPlayerDefense,
+  getPlayerDexterity,
+  getPlayerFleeRate,
+  getPlayerEquipment,
+  getPlayerAvatarId,
+  getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex
+} from '../../services/player-state-adapter.js';
 import { menuSelectionSignals, audioToggleSignals } from '../../state/slices/menu-selections.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import { statusSignals } from '../../state/slices/status-matrices.js';
+import { audioResourceSignals } from '../../state/slices/audio-resources.js';
+import { timeFlagSignals } from '../../state/slices/time-flags.js';
+import { viewportSignals } from '../../state/slices/viewport.js';
 
 function getGlobalObject() {
   if (typeof global !== 'undefined') {
@@ -53,7 +74,7 @@ function getPartyRole(index) {
 }
 
 function getMaxPartyMemberIndex() {
-  return worldService.getMaxPartyMemberIndex();
+  return getCachedMaxPartyMemberIndex();
 }
 
 function getCash() {
@@ -65,15 +86,15 @@ function getObjectEntry(objectId) {
 }
 
 function getMagicEntry(magicId) {
-  return worldService.getMagicEntry(magicId) || null;
+  return gameDataAdapter.getMagicEntry(magicId) || null;
 }
 
 function getStoreEntry(storeId) {
-  return worldService.getStoreEntry(storeId) || null;
+  return gameDataAdapter.getStoreEntry(storeId) || null;
 }
 
 function getExpState() {
-  return worldService.getExpState() || null;
+  return gameDataAdapter.getExpStateSnapshot();
 }
 
 function getExpEntry(roleId) {
@@ -81,11 +102,35 @@ function getExpEntry(roleId) {
   if (expState && Array.isArray(expState.primaryExp) && expState.primaryExp[roleId]) {
     return expState.primaryExp[roleId];
   }
-  return { exp: 0, level: worldService.getPlayerLevel(roleId) };
+  return { exp: 0, level: getPlayerLevel(roleId) };
 }
 
 function getPoisonStatusMatrix() {
-  return worldService.getPoisonStatusMatrix() || [];
+  const matrix = poisonStatusSignal.value;
+  return Array.isArray(matrix) ? matrix : [];
+}
+
+function getCurrentSaveSlotValue() {
+  const value = currentSaveSlotSignal.value;
+  return typeof value === 'number' && value > 0 ? value : 1;
+}
+
+function getCurrentMusicTrack() {
+  const value = musicTrackSignal.value;
+  return typeof value === 'number' ? value : 0;
+}
+
+function shouldFadeIn() {
+  return !!needToFadeInSignal.value;
+}
+
+function getPaletteIdValue() {
+  const value = paletteIdSignal.value;
+  return typeof value === 'number' ? value : 0;
+}
+
+function getNightPaletteFlagValue() {
+  return !!nightPaletteSignal.value;
 }
 
 function getInventorySnapshot() {
@@ -150,6 +195,20 @@ const lastUnequippedSignal = inventorySlice.lastUnequipped;
 const audioSignals = audioToggleSignals();
 const noMusicSignal = audioSignals.noMusic;
 const noSoundSignal = audioSignals.noSound;
+
+const statusSlice = statusSignals();
+const poisonStatusSignal = statusSlice.poison;
+
+const audioResourceSlice = audioResourceSignals();
+const musicTrackSignal = audioResourceSlice.musicTrack;
+const paletteIdSignal = audioResourceSlice.paletteId;
+const nightPaletteSignal = audioResourceSlice.nightPalette;
+
+const timeFlagsSlice = timeFlagSignals();
+const needToFadeInSignal = timeFlagsSlice.needToFadeIn;
+
+const viewportSlice = viewportSignals();
+const currentSaveSlotSignal = viewportSlice.currentSaveSlot;
 
 function getMainMenuIndexValue() {
   return mainMenuIndexSignal.value;
@@ -481,7 +540,7 @@ uigame.systemMenu = function*() {
   switch(returnValue) {
     case 1:
       // Save Game
-      var slot = yield uigame.saveSlotMenu(worldService.getCurrentSaveSlot() || 1);
+      var slot = yield uigame.saveSlotMenu(getCurrentSaveSlotValue());
       if (slot != ui.MENUITEM_VALUE_CANCELLED) {
         var gameInstance = requireGame();
         worldService.setCurrentSaveSlot(slot);
@@ -494,7 +553,7 @@ uigame.systemMenu = function*() {
       break;
     case 2:
       // Load Game
-      var slot = yield uigame.saveSlotMenu(worldService.getCurrentSaveSlot() || 1);
+      var slot = yield uigame.saveSlotMenu(getCurrentSaveSlotValue());
       if (slot != ui.MENUITEM_VALUE_CANCELLED) {
         music.play(0, false, 1);
         yield surface.fadeOut(1);
@@ -517,7 +576,7 @@ uigame.systemMenu = function*() {
          }
          else
          {
-            PAL_PlayMUS(worldService.getCurrentMusicTrackId() || 0, true, 0);
+            PAL_PlayMUS(getCurrentMusicTrack(), true, 0);
          }
       }
       #endif
@@ -574,8 +633,8 @@ uigame.inGameMagicMenu = function*() {
       throw 'max players in party exceeded';
     }
     var roleId = getPartyRole(i);
-    var roleNameId = worldService.getPlayerNameId(roleId);
-    var roleHP = worldService.getPlayerHP(roleId);
+    var roleNameId = getPlayerNameId(roleId);
+    var roleHP = getPlayerHP(roleId);
     menuitems.push(new ui.MenuItem(
       i,
       roleNameId,
@@ -629,13 +688,13 @@ uigame.inGameMagicMenu = function*() {
         magicObj.scriptOnSuccess = yield script.runTriggerScript(magicObj.scriptOnSuccess, 0);
         if (script.scriptSuccess) {
           var roleId = getPartyRole(w);
-          var currentMP = worldService.getPlayerMP(roleId);
+          var currentMP = getPlayerMP(roleId);
           worldService.setPlayerMP(roleId, currentMP - magicCost);
         }
       }
 
-      if (worldService.getNeedToFadeIn()) {
-        yield surface.fadeIn(worldService.getPaletteId(), worldService.getNightPaletteFlag(), 1);
+      if (shouldFadeIn()) {
+        yield surface.fadeIn(getPaletteIdValue(), getNightPaletteFlagValue(), 1);
         worldService.setNeedToFadeIn(false);
       }
     } else {
@@ -682,10 +741,10 @@ uigame.inGameMagicMenu = function*() {
               magicObj.scriptOnSuccess = yield script.runTriggerScript(magicObj.scriptOnSuccess, targetRole);
               if (script.scriptSuccess){
                 var casterRole = getPartyRole(w);
-                var casterMP = worldService.getPlayerMP(casterRole);
+                var casterMP = getPlayerMP(casterRole);
                 worldService.setPlayerMP(casterRole, casterMP - magicCost);
                 // Check if we have run out of MP
-                if (worldService.getPlayerMP(casterRole) < magicCost) {
+                if (getPlayerMP(casterRole) < magicCost) {
                   // Don't go further if run out of MP
                   player = ui.MENUITEM_VALUE_CANCELLED;
                 }
@@ -834,7 +893,7 @@ uigame.playerStatus = function*() {
       current++;
       continue;
     }
-    var nameWordId = worldService.getPlayerNameId(role);
+    var nameWordId = getPlayerNameId(role);
     // Draw the background image
     surface.blit(bufBackground);
     // Draw the text labels
@@ -852,17 +911,17 @@ uigame.playerStatus = function*() {
 
     // Draw the stats
     var expEntry = getExpEntry(role);
-    var currentLevel = worldService.getPlayerLevel(role);
-    var levelUpTarget = worldService.getLevelUpExp(currentLevel) || 0;
+    var currentLevel = getPlayerLevel(role);
+    var levelUpTarget = gameDataAdapter.getLevelUpExpValue(currentLevel) || 0;
     ui.drawNumber(expEntry.exp || 0, 5, PAL_XY(58, 6), NumColor.Yellow, NumAlign.Right);
     ui.drawNumber(levelUpTarget, 5, PAL_XY(58, 15), NumColor.Cyan, NumAlign.Right);
     ui.drawNumber(currentLevel, 2, PAL_XY(54, 35), NumColor.Yellow, NumAlign.Right);
     surface.blitRLE(ui.sprite.frames[ui.SPRITENUM_SLASH], PAL_XY(65, 58));
     surface.blitRLE(ui.sprite.frames[ui.SPRITENUM_SLASH], PAL_XY(65, 80));
-    ui.drawNumber(worldService.getPlayerHP(role), 4, PAL_XY(42, 56), NumColor.Yellow, NumAlign.Right);
-    ui.drawNumber(worldService.getPlayerMaxHP(role), 4, PAL_XY(63, 61), NumColor.Blue, NumAlign.Right);
-    ui.drawNumber(worldService.getPlayerMP(role), 4, PAL_XY(42, 78), NumColor.Yellow, NumAlign.Right);
-    ui.drawNumber(worldService.getPlayerMaxMP(role), 4, PAL_XY(63, 83), NumColor.Blue, NumAlign.Right);
+    ui.drawNumber(getPlayerHP(role), 4, PAL_XY(42, 56), NumColor.Yellow, NumAlign.Right);
+    ui.drawNumber(getPlayerMaxHP(role), 4, PAL_XY(63, 61), NumColor.Blue, NumAlign.Right);
+    ui.drawNumber(getPlayerMP(role), 4, PAL_XY(42, 78), NumColor.Yellow, NumAlign.Right);
+    ui.drawNumber(getPlayerMaxMP(role), 4, PAL_XY(63, 83), NumColor.Blue, NumAlign.Right);
 
     ui.drawNumber(script.getPlayerAttackStrength(role), 4, PAL_XY(42, 102), NumColor.Yellow, NumAlign.Right);
     ui.drawNumber(script.getPlayerMagicStrength(role), 4, PAL_XY(42, 122), NumColor.Yellow, NumAlign.Right);
@@ -872,7 +931,7 @@ uigame.playerStatus = function*() {
 
     // Draw the equipments
     for (var i = 0; i < Const.MAX_PLAYER_EQUIPMENTS; i++) {
-      var equipmentId = worldService.getPlayerEquipment(i, role);
+      var equipmentId = getPlayerEquipment(i, role);
       if (!equipmentId) {
         continue;
       }
@@ -886,7 +945,7 @@ uigame.playerStatus = function*() {
     }
 
     // Draw the image of player role
-    bufImage = RLE(Files.RGM.readChunk(worldService.getPlayerAvatarId(role)));
+    bufImage = RLE(Files.RGM.readChunk(getPlayerAvatarId(role)));
     if (bufImage) {
        surface.blitRLE(bufImage, PAL_XY(110, 30));
     }
@@ -962,11 +1021,11 @@ uigame.itemUseMenu = function*(itemToUse) {
       role = getPartyRole(0) || 0;
     }
 
-    ui.drawNumber(worldService.getPlayerLevel(role), 4, PAL_XY(240, 20), NumColor.Yellow, NumAlign.Right);
-    ui.drawNumber(worldService.getPlayerMaxHP(role), 4, PAL_XY(261, 40), NumColor.Blue,   NumAlign.Right);
-    ui.drawNumber(worldService.getPlayerHP(role),    4, PAL_XY(240, 37), NumColor.Yellow, NumAlign.Right);
-    ui.drawNumber(worldService.getPlayerMaxMP(role), 4, PAL_XY(261, 58), NumColor.Blue,   NumAlign.Right);
-    ui.drawNumber(worldService.getPlayerMP(role),    4, PAL_XY(240, 55), NumColor.Yellow, NumAlign.Right);
+    ui.drawNumber(getPlayerLevel(role), 4, PAL_XY(240, 20), NumColor.Yellow, NumAlign.Right);
+    ui.drawNumber(getPlayerMaxHP(role), 4, PAL_XY(261, 40), NumColor.Blue,   NumAlign.Right);
+    ui.drawNumber(getPlayerHP(role),    4, PAL_XY(240, 37), NumColor.Yellow, NumAlign.Right);
+    ui.drawNumber(getPlayerMaxMP(role), 4, PAL_XY(261, 58), NumColor.Blue,   NumAlign.Right);
+    ui.drawNumber(getPlayerMP(role),    4, PAL_XY(240, 55), NumColor.Yellow, NumAlign.Right);
     surface.blitRLE(ui.sprite.frames[ui.SPRITENUM_SLASH], PAL_XY(263, 38));
     surface.blitRLE(ui.sprite.frames[ui.SPRITENUM_SLASH], PAL_XY(263, 56));
 
@@ -980,7 +1039,7 @@ uigame.itemUseMenu = function*(itemToUse) {
     for (var i = 0; i <= maxPartyMemberIndex; i++) {
       var color = (i == selectedPlayer ? selectedColor : ui.MENUITEM_COLOR);
       var partyRole = getPartyRole(i);
-      var nameWord = worldService.getPlayerNameId(partyRole);
+      var nameWord = getPlayerNameId(partyRole);
       ui.drawText(ui.getWord(nameWord), PAL_XY(125, 16 + 20 * i), color, true, false);
     }
 
@@ -1019,7 +1078,7 @@ uigame.itemUseMenu = function*(itemToUse) {
         colorChangeTime = now + (600 / ui.MENUITEM_COLOR_SELECTED_TOTALNUM);
 
         // Redraw the selected item.
-        var selectedName = worldService.getPlayerNameId(getPartyRole(selectedPlayer));
+        var selectedName = getPlayerNameId(getPartyRole(selectedPlayer));
         ui.drawText(ui.getWord(selectedName), PAL_XY(125, 16 + 20 * selectedPlayer), selectedColor, false, true);
       }
 
@@ -1196,7 +1255,7 @@ uigame.equipItemMenu = function*(item) {
       role = getPartyRole(0) || 0;
     }
     for (var i = 0; i < ui.MAX_PLAYER_EQUIPMENTS; i++) {
-      var equipId = worldService.getPlayerEquipment(i, role);
+      var equipId = getPlayerEquipment(i, role);
       if (equipId) {
         ui.drawText(ui.getWord(equipId), PAL_XY(130, 11 + i * 22), ui.MENUITEM_COLOR, true, false);
       }
@@ -1213,7 +1272,7 @@ uigame.equipItemMenu = function*(item) {
     var itemFlags = getObjectFlags(item);
     for (i = 0; i <= maxPartyMemberIndex; i++) {
       var partyRole = getPartyRole(i);
-      var nameWord = worldService.getPlayerNameId(partyRole);
+      var nameWord = getPlayerNameId(partyRole);
       var color;
       var canEquip = !!(itemFlags & (ItemFlag.EquipableByPlayerRole_First << partyRole));
       if (currentPlayer == i) {
@@ -1250,7 +1309,7 @@ uigame.equipItemMenu = function*(item) {
         // Redraw the selected item if needed.
         role = getPartyRole(currentPlayer);
         if (role != null && (itemFlags & (ItemFlag.EquipableByPlayerRole_First << role))) {
-          var selectedNameWord = worldService.getPlayerNameId(role);
+          var selectedNameWord = getPlayerNameId(role);
           ui.drawText(ui.getWord(selectedNameWord), PAL_XY(15, 108 + 18 * currentPlayer), selectedColor, true, true);
         }
       }

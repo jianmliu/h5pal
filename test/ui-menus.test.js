@@ -1,4 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+let updatePlayerRolesValue;
+let resetPlayerStateSlice;
+let updateMaxPartyIndexValue;
+let resetViewportSlice;
+
 const worldServiceMock = {
   getParty: vi.fn(),
   getMaxPartyMemberIndex: vi.fn(),
@@ -232,9 +237,19 @@ describe('ui menus (service-backed)', () => {
       updatePartyValue,
       resetPartyTrailSlice
     } = await import('../src/state/slices/party-trail.js'));
+    ({
+      updateMaxPartyIndexValue,
+      resetViewportSlice
+    } = await import('../src/state/slices/viewport.js'));
+    ({
+      updatePlayerRolesValue,
+      resetPlayerStateSlice
+    } = await import('../src/state/slices/player-state.js'));
     resetInventorySlice();
     resetScriptObjectSlice();
     resetPartyTrailSlice();
+    resetViewportSlice();
+    resetPlayerStateSlice();
     resetWorldService();
     resetStateService();
     resetInput();
@@ -361,7 +376,9 @@ describe('ui menus (service-backed)', () => {
       { playerRole: 202, x: 0, y: 0 }
     ];
     worldServiceMock.getParty.mockReturnValue(party);
+    updatePartyValue(party);
     worldServiceMock.getMaxPartyMemberIndex.mockReturnValue(1);
+    updateMaxPartyIndexValue(1);
     worldServiceMock.getPlayerLevel.mockImplementation((role) => ({ 101: 5, 202: 3 }[role] || 0));
     worldServiceMock.getPlayerHP.mockImplementation((role) => ({ 101: 40, 202: 22 }[role] || 0));
     worldServiceMock.getPlayerMaxHP.mockImplementation((role) => ({ 101: 80, 202: 60 }[role] || 0));
@@ -369,6 +386,27 @@ describe('ui menus (service-backed)', () => {
     worldServiceMock.getPlayerMaxMP.mockImplementation((role) => ({ 101: 30, 202: 20 }[role] || 0));
     worldServiceMock.getPlayerNameId.mockImplementation((role) => ({ 101: 501, 202: 502 }[role] || 0));
     scriptMock.getItemAmount.mockReturnValue(1);
+
+    const hp = [];
+    const maxHP = [];
+    const mp = [];
+    const maxMP = [];
+    const levels = [];
+    const names = [];
+    hp[101] = 40; hp[202] = 22;
+    maxHP[101] = 80; maxHP[202] = 60;
+    mp[101] = 18; mp[202] = 9;
+    maxMP[101] = 30; maxMP[202] = 20;
+    levels[101] = 5; levels[202] = 3;
+    names[101] = 501; names[202] = 502;
+    updatePlayerRolesValue({
+      HP: hp,
+      maxHP,
+      MP: mp,
+      maxMP,
+      level: levels,
+      name: names
+    });
 
     const iterator = uigame.itemUseMenu(777);
     iterator.next();

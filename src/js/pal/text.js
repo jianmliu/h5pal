@@ -7,6 +7,7 @@ import Palette from './palette';
 import input from './input';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
+import { getBattleStateSnapshot } from '../../services/battle-state-adapter.js';
 
 log.trace('text module load');
 
@@ -394,7 +395,7 @@ text.init = function*(surf, _ui) {
     if (textLib.dialogPosition == DialogPosition.CenterWindow) {
       // The text should be shown in a small window at the center of the screen
       if (PAL_CLASSIC) {
-        var battleState = worldService.getBattleState();
+        var battleState = getBattleStateSnapshot();
         if (worldService.isInBattle() && battleState && battleState.battleResult == BattleResult.OnGoing) {
           // uibattle.showText(buf, 1400);
         }

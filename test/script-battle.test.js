@@ -1,5 +1,8 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import worldService from '../src/services/world-service.js';
+import scriptObjectAdapter from '../src/services/script-object-adapter.js';
+import { resetInventorySlice } from '../src/state/slices/inventory.js';
+import { resetScriptObjectSlice } from '../src/state/slices/script-objects.js';
 
 vi.mock('../src/js/pal/script-extras.js', () => ({
   default: {
@@ -451,9 +454,14 @@ describe('script utility behaviour', () => {
   });
 
   beforeEach(() => {
+    resetInventorySlice();
+    resetScriptObjectSlice();
     vi.clearAllMocks();
     clearBattleServiceMocks();
     resetBattleState();
+    if (scriptObjectAdapter && typeof scriptObjectAdapter.dispose === 'function') {
+      scriptObjectAdapter.dispose();
+    }
     GameData.scriptEntry = [];
     GameData.object = [];
     GameData.enemy = [];
@@ -530,7 +538,6 @@ describe('script utility behaviour', () => {
     GameData.magic[magicNumber] = { costMP: 5, baseDamage: 10 };
     GameData.playerRoles.MP[0] = 20;
     GameData.playerRoles.maxMP[0] = 30;
-
     await runInstruction(0x0057, [magicObjectId, 2], { eventObjectID: 0 });
 
     expect(GameData.magic[magicNumber].baseDamage).toBe(40);
@@ -543,9 +550,7 @@ describe('script utility behaviour', () => {
     GameData.object[magicObjectId] = { magic: { magicNumber } };
     GameData.magic[magicNumber] = { costMP: 1, baseDamage: 0 };
     worldService.setCash(3000);
-
     await runInstruction(0x0088, [magicObjectId, 0, 0]);
-
     expect(GameData.magic[magicNumber].baseDamage).toBe(1200);
     expect(worldService.getCash()).toBe(0);
   });

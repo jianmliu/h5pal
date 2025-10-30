@@ -3,6 +3,20 @@ import stateService from './state-service.js';
 import worldService from './world-service.js';
 import scriptService from './script-service.js';
 import {
+  getPlayerRolesSnapshot,
+  getPlayerHP,
+  getPlayerMP,
+  getPlayerLevel,
+  getPlayerMaxHP,
+  getPlayerMaxMP,
+  getPlayerAttackStrength,
+  getPlayerMagicStrength,
+  getPlayerDefense,
+  getPlayerDexterity,
+  getPlayerFleeRate,
+  getPlayerStatusRow
+} from './player-state-adapter.js';
+import {
   createEntityRegistry,
   BattleComponents,
   BattleTags,
@@ -38,13 +52,6 @@ function ensureGameGlobal() {
 function getPartySnapshot() {
   const party = worldService.getParty();
   return Array.isArray(party) ? party : [];
-}
-
-function getPlayerStatusRow(roleId) {
-  if (typeof roleId !== 'number' || roleId < 0) {
-    return null;
-  }
-  return worldService.getPlayerStatus(roleId);
 }
 
 function getAutoBattleFlag() {
@@ -981,7 +988,7 @@ class BattleService extends EventBus {
   }
 
   getPlayerRoles() {
-    return worldService.getPlayerRoles();
+    return getPlayerRolesSnapshot();
   }
 
   mutatePlayerRoles(mutator, options) {
@@ -989,7 +996,7 @@ class BattleService extends EventBus {
   }
 
   getPlayerHP(roleId) {
-    return worldService.getPlayerHP(roleId);
+    return getPlayerHP(roleId);
   }
 
   setPlayerHP(roleId, value) {
@@ -997,7 +1004,7 @@ class BattleService extends EventBus {
   }
 
   getPlayerMP(roleId) {
-    return worldService.getPlayerMP(roleId);
+    return getPlayerMP(roleId);
   }
 
   setPlayerMP(roleId, value) {
@@ -1005,7 +1012,7 @@ class BattleService extends EventBus {
   }
 
   getPlayerLevel(roleId) {
-    return worldService.getPlayerLevel(roleId);
+    return getPlayerLevel(roleId);
   }
 
   setPlayerLevel(roleId, value) {
@@ -1013,15 +1020,15 @@ class BattleService extends EventBus {
   }
 
   getPlayerMaxHP(roleId) {
-    return worldService.getPlayerMaxHP(roleId);
+    return getPlayerMaxHP(roleId);
   }
 
   getPlayerMaxMP(roleId) {
-    return worldService.getPlayerMaxMP(roleId);
+    return getPlayerMaxMP(roleId);
   }
 
   getPlayerAttackStrength(roleId) {
-    return worldService.getPlayerAttackStrength(roleId);
+    return getPlayerAttackStrength(roleId);
   }
 
   setPlayerAttackStrength(roleId, value) {
@@ -1029,7 +1036,7 @@ class BattleService extends EventBus {
   }
 
   getPlayerMagicStrength(roleId) {
-    return worldService.getPlayerMagicStrength(roleId);
+    return getPlayerMagicStrength(roleId);
   }
 
   setPlayerMagicStrength(roleId, value) {
@@ -1037,7 +1044,7 @@ class BattleService extends EventBus {
   }
 
   getPlayerDefense(roleId) {
-    return worldService.getPlayerDefense(roleId);
+    return getPlayerDefense(roleId);
   }
 
   setPlayerDefense(roleId, value) {
@@ -1045,7 +1052,7 @@ class BattleService extends EventBus {
   }
 
   getPlayerDexterity(roleId) {
-    return worldService.getPlayerDexterity(roleId);
+    return getPlayerDexterity(roleId);
   }
 
   setPlayerDexterity(roleId, value) {
@@ -1053,7 +1060,7 @@ class BattleService extends EventBus {
   }
 
   getPlayerFleeRate(roleId) {
-    return worldService.getPlayerFleeRate(roleId);
+    return getPlayerFleeRate(roleId);
   }
 
   setPlayerFleeRate(roleId, value) {

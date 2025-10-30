@@ -12,6 +12,13 @@ import uibattle from './uibattle';
 import battleService from '../../services/battle-service.js';
 import createBattleSystemManager from '../../services/battle-systems.js';
 import worldService from '../../services/world-service.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import {
+  getEquipmentEffectsMatrix,
+  getEquipmentEffectAt,
+  getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex
+} from '../../services/player-state-adapter.js';
 import {
   getEnemyTeamEntry as getCachedEnemyTeamEntry,
   getEnemyFormationPosition as getCachedEnemyFormationPosition,
@@ -19,7 +26,8 @@ import {
   getBattleFieldId as getCachedBattleFieldId,
   getBattleMusicTrack as getCachedBattleMusicTrack,
   getMusicTrack as getCachedMusicTrack,
-  isAutoBattleEnabled
+  isAutoBattleEnabled,
+  getBattleStateSnapshot
 } from '../../services/battle-state-adapter.js';
 
 log.trace('battle module load');
@@ -35,31 +43,40 @@ var battle = {
 battleService.bindModule(battle);
 
 function BATTLE() {
-  const state = battleService.getState();
-  if (state) return state;
-  const fallback = worldService.getBattleState();
-  return fallback || {};
+  const state = battleService.getState && battleService.getState();
+  if (state) {
+    return state;
+  }
+  return getBattleStateSnapshot() || {};
 }
 
 function getParty() {
-  return worldService.getParty();
+  return partyTrailAdapter.getPartyState();
 }
 
 function getPartyMember(index) {
-  return worldService.getPartyMember(index);
+  const party = getParty();
+  if (!Array.isArray(party)) {
+    return null;
+  }
+  return party[index] || null;
 }
 
 function getMaxPartyMemberIndex() {
-  return worldService.getMaxPartyMemberIndex();
+  const cached = getCachedMaxPartyMemberIndex();
+  if (typeof cached === 'number' && cached >= -1) {
+    return cached;
+  }
+  const partyState = getParty();
+  return Array.isArray(partyState) ? partyState.length - 1 : -1;
 }
 
 function getEquipmentEffects() {
-  return worldService.getEquipmentEffects() || [];
+  return getEquipmentEffectsMatrix();
 }
 
 function getEquipmentEffect(index) {
-  var effects = getEquipmentEffects();
-  return effects && effects[index] ? effects[index] : null;
+  return getEquipmentEffectAt(index);
 }
 
 function getExpState() {
@@ -555,7 +572,7 @@ battle.loadBattleSprites = function() {
         continue;
       }
 
-      var enemyDefinition = worldService.getObjectEntry(enemyState.objectID);
+      var enemyDefinition = scriptObjectAdapter.getObjectEntry(enemyState.objectID);
       var enemyConfig = enemyDefinition && enemyDefinition.enemy ? enemyDefinition.enemy : null;
       var enemyID = enemyConfig ? enemyConfig.enemyID : 0;
       enemyState.sprite = new Sprite(Files.ABC.decompressChunk(enemyID));
@@ -630,7 +647,7 @@ battle.spawnEnemy = function(targetIndex, objectID, options) {
     enemy.objectID = objectID;
 
     if (objectID && objectID !== 0xFFFF) {
-      var objectEntry = worldService.getObjectEntry(objectID);
+      var objectEntry = scriptObjectAdapter.getObjectEntry(objectID);
       var objectEnemy = objectEntry && objectEntry.enemy ? objectEntry.enemy : null;
       if (objectEnemy) {
         enemy.e = worldService.copyEnemyTemplate(objectEnemy.enemyID);
@@ -1097,7 +1114,7 @@ battle.start = function*(enemyTeam, isBoss) {
         break;
       }
 
-      var objectEntry = worldService.getObjectEntry(enemyObjectId);
+      var objectEntry = scriptObjectAdapter.getObjectEntry(enemyObjectId);
       var enemyDefinition = objectEntry && objectEntry.enemy ? objectEntry.enemy : null;
       enemyState.e = enemyDefinition ? worldService.copyEnemyTemplate(enemyDefinition.enemyID) : null;
       enemyState.objectID = enemyObjectId;
@@ -1251,6 +1268,10 @@ battle.start = function*(enemyTeam, isBoss) {
   battleService.setSceneBuffer(null);
   //SDL_FreeSurface(Global.battle.lpBackground);
   //SDL_FreeSurface(Global.battle.lpSceneBuf);
+
+  if (uibattle && typeof uibattle.dispose === 'function') {
+    uibattle.dispose();
+  }
 
   worldService.setInBattle(false);
 

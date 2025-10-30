@@ -39,13 +39,19 @@ function refreshScriptEntriesCache() {
 }
 
 function refreshObjectTableCache() {
-  const latest = scriptObjectSignals().objectTable.value;
+  const signals = scriptObjectSignals();
+  let latest = signals.objectTable.value;
+  if (!Array.isArray(latest) || latest.length === 0) {
+    if (worldService && typeof worldService.syncObjectStores === 'function') {
+      worldService.syncObjectStores();
+    }
+    latest = signals.objectTable.value;
+  }
   if (Array.isArray(latest)) {
     objectTableCache = latest;
-    return objectTableCache;
+  } else {
+    objectTableCache = [];
   }
-  worldService.syncObjectStores();
-  objectTableCache = scriptObjectSignals().objectTable.value || [];
   return objectTableCache;
 }
 

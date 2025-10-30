@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import worldService from '../src/services/world-service.js';
 import stateService from '../src/services/state-service.js';
+import scriptObjectAdapter from '../src/services/script-object-adapter.js';
 import reactiveContext from '../src/state/reactive-context.js';
 import { autoBattleSignal, autoBattleStream } from '../src/state/slices/auto-battle.js';
 import { frameCountSignal, frameCountStream } from '../src/state/slices/frame-count.js';
@@ -161,6 +162,9 @@ describe('world service', () => {
 
   afterEach(() => {
     worldService.dispose();
+    if (scriptObjectAdapter && typeof scriptObjectAdapter.dispose === 'function') {
+      scriptObjectAdapter.dispose();
+    }
     reactiveContext.dispose();
   });
 
@@ -236,13 +240,18 @@ describe('world service', () => {
     expect(worldService.getPartyDirection()).toBe(1);
     expect(Global.partyDirection).toBe(1);
 
-    const objectEntry = worldService.getObjectEntry(0);
+    const unsubscribe = scriptObjectAdapter.subscribe(() => {});
+    const objectEntry = scriptObjectAdapter.getObjectEntry(0);
     expect(objectEntry.item.scriptOnUse).toBe(123);
     worldService.mutateObjectEntry(0, (entry) => {
       entry.item.scriptOnUse = 321;
       return entry;
     });
-    expect(worldService.getObjectEntry(0).item.scriptOnUse).toBe(321);
+    const mutatedEntry = scriptObjectAdapter.getObjectEntry(0);
+    expect(mutatedEntry.item.scriptOnUse).toBe(321);
+    if (typeof unsubscribe === 'function') {
+      unsubscribe();
+    }
   });
 
   it('replaces core tables through helper setters', () => {

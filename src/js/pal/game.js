@@ -8,6 +8,7 @@ import res from './res';
 import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';
 import worldService from '../../services/world-service.js';
+import { getPlayerRolesSnapshot } from '../../services/player-state-adapter.js';
 import {
   getMusicTrack as getCachedMusicTrack,
   getBattleMusicTrack as getCachedBattleMusicTrack,
@@ -137,7 +138,7 @@ game.loadDefaultGame = function*() {
   //}
   mutateExp(function(exp) {
     if (!exp) return exp;
-    const roles = worldService.getPlayerRoles();
+    const roles = getPlayerRolesSnapshot();
     const levels = roles && roles.level ? roles.level : null;
     for (var i = 0; i < Const.MAX_PLAYER_ROLES; ++i) {
       AllExperience.types.forEach(function(name) {
@@ -276,7 +277,7 @@ game._saveGame = function() {
   if (expStruct && expStruct.uint8Array) {
     saveData.exp.uint8Array.set(expStruct.uint8Array);
   }
-  const playerRoles = worldService.getPlayerRoles();
+  const playerRoles = getPlayerRolesSnapshot();
   if (playerRoles && playerRoles.uint8Array) {
     memcpy(saveData.playerRoles.uint8Array, playerRoles.uint8Array, saveData.playerRoles.uint8Array.length);
   }

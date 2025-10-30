@@ -5,6 +5,7 @@ import battleModule from './battle';
 import battleService from '../../services/battle-service.js';
 import ending from './ending';
 import worldService from '../../services/world-service.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
 
 battleService.bindModule(battleModule);
 
@@ -223,7 +224,7 @@ play.useItem = function*() {
       return;
     }
 
-    var objectState = worldService.getObjectEntry(object);
+    var objectState = scriptObjectAdapter.getObjectEntry(object);
     if (!objectState || !objectState.item) {
       continue;
     }
@@ -246,11 +247,11 @@ play.useItem = function*() {
           return entry;
         });
         // Remove the item if the item is consuming and the script succeeded
-        var updatedState = worldService.getObjectEntry(object);
+        var updatedState = scriptObjectAdapter.getObjectEntry(object);
         if (updatedState && updatedState.item && (updatedState.item.flags & ItemFlag.Consuming) && script.scriptSuccess) {
           script.addItemToInventory(object, -1);
         }
-        objectState = worldService.getObjectEntry(object);
+        objectState = scriptObjectAdapter.getObjectEntry(object);
       }
     } else {
       // Run the script
@@ -264,7 +265,7 @@ play.useItem = function*() {
       });
 
       // Remove the item if the item is consuming and the script succeeded
-      var refreshedState = worldService.getObjectEntry(object);
+      var refreshedState = scriptObjectAdapter.getObjectEntry(object);
       if (refreshedState && refreshedState.item && (refreshedState.item.flags & ItemFlag.Consuming) && script.scriptSuccess) {
         script.addItemToInventory(object, -1);
       }
@@ -285,7 +286,7 @@ play.equipItem = function*() {
        return;
     }
 
-    var objectEntry = worldService.getObjectEntry(object);
+    var objectEntry = scriptObjectAdapter.getObjectEntry(object);
     if (!objectEntry) {
       continue;
     }

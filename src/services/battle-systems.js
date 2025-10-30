@@ -1,6 +1,8 @@
 import EventBus from './event-bus.js';
 import scriptService from './script-service.js';
 import worldService from './world-service.js';
+import { getPlayerStatusRow as getPlayerStatusRowSnapshot } from './player-state-adapter.js';
+import { getBattleStateSnapshot } from './battle-state-adapter.js';
 import {
   BattleComponents,
   createQueueEntryComponent
@@ -138,7 +140,7 @@ function getPlayerStatusRow(roleId) {
   if (typeof roleId !== 'number' || roleId < 0) {
     return null;
   }
-  return worldService.getPlayerStatus(roleId);
+  return getPlayerStatusRowSnapshot(roleId);
 }
 
 function safeGetPlayerDexterity(roleId) {
@@ -445,7 +447,7 @@ function getBattleState(battleService) {
   if (state) {
     return state;
   }
-  return worldService.getBattleState();
+  return getBattleStateSnapshot();
 }
 
 function setBattleFieldValue(battleService, field, value) {
