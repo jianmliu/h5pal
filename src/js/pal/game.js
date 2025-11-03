@@ -9,6 +9,8 @@ import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';
 import worldService from '../../services/world-service.js';
 import { getPlayerRolesSnapshot } from '../../services/player-state-adapter.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.js';
+import { inventorySignals } from '../../state/slices/inventory.js';
 import {
   getMusicTrack as getCachedMusicTrack,
   getBattleMusicTrack as getCachedBattleMusicTrack,
@@ -18,6 +20,14 @@ import {
 log.trace('game module load');
 
 var game = {};
+
+const inventorySlice = inventorySignals();
+const cashSignal = inventorySlice.cash;
+
+function getCashValue() {
+  const value = cashSignal.value;
+  return Number.isFinite(value) ? Math.trunc(value) : 0;
+}
 
 function mutateExp(mutator) {
   return worldService.mutateExpState(function(exp) {
@@ -40,6 +50,13 @@ function encodeSavePayload(saveData, savedTimes, timestamp) {
     timestamp: timestamp || Date.now(),
     bytes: arr
   };
+}
+
+function getGameDataTable(key) {
+  if (typeof GameData !== 'undefined' && GameData && GameData[key]) {
+    return GameData[key];
+  }
+  return null;
 }
 
 function readStorageSlot(slot) {
@@ -258,7 +275,7 @@ game._saveGame = function() {
   saveData.chaseRange = worldService.getChaseRange();
   saveData.chaseSpeedChangeCycles = worldService.getChaseSpeedChangeCycles();
   saveData.numFollower = worldService.getFollowerCount();
-  saveData.cash = worldService.getCash();
+  saveData.cash = getCashValue();
   if (!PAL_CLASSIC) {
     saveData.battleSpeed = worldService.getBattleSpeed();
     if (saveData.battleSpeed > 5 || saveData.battleSpeed == 0) {
@@ -289,15 +306,15 @@ game._saveGame = function() {
   if (inventoryStruct && inventoryStruct.uint8Array) {
     saveData.inventory.uint8Array.set(inventoryStruct.uint8Array);
   }
-  const sceneTable = worldService.getSceneTable();
+  const sceneTable = getGameDataTable('scene');
   if (sceneTable && sceneTable.uint8Array) {
     memcpy(saveData.scene.uint8Array, sceneTable.uint8Array, saveData.scene.uint8Array.length);
   }
-  const objectTable = worldService.getObjectTable();
+  const objectTable = scriptObjectAdapter.getObjectTable();
   if (objectTable && objectTable.uint8Array) {
     memcpy(saveData.object.uint8Array, objectTable.uint8Array, saveData.object.uint8Array.length);
   }
-  const eventObjectTable = worldService.getEventObjectTable();
+  const eventObjectTable = getGameDataTable('eventObject');
   if (eventObjectTable && eventObjectTable.uint8Array) {
     memcpy(saveData.eventObject.uint8Array, eventObjectTable.uint8Array, saveData.eventObject.uint8Array.length);
   }

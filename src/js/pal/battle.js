@@ -12,6 +12,7 @@ import uibattle from './uibattle';
 import battleService from '../../services/battle-service.js';
 import createBattleSystemManager from '../../services/battle-systems.js';
 import worldService from '../../services/world-service.js';
+import gameDataAdapter from '../../services/game-data-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import {
@@ -760,7 +761,7 @@ battle.won = function*() {
     awardSummaries[awardMember.playerRole] = battleService.awardExp(awardMember.playerRole, expGained);
   }
 
-  var levelUpMagicTable = worldService.getLevelUpMagicTable() || [];
+  var levelUpMagicTable = gameDataAdapter.getLevelUpMagicTable() || [];
 
   function* showHiddenIncrease(afterStats, labelId, delta) {
     if (!delta || delta <= 0) {
@@ -854,7 +855,11 @@ battle.won = function*() {
     yield* showHiddenIncrease(afterStats, ui.STATUS_LABEL_FLEERATE, afterStats.fleeRate - beforeStats.fleeRate);
 
     for (var magicIndex = 0; magicIndex < levelUpMagicTable.length; ++magicIndex) {
-      var levelEntry = levelUpMagicTable[magicIndex].m[roleId];
+      var magicLevelEntry = levelUpMagicTable[magicIndex];
+      if (!magicLevelEntry || !Array.isArray(magicLevelEntry.m)) {
+        continue;
+      }
+      var levelEntry = magicLevelEntry.m[roleId];
       if (!levelEntry) {
         continue;
       }

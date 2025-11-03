@@ -99,6 +99,62 @@ These tests catch regressions early as more modules adopt the reactive layer.
 Once these steps are complete you can safely remove ad-hoc proxy helpers
 (`setGlobalValue`, `mutateGlobalEntry`, etc.) for that domain.
 
+### Adapter reference updates
+
+- **Battle state** – `src/services/battle-state-adapter.js` now exposes
+  `getBattleStateSnapshot()` and `subscribeBattleState(listener)`. UI modules
+  (`fight.js`, `battle.js`, `uibattle.js`, `script.js`, `text.js`) subscribe
+  once and dispose via the adapter-provided unsubscribe to avoid touching
+  `worldService.getBattleState()`.
+- **Game data (level-up EXP)** – `src/services/game-data-adapter.js`
+  introduces `getLevelUpExpValue(level)` / `getLevelUpExpTable()`. Menu /
+  status screens consume these instead of probing `worldService.getLevelUpExp`.
+- **Game data tables (magic, stores, enemies, battle effects, level-up magic)** –
+  `src/services/game-data-adapter.js` now owns `getMagicEntry()`,
+  `getStoreEntry()`, `getEnemyEntry()`, `getBattleEffectIndexRow()`, and
+  `getLevelUpMagicTable()`. UI modules (`magicmenu.js`, `uigame.js`,
+  `uibattle.js`, `fight.js`, `battle.js`, `script.js`) subscribe through the
+  adapter so the legacy `worldService` getters can be retired.
+- **Script entries / object descriptions** – `src/services/script-object-adapter.js`
+  refreshes caches via `worldService.syncScriptRegisters()` / `syncObjectStores()`,
+  allowing scripts to resolve entries without calling `worldService.getScriptEntry`
+  or `getObjectDescTable`.
+- **Scene event objects** – `src/services/scene-event-adapter.js` exposes
+  snapshots (`getEventObjects()`, `getEventObjectsVersion()`, etc.) so UI/runtime
+  modules (`play.js`, `scene.js`, `script.js`, ECS render/collision systems) no
+  longer read `worldService.getEventObject*` directly.
+  Typical subscription flow:
+
+  ```js
+  import sceneEventAdapter from '../services/scene-event-adapter.js';
+
+  const unsubscribe = sceneEventAdapter.subscribe((event) => {
+    switch (event.type) {
+      case 'snapshot':
+        renderScene(event.eventObjects);
+        break;
+      case 'eventObjects':
+        renderScene(event.value);
+        break;
+      case 'collisionState':
+        updateCollisionOverlay(event.value);
+        break;
+      default:
+        break;
+    }
+  });
+
+  // Later, when the owning module is disposed:
+  unsubscribe();
+  ```
+
+  When invoking ECS pipelines, pass the latest `sceneEventAdapter.getEventObjects()`
+  (see `scene.js` for reference) so systems do not fall back to `worldService`.
+- **Cash & inventory** – world-service setters keep the legacy globals and the
+  inventory slice in sync, but reads now come from the slice (`inventorySignals`
+  in `game.js`, `magicmenu.js`, `script.js`, etc.). Tests asserting cash changes
+  should read via `getCashValue()` rather than `worldService.getCash()`.
+
 ## 6. Future work
 
 - Expose helper adapters (e.g. `useSignal(signal)` hooks) for the forthcoming

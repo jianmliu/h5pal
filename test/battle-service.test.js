@@ -4,6 +4,7 @@ import worldService from '../src/services/world-service.js';
 import stateService from '../src/services/state-service.js';
 import scriptService from '../src/services/script-service.js';
 import reactiveContext from '../src/state/reactive-context.js';
+import { getCashValue } from '../src/state/slices/inventory.js';
 
 const initMock = vi.fn(function* (...args) {
   yield { type: 'initStep', args };
@@ -491,6 +492,6 @@ describe('BattleService', () => {
     expect(statsComp.statsRef.hp[0]).toBe(worldService.getPlayerHP(0));
 
     worldService.adjustCash(50);
-    expect(worldService.getCash()).toBe(150);
+    expect(getCashValue()).toBe(150);
   });
 });

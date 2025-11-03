@@ -310,8 +310,9 @@ describe('ECS integration tests', () => {
     const result = iterator.next();
     expect(result.done).toBe(true);
 
-    expect(worldService.getEventObject(0).state).toBe(5);
-    expect(worldService.getEventObject(1).state).toBe(5);
-    expect(worldService.getEventObject(2).state).toBe(5);
+    const updatedObjects = stateService.getGameData('eventObject');
+    expect(updatedObjects[0].state).toBe(5);
+    expect(updatedObjects[1].state).toBe(5);
+    expect(updatedObjects[2].state).toBe(5);
   });
 });

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import worldService from '../src/services/world-service.js';
 import stateService from '../src/services/state-service.js';
 import scriptObjectAdapter from '../src/services/script-object-adapter.js';
+import sceneEventAdapter from '../src/services/scene-event-adapter.js';
 import reactiveContext from '../src/state/reactive-context.js';
 import { autoBattleSignal, autoBattleStream } from '../src/state/slices/auto-battle.js';
 import { frameCountSignal, frameCountStream } from '../src/state/slices/frame-count.js';
@@ -158,6 +159,7 @@ describe('world service', () => {
     };
 
     worldService.dispose();
+    sceneEventAdapter.dispose();
   });
 
   afterEach(() => {
@@ -207,15 +209,20 @@ describe('world service', () => {
 
   it('provides access to event objects and syncs scene id', () => {
     worldService.init();
-    const eventComponent = worldService.getEventObjectComponent(1);
-    expect(eventComponent.sceneId).toBe(Global.numScene);
-    expect(eventComponent.stateRef).toBe(GameData.eventObject[1]);
+    const initialObjects = sceneEventSignals().eventObjects.value;
+    const initialSceneId = sceneEventSignals().sceneId.value;
+    expect(initialSceneId).toBe(Global.numScene);
+    const initialEntry = initialObjects.find((entry) => entry && entry.id === 2);
+    expect(initialEntry && initialEntry.state).toEqual(GameData.eventObject[1]);
 
-    GameData.eventObject.push({ state: 3, triggerMode: 0, spriteNum: 0 });
-    worldService.setEventObjectTable(GameData.eventObject);
+    const updatedEventObjects = GameData.eventObject.map((entry, index) => (
+      index === 1 ? { ...entry, state: 42 } : entry
+    ));
+    GameData.eventObject = updatedEventObjects;
+    worldService.setEventObjectTable(updatedEventObjects);
     worldService.syncEventObjects();
-    const nextComponent = worldService.getEventObjectComponent(2);
-    expect(nextComponent.stateRef).toBe(GameData.eventObject[2]);
+    expect(stateService.getGameData('eventObject')).toBe(updatedEventObjects);
+    expect(stateService.getGameData('eventObject')[1].state).toBe(42);
   });
 
   it('mutates party offset and propagates', () => {
@@ -262,23 +269,29 @@ describe('world service', () => {
     worldService.syncScene();
     const sceneComponent = worldService.getSceneComponent();
     expect(sceneComponent.sceneRef).toBe(updatedScene);
-    expect(worldService.getSceneTable()).toBe(nextScenes);
+    expect(stateService.getGameData('scene')).toBe(nextScenes);
 
     const scriptEntries = [{ opcode: 1 }, { opcode: 2 }];
     worldService.setScriptEntries(scriptEntries);
-    expect(worldService.getScriptEntry(1)).toBe(scriptEntries[1]);
+    expect(scriptObjectAdapter.getScriptEntry(1)).toBe(scriptEntries[1]);
     const objects = [{ enemy: { enemyID: 1 } }];
     worldService.setObjectTable(objects);
-    expect(worldService.getObjectTable()).toBe(objects);
+    expect(stateService.getGameData('object')).toBe(objects);
+    expect(scriptObjectAdapter.getObjectEntry(0)).toBe(objects[0]);
 
     const eventObjects = [
       { state: 10, triggerMode: 0, spriteNum: 1 },
       { state: 20, triggerMode: 0, spriteNum: 2 }
     ];
+    GameData.eventObject = eventObjects;
     worldService.setEventObjectTable(eventObjects);
     worldService.syncEventObjects();
-    expect(worldService.getEventObjectComponent(0).stateRef).toBe(eventObjects[0]);
-    expect(worldService.getEventObjectTable()).toBe(eventObjects);
+    expect(stateService.getGameData('eventObject')).toBe(eventObjects);
+    expect(stateService.getGameData('eventObject')[0]).toEqual(eventObjects[0]);
+
+    const levelUpMagic = [{ m: [{ level: 1, magic: 500 }] }];
+    worldService.setLevelUpMagicTable(levelUpMagic);
+    expect(stateService.getGameData('levelUpMagic')).toBe(levelUpMagic);
 
     expect(worldService.getEquipmentEffects()).toBe(globalThis.Global.equipmentEffect);
 

@@ -26,15 +26,15 @@ function teardown() {
 
 function refreshScriptEntriesCache() {
   const latest = scriptObjectSignals().scriptEntries.value;
-  if (Array.isArray(latest)) {
+  if (Array.isArray(latest) && latest.length > 0) {
     scriptEntriesCache = latest;
     return scriptEntriesCache;
   }
-  const component = worldService.getScriptEntry ? worldService.getScriptEntry(0) : null;
-  if (component) {
+  if (worldService && typeof worldService.syncScriptRegisters === 'function') {
     worldService.syncScriptRegisters();
-    scriptEntriesCache = scriptObjectSignals().scriptEntries.value || [];
   }
+  const refreshed = scriptObjectSignals().scriptEntries.value;
+  scriptEntriesCache = Array.isArray(refreshed) ? refreshed : [];
   return scriptEntriesCache;
 }
 
@@ -61,8 +61,11 @@ function refreshObjectDescCache() {
     objectDescCache = latest;
     return objectDescCache;
   }
-  const desc = worldService.getObjectDescTable ? worldService.getObjectDescTable() : null;
-  objectDescCache = desc || null;
+  if (worldService && typeof worldService.syncObjectStores === 'function') {
+    worldService.syncObjectStores();
+  }
+  const refreshed = scriptObjectSignals().objectDesc.value;
+  objectDescCache = typeof refreshed === 'undefined' ? null : refreshed;
   return objectDescCache;
 }
 

@@ -1,7 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import worldService from '../src/services/world-service.js';
 import scriptObjectAdapter from '../src/services/script-object-adapter.js';
-import { resetInventorySlice } from '../src/state/slices/inventory.js';
+import sceneEventAdapter from '../src/services/scene-event-adapter.js';
+import stateService from '../src/services/state-service.js';
+import { resetInventorySlice, getCashValue } from '../src/state/slices/inventory.js';
 import { resetScriptObjectSlice } from '../src/state/slices/script-objects.js';
 
 vi.mock('../src/js/pal/script-extras.js', () => ({
@@ -454,6 +456,7 @@ describe('script utility behaviour', () => {
   });
 
   beforeEach(() => {
+    sceneEventAdapter.dispose();
     resetInventorySlice();
     resetScriptObjectSlice();
     vi.clearAllMocks();
@@ -484,6 +487,8 @@ describe('script utility behaviour', () => {
         currentFrameNum: 0
       }
     ];
+    stateService.setGameData('eventObject', GameData.eventObject);
+    worldService.setEventObjectTable(GameData.eventObject);
     Global.party = battleState.player.map((_, index) => ({ playerRole: index }));
     Global.maxPartyMemberIndex = battleState.player.length - 1;
     Global.inBattle = true;
@@ -498,12 +503,11 @@ describe('script utility behaviour', () => {
   });
 
   it('NPCWalkTo moves NPC towards target tile', () => {
-    const obj = GameData.eventObject[0];
-    obj.direction = Direction.North;
     const result = script.NPCWalkTo(1, 1, 0, 1);
     expect(result).toBe(false);
-    expect(obj.x).not.toBe(0);
-    expect(obj.y).not.toBe(0);
+    const updatedEntry = sceneEventAdapter.getEventObjectEntryById(1);
+    expect(updatedEntry && updatedEntry.state && updatedEntry.state.x).not.toBe(0);
+    expect(updatedEntry && updatedEntry.state && updatedEntry.state.y).not.toBe(0);
   });
 
   it('inflicts damage on a single enemy through battle service', async () => {
@@ -552,7 +556,7 @@ describe('script utility behaviour', () => {
     worldService.setCash(3000);
     await runInstruction(0x0088, [magicObjectId, 0, 0]);
     expect(GameData.magic[magicNumber].baseDamage).toBe(1200);
-    expect(worldService.getCash()).toBe(0);
+    expect(getCashValue()).toBe(0);
   });
 
   it('transforms enemy while preserving health (opcode 0x009F)', async () => {

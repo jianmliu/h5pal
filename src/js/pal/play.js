@@ -5,6 +5,7 @@ import battleModule from './battle';
 import battleService from '../../services/battle-service.js';
 import ending from './ending';
 import worldService from '../../services/world-service.js';
+import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 
 battleService.bindModule(battleModule);
@@ -61,7 +62,7 @@ play.update = function*(trigger) {
       yield scene.makeScene();
     }
 
-  var eventObjectIds = worldService.getEventObjectIds();
+  var eventObjectIds = sceneEventAdapter.getEventObjectIds();
   if (Array.isArray(eventObjectIds) && eventObjectIds.length) {
     for (var eoIndex = 0; eoIndex < eventObjectIds.length; eoIndex++) {
       var eventId = eventObjectIds[eoIndex];
@@ -77,7 +78,7 @@ play.update = function*(trigger) {
 
     var viewportValue = worldService.getViewport();
     var partyOffsetValue = worldService.getPartyOffset();
-    var sceneEventObjects = worldService.getEventObjectsInCurrentScene();
+    var sceneEventObjects = sceneEventAdapter.getEventObjects();
 
     for (var ei = 0; ei < sceneEventObjects.length; ei++) {
       var entry = sceneEventObjects[ei];
@@ -94,12 +95,16 @@ play.update = function*(trigger) {
             obj.x > PAL_X(viewportValue) + 320 ||
             obj.y < PAL_Y(viewportValue) ||
             obj.y > PAL_Y(viewportValue) + 320) {
-          worldService.mutateEventObjectById(eventObjectID, (evt) => {
+          var updatedState = worldService.mutateEventObjectById(eventObjectID, (evt) => {
             evt.state = abs(evt.state);
             evt.currentFrameNum = 0;
             return evt;
           });
-          obj = worldService.getEventObject(eventIndex);
+          if (updatedState) {
+            obj = updatedState;
+          } else {
+            obj = sceneEventAdapter.getEventObjectStateByIndex(eventIndex);
+          }
         }
       } else if (obj.state > 0 && obj.triggerMode >= TriggerMode.TouchNear) {
         var heroX = PAL_X(viewportValue) + PAL_X(partyOffsetValue);
@@ -107,18 +112,22 @@ play.update = function*(trigger) {
         if (abs(heroX - obj.x) + abs(heroY - obj.y) * 2 <
             (obj.triggerMode - TriggerMode.TouchNear) * 32 + 16) {
           if (obj.spriteFrames) {
-            worldService.mutateEventObjectById(eventObjectID, (evt) => {
-              evt.currentFrameNum = 0;
-              var xOffset = heroX - evt.x;
-              var yOffset = heroY - evt.y;
-              if (xOffset > 0) {
-                evt.direction = (yOffset > 0 ? Direction.East : Direction.North);
-              } else {
-                evt.direction = (yOffset > 0 ? Direction.South : Direction.West);
-              }
-              return evt;
-            });
-            obj = worldService.getEventObject(eventIndex);
+          var mutatedState = worldService.mutateEventObjectById(eventObjectID, (evt) => {
+            evt.currentFrameNum = 0;
+            var xOffset = heroX - evt.x;
+            var yOffset = heroY - evt.y;
+            if (xOffset > 0) {
+              evt.direction = (yOffset > 0 ? Direction.East : Direction.North);
+            } else {
+              evt.direction = (yOffset > 0 ? Direction.South : Direction.West);
+            }
+            return evt;
+          });
+            if (mutatedState) {
+              obj = mutatedState;
+            } else {
+              obj = sceneEventAdapter.getEventObjectStateByIndex(eventIndex);
+            }
 
             scene.updatePartyGestures(false);
 
@@ -133,13 +142,17 @@ play.update = function*(trigger) {
 
           var updatedTrigger = yield script.runTriggerScript(obj.triggerScript, eventObjectID);
           var resolvedTrigger = Number.isFinite(updatedTrigger) ? updatedTrigger : 0;
-          worldService.mutateEventObjectById(eventObjectID, (evt) => {
+          var triggerState = worldService.mutateEventObjectById(eventObjectID, (evt) => {
             if (evt) {
               evt.triggerScript = resolvedTrigger;
             }
             return evt;
           });
-          obj = worldService.getEventObject(eventIndex);
+          if (triggerState) {
+            obj = triggerState;
+          } else {
+            obj = sceneEventAdapter.getEventObjectStateByIndex(eventIndex);
+          }
 
           input.clear();
 
@@ -153,7 +166,7 @@ play.update = function*(trigger) {
 
   var viewportCurrent = worldService.getViewport();
   var partyOffsetCurrent = worldService.getPartyOffset();
-  var sceneObjects = worldService.getEventObjectsInCurrentScene();
+  var sceneObjects = sceneEventAdapter.getEventObjects();
 
   for (var index = 0; index < sceneObjects.length; index++) {
     var currentEntry = sceneObjects[index];
@@ -169,13 +182,17 @@ play.update = function*(trigger) {
       if (autoScriptEntry !== 0) {
         var autoScriptResult = yield script.runAutoScript(autoScriptEntry, currentEntry.id);
         var resolvedAutoScript = Number.isFinite(autoScriptResult) ? autoScriptResult : 0;
-        worldService.mutateEventObjectById(currentEventId, (evt) => {
+        var updatedAutoScript = worldService.mutateEventObjectById(currentEventId, (evt) => {
           if (evt) {
             evt.autoScript = resolvedAutoScript;
           }
           return evt;
         });
-        currentObj = worldService.getEventObject(currentIdx);
+        if (updatedAutoScript) {
+          currentObj = updatedAutoScript;
+        } else {
+          currentObj = sceneEventAdapter.getEventObjectStateByIndex(currentIdx);
+        }
         if (worldService.isEnteringScene() || worldService.isGameStart()) {
           return;
         }
@@ -342,7 +359,7 @@ play.search = function*() {
     // Loop through all event objects
     for (k = range.start; k < range.end; k++){
       var eventId = k + 1;
-      p = worldService.getEventObject(k);
+      p = sceneEventAdapter.getEventObjectStateByIndex(k);
       if (!p) {
         continue;
       }

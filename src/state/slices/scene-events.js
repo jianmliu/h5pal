@@ -21,7 +21,16 @@ function cloneEventObjects(list) {
   if (!Array.isArray(list)) {
     return [];
   }
-  return list.map((entry) => entry || null);
+  return list.map((entry) => {
+    if (!entry) {
+      return null;
+    }
+    return {
+      index: entry.index,
+      id: entry.id,
+      state: entry.state
+    };
+  });
 }
 
 function arraysEqualByRef(a, b) {

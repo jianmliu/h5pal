@@ -5,6 +5,8 @@ const STORE_TABLE_KEY = 'world.gameData.storeTable';
 const EXP_STATE_KEY = 'world.gameData.expState';
 const ENEMY_TABLE_KEY = 'world.gameData.enemyTable';
 const BATTLE_EFFECT_TABLE_KEY = 'world.gameData.battleEffectTable';
+const LEVEL_UP_EXP_TABLE_KEY = 'world.gameData.levelUpExpTable';
+const LEVEL_UP_MAGIC_TABLE_KEY = 'world.gameData.levelUpMagicTable';
 
 function cloneTable(value) {
   if (!value) {
@@ -93,13 +95,23 @@ function ensureBattleEffectSignal(initialValue = []) {
   return reactiveContext.ensureSignal(BATTLE_EFFECT_TABLE_KEY, cloneTable(initialValue));
 }
 
+function ensureLevelUpExpSignal(initialValue = []) {
+  return reactiveContext.ensureSignal(LEVEL_UP_EXP_TABLE_KEY, cloneTable(initialValue));
+}
+
+function ensureLevelUpMagicSignal(initialValue = []) {
+  return reactiveContext.ensureSignal(LEVEL_UP_MAGIC_TABLE_KEY, cloneTable(initialValue));
+}
+
 export function gameDataSignals() {
   return {
     magic: ensureMagicSignal([]),
     store: ensureStoreSignal([]),
     enemy: ensureEnemySignal([]),
     battleEffects: ensureBattleEffectSignal([]),
-    exp: ensureExpSignal(null)
+    exp: ensureExpSignal(null),
+    levelUpExp: ensureLevelUpExpSignal([]),
+    levelUpMagic: ensureLevelUpMagicSignal([])
   };
 }
 
@@ -138,6 +150,14 @@ export function updateBattleEffectTableValue(table, options = {}) {
   return setSignalValue(BATTLE_EFFECT_TABLE_KEY, ensureBattleEffectSignal, cloneTable, table, options);
 }
 
+export function updateLevelUpExpTableValue(table, options = {}) {
+  return setSignalValue(LEVEL_UP_EXP_TABLE_KEY, ensureLevelUpExpSignal, cloneTable, table, options);
+}
+
+export function updateLevelUpMagicTableValue(table, options = {}) {
+  return setSignalValue(LEVEL_UP_MAGIC_TABLE_KEY, ensureLevelUpMagicSignal, cloneTable, table, options);
+}
+
 export function updateExpStateValue(state, options = {}) {
   const resolved = cloneExpState(state);
   const previous = reactiveContext.getSignal(EXP_STATE_KEY, resolved);
@@ -173,6 +193,14 @@ export function getBattleEffectTableValue(fallback = []) {
   return cloneTable(ensureBattleEffectSignal(fallback).value);
 }
 
+export function getLevelUpExpTableValue(fallback = []) {
+  return cloneTable(ensureLevelUpExpSignal(fallback).value);
+}
+
+export function getLevelUpMagicTableValue(fallback = []) {
+  return cloneTable(ensureLevelUpMagicSignal(fallback).value);
+}
+
 export function getExpStateValue() {
   const signal = ensureExpSignal(null);
   const value = signal.value;
@@ -184,5 +212,7 @@ export function resetGameDataSlice() {
   reactiveContext.setSignal(STORE_TABLE_KEY, []);
   reactiveContext.setSignal(ENEMY_TABLE_KEY, []);
   reactiveContext.setSignal(BATTLE_EFFECT_TABLE_KEY, []);
+  reactiveContext.setSignal(LEVEL_UP_MAGIC_TABLE_KEY, []);
+  reactiveContext.setSignal(LEVEL_UP_EXP_TABLE_KEY, []);
   reactiveContext.setSignal(EXP_STATE_KEY, null);
 }

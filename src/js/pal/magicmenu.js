@@ -3,6 +3,7 @@ import input from './input';
 import scene from './scene';
 import uibattle from './uibattle';
 import worldService from '../../services/world-service.js';
+import gameDataAdapter from '../../services/game-data-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
@@ -227,7 +228,7 @@ magicmenu.magicSelectMenuInit = function(playerRole, inBattle, defaultMagic) {
       continue;
     }
     var magicNumber = magicData.magicNumber || 0;
-    var magicEntry = worldService.getMagicEntry(magicNumber) || {};
+    var magicEntry = gameDataAdapter.getMagicEntry(magicNumber) || {};
     var costMP = typeof magicEntry.costMP === 'number' ? magicEntry.costMP : 0;
     var flags = typeof magicData.flags === 'number' ? magicData.flags : 0;
 

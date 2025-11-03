@@ -1,5 +1,5 @@
 import worldService from './world-service.js';
-import { gameDataSignals } from '../state/slices/game-data.js';
+import { gameDataSignals, getLevelUpExpTableValue, getLevelUpMagicTableValue } from '../state/slices/game-data.js';
 
 const listeners = new Set();
 let subscriptions = [];
@@ -11,6 +11,17 @@ let enemyTableCache = [];
 let battleEffectTableCache = [];
 let expStateCache = null;
 let levelUpTableCache = null;
+let levelUpMagicTableCache = [];
+
+function getGameDataStore() {
+  if (typeof globalThis !== 'undefined' && globalThis.GameData) {
+    return globalThis.GameData;
+  }
+  if (typeof global !== 'undefined' && global.GameData) {
+    return global.GameData;
+  }
+  return null;
+}
 
 function clone(value) {
   if (!value) {
@@ -105,13 +116,41 @@ function refreshExpCache() {
 }
 
 function refreshLevelUpCache() {
-  if (worldService && typeof worldService.getLevelUpExpTable === 'function') {
-    const table = worldService.getLevelUpExpTable();
-    levelUpTableCache = Array.isArray(table) ? table.slice() : [];
-  } else {
-    levelUpTableCache = [];
+  const signals = gameDataSignals();
+  const latest = signals.levelUpExp.value;
+  if (Array.isArray(latest) && latest.length > 0) {
+    levelUpTableCache = latest.slice();
+    return levelUpTableCache;
   }
+  const store = getGameDataStore();
+  if (store && Array.isArray(store.levelUpExp) && store.levelUpExp.length > 0) {
+    levelUpTableCache = store.levelUpExp.slice();
+    return levelUpTableCache;
+  }
+  const fallback = getLevelUpExpTableValue([]);
+  if (Array.isArray(fallback) && fallback.length > 0) {
+    levelUpTableCache = fallback.slice();
+    return levelUpTableCache;
+  }
+  levelUpTableCache = Array.isArray(fallback) ? fallback : [];
   return levelUpTableCache;
+}
+
+function refreshLevelUpMagicCache() {
+  const signals = gameDataSignals();
+  const latest = signals.levelUpMagic.value;
+  if (Array.isArray(latest) && latest.length > 0) {
+    levelUpMagicTableCache = latest;
+    return levelUpMagicTableCache;
+  }
+  const store = getGameDataStore();
+  if (store && Array.isArray(store.levelUpMagic) && store.levelUpMagic.length > 0) {
+    levelUpMagicTableCache = store.levelUpMagic;
+    return levelUpMagicTableCache;
+  }
+  const fallback = getLevelUpMagicTableValue([]);
+  levelUpMagicTableCache = Array.isArray(fallback) ? fallback : [];
+  return levelUpMagicTableCache;
 }
 
 function teardown() {
@@ -139,6 +178,7 @@ function ensureInitialised() {
   refreshBattleEffectCache();
   refreshExpCache();
   refreshLevelUpCache();
+  refreshLevelUpMagicCache();
 
   const signals = gameDataSignals();
   subscriptions = [
@@ -161,6 +201,14 @@ function ensureInitialised() {
     signals.exp.subscribe((value) => {
       expStateCache = value || null;
       notify({ type: 'exp', value: expStateCache });
+    }),
+    signals.levelUpExp.subscribe((value) => {
+      levelUpTableCache = Array.isArray(value) ? value.slice() : [];
+      notify({ type: 'levelUpExp', value: levelUpTableCache });
+    }),
+    signals.levelUpMagic.subscribe((value) => {
+      levelUpMagicTableCache = Array.isArray(value) ? value : [];
+      notify({ type: 'levelUpMagic', value: levelUpMagicTableCache });
     })
   ];
   initialised = true;
@@ -194,7 +242,8 @@ function subscribe(listener) {
     enemyTable: enemyTableCache,
     battleEffectTable: battleEffectTableCache,
     expState: expStateCache,
-    levelUpExpTable: Array.isArray(levelUpTableCache) ? levelUpTableCache : []
+    levelUpExpTable: Array.isArray(levelUpTableCache) ? levelUpTableCache : [],
+    levelUpMagicTable: Array.isArray(levelUpMagicTableCache) ? levelUpMagicTableCache : []
   });
   return () => {
     listeners.delete(listener);
@@ -206,6 +255,7 @@ function subscribe(listener) {
       battleEffectTableCache = [];
       expStateCache = null;
       levelUpTableCache = null;
+      levelUpMagicTableCache = [];
     }
   };
 }
@@ -276,6 +326,32 @@ function getLevelUpExpTable() {
   return [];
 }
 
+function getLevelUpMagicTable() {
+  ensureInitialised();
+  if (!Array.isArray(levelUpMagicTableCache) || levelUpMagicTableCache.length === 0) {
+    refreshLevelUpMagicCache();
+  }
+  if (Array.isArray(levelUpMagicTableCache)) {
+    return clone(levelUpMagicTableCache);
+  }
+  return [];
+}
+
+function getLevelUpMagicEntry(index) {
+  if (typeof index !== 'number' || index < 0) {
+    return null;
+  }
+  ensureInitialised();
+  if (!Array.isArray(levelUpMagicTableCache) || levelUpMagicTableCache.length === 0) {
+    refreshLevelUpMagicCache();
+  }
+  if (!Array.isArray(levelUpMagicTableCache)) {
+    return null;
+  }
+  const entry = levelUpMagicTableCache[index];
+  return entry ? clone(entry) : null;
+}
+
 export default {
   subscribe,
   getMagicEntry,
@@ -284,5 +360,7 @@ export default {
   getBattleEffectIndexRow,
   getExpStateSnapshot,
   getLevelUpExpValue,
-  getLevelUpExpTable
+  getLevelUpExpTable,
+  getLevelUpMagicTable,
+  getLevelUpMagicEntry
 };

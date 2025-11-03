@@ -8,6 +8,9 @@ import music from './music';
 import sound from './sound';
 import battleService from '../../services/battle-service.js';
 import worldService from '../../services/world-service.js';
+import stateService from '../../services/state-service.js';
+import gameDataAdapter from '../../services/game-data-adapter.js';
+import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import {
@@ -233,17 +236,19 @@ function getEventObjectById(eventId) {
   if (index == null) {
     return null;
   }
-  var entries = worldService.getEventObjectsInCurrentScene();
-  for (var i = 0; i < entries.length; i++) {
-    var entry = entries[i];
-    if (!entry || !entry.state) {
-      continue;
-    }
-    if (entry.id === eventId || entry.index === index) {
-      return entry.state;
-    }
+  var entry = sceneEventAdapter.getEventObjectEntryById(eventId);
+  if (entry && entry.state) {
+    return entry.state;
   }
-  return worldService.getEventObject(index);
+  var stateByIndex = sceneEventAdapter.getEventObjectStateByIndex(index);
+  if (stateByIndex) {
+    return stateByIndex;
+  }
+  var gameData = stateService.getGameData('eventObject');
+  if (Array.isArray(gameData) && gameData[index]) {
+    return gameData[index];
+  }
+  return null;
 }
 
 function mutateEventObjectById(eventId, mutator) {
@@ -343,7 +348,7 @@ function getSceneEventObjects() {
     return [];
   }
   var range = getSceneEventRange();
-  var eventObjects = worldService.getEventObjectsInCurrentScene();
+  var eventObjects = sceneEventAdapter.getEventObjects();
   return eventObjects.filter(function(entry) {
     return entry.index >= range.startIndex && entry.index < range.endIndex;
   });
@@ -464,7 +469,14 @@ function warnLog(message) {
 }
 
 function getScriptEntrySafe(scriptEntry, eventObjectID, context) {
-  var sc = worldService.getScriptEntry(scriptEntry);
+  if (!Number.isFinite(scriptEntry)) {
+    script.scriptSuccess = false;
+    warnLog('[SCRIPT] ' + (context || 'script') +
+      ' invalid script index ' + scriptEntry +
+      ' (event ' + (eventObjectID || 0) + ')');
+    return null;
+  }
+  var sc = scriptObjectAdapter.getScriptEntry(scriptEntry);
   if (!sc) {
     warnLog('[SCRIPT] ' + (context || 'script') +
       ' missing script entry ' + scriptEntry +
@@ -492,7 +504,7 @@ function getSceneEventRange() {
   var startIndex = currentScene && typeof currentScene.eventObjectIndex === 'number'
     ? currentScene.eventObjectIndex
     : 0;
-  var totalObjects = worldService.getEventObjectIds().length;
+  var totalObjects = sceneEventAdapter.getEventObjectIds().length;
   var endIndex = nextScene && typeof nextScene.eventObjectIndex === 'number'
     ? nextScene.eventObjectIndex
     : totalObjects;
@@ -565,7 +577,10 @@ function getObjectEntry(objectId) {
 }
 
 function getEnemyEntry(enemyId) {
-  return typeof enemyId === 'number' ? worldService.getEnemyEntry(enemyId) : null;
+  if (typeof enemyId !== 'number') {
+    return null;
+  }
+  return gameDataAdapter.getEnemyEntry(enemyId);
 }
 
 function getEnemyIdFromObject(objectId) {
@@ -593,7 +608,7 @@ function copyEnemyTemplate(enemyId) {
 }
 
 function getStoreItemId(storeId, index) {
-  var storeEntry = worldService.getStoreEntry(storeId);
+  var storeEntry = gameDataAdapter.getStoreEntry(storeId);
   if (!storeEntry || !Array.isArray(storeEntry.items)) {
     return 0;
   }
@@ -677,7 +692,8 @@ script.NPCWalkOneStep = function(eventObjectID, speed) {
   worldService.runSystems(['collision', 'movement'], {
     mapCache: scene.mapCache,
     Files: typeof Files !== 'undefined' ? Files : null,
-    viewportComponent: worldService.getViewportComponent()
+    viewportComponent: worldService.getViewportComponent(),
+    sceneEventObjects: sceneEventAdapter.getEventObjects()
   });
 
   var movedState = getEventObjectById(eventObjectID);
@@ -2551,7 +2567,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       break;
     case 0x008F:
       script.debug('[SCRIPT] Halve the cash amount');
-      var halvedCash = Math.trunc(worldService.getCash() / 2);
+      var halvedCash = Math.trunc(getCashValue() / 2);
       worldService.setCash(halvedCash);
       break;
     case 0x0090:
@@ -2968,7 +2984,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
     script.scriptSuccess = false;
     return 0;
   }
-  if (scriptEntry <= 0 || !worldService.getScriptEntry(scriptEntry)) {
+  if (scriptEntry <= 0 || !scriptObjectAdapter.getScriptEntry(scriptEntry)) {
     log.trace(
       '[SCRIPT] runTriggerScript skipped missing entry ' + scriptEntry +
       ' (event ' + (eventObjectID || 0) + ')'
@@ -2992,8 +3008,8 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
 
   worldService.setLastEventObjectId(eventObjectID);
 
-  if (eventObjectID != 0) {
-    evtObj = worldService.getEventObject(eventObjectID - 1);
+  if (eventObjectID !== 0) {
+    evtObj = getEventObjectById(eventObjectID);
   }
   script.scriptSuccess = true;
 
@@ -3197,7 +3213,7 @@ script.runAutoScript = function*(scriptEntry, eventObjectID) {
   if (!sc) {
     return scriptEntry;
   }
-  var evtObj = worldService.getEventObject(eventObjectID - 1);
+  var evtObj = getEventObjectById(eventObjectID);
 
   traceScript(scriptEntry, sc, eventObjectID);
 

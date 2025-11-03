@@ -61,6 +61,10 @@ const inputMock = {
   })
 };
 
+const gameDataAdapterMock = {
+  getMagicEntry: vi.fn()
+};
+
 vi.mock('../src/services/world-service.js', () => ({
   __esModule: true,
   default: worldServiceMock
@@ -87,6 +91,11 @@ vi.mock('../src/js/pal/music.js', () => ({
 vi.mock('../src/js/pal/rle.js', () => ({
   __esModule: true,
   default: (data) => data
+}));
+
+vi.mock('../src/services/game-data-adapter.js', () => ({
+  __esModule: true,
+  default: gameDataAdapterMock
 }));
 
 const surfaceStub = {
@@ -252,6 +261,8 @@ describe('ui menus (service-backed)', () => {
     resetPlayerStateSlice();
     resetWorldService();
     resetStateService();
+    gameDataAdapterMock.getMagicEntry.mockReset();
+    gameDataAdapterMock.getMagicEntry.mockImplementation(() => null);
     resetInput();
     Object.keys(objectStore).forEach((key) => delete objectStore[key]);
 

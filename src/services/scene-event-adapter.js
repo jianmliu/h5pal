@@ -7,6 +7,7 @@ let initialised = false;
 
 let sceneIdCache = 0;
 let eventObjectsCache = [];
+let eventObjectsVersion = 0;
 let collisionStateCache = null;
 
 function teardown() {
@@ -24,6 +25,15 @@ function teardown() {
   initialised = false;
 }
 
+function setEventObjectsCache(nextValue) {
+  const resolved = Array.isArray(nextValue) ? nextValue : [];
+  if (resolved !== eventObjectsCache) {
+    eventObjectsCache = resolved;
+    eventObjectsVersion++;
+  }
+  return eventObjectsCache;
+}
+
 function refreshSceneId() {
   sceneIdCache = sceneEventSignals().sceneId.value;
   return sceneIdCache;
@@ -31,13 +41,14 @@ function refreshSceneId() {
 
 function refreshEventObjects() {
   const latest = sceneEventSignals().eventObjects.value;
-  if (Array.isArray(latest)) {
-    eventObjectsCache = latest;
-    return eventObjectsCache;
+  if (Array.isArray(latest) && latest.length > 0) {
+    return setEventObjectsCache(latest);
   }
-  const sceneObjects = worldService.getEventObjectsInCurrentScene ? worldService.getEventObjectsInCurrentScene() : [];
-  eventObjectsCache = Array.isArray(sceneObjects) ? sceneObjects : [];
-  return eventObjectsCache;
+  if (worldService && typeof worldService.getEventObjectsInCurrentScene === 'function') {
+    const fallback = worldService.getEventObjectsInCurrentScene();
+    return setEventObjectsCache(fallback);
+  }
+  return setEventObjectsCache([]);
 }
 
 function refreshCollisionState() {
@@ -80,8 +91,13 @@ function ensureInitialised() {
     signals.eventObjects.subscribe((value) => {
       if (value !== eventObjectsCache) {
         const previous = eventObjectsCache;
-        eventObjectsCache = Array.isArray(value) ? value : [];
-        notify({ type: 'eventObjects', value: eventObjectsCache, previous });
+        setEventObjectsCache(value);
+        notify({
+          type: 'eventObjects',
+          value: eventObjectsCache,
+          previous,
+          version: eventObjectsVersion
+        });
       }
     }),
     signals.collisionState.subscribe((value) => {
@@ -106,7 +122,8 @@ function subscribe(listener) {
     type: 'snapshot',
     sceneId: sceneIdCache,
     eventObjects: eventObjectsCache,
-    collisionState: collisionStateCache
+    collisionState: collisionStateCache,
+    version: eventObjectsVersion
   });
   return () => {
     listeners.delete(listener);
@@ -115,6 +132,7 @@ function subscribe(listener) {
       teardown();
       sceneIdCache = 0;
       eventObjectsCache = [];
+      eventObjectsVersion = 0;
       collisionStateCache = null;
     }
   };
@@ -130,9 +148,63 @@ function getEventObjects() {
   return eventObjectsCache;
 }
 
+function getEventObjectsVersion() {
+  ensureInitialised();
+  return eventObjectsVersion;
+}
+
+function getEventObjectIds() {
+  ensureInitialised();
+  return eventObjectsCache
+    .map((entry) => (entry ? entry.id : null))
+    .filter((id) => Number.isFinite(id));
+}
+
+function findEventObjectEntry(predicate) {
+  ensureInitialised();
+  if (typeof predicate !== 'function') {
+    return null;
+  }
+  for (let i = 0; i < eventObjectsCache.length; i++) {
+    const entry = eventObjectsCache[i];
+    if (entry && predicate(entry)) {
+      return entry;
+    }
+  }
+  return null;
+}
+
+function getEventObjectEntryById(id) {
+  if (!Number.isFinite(id)) {
+    return null;
+  }
+  return findEventObjectEntry((entry) => entry.id === id);
+}
+
+function getEventObjectEntryByIndex(index) {
+  if (!Number.isFinite(index)) {
+    return null;
+  }
+  return findEventObjectEntry((entry) => entry.index === index);
+}
+
+function getEventObjectStateById(id) {
+  const entry = getEventObjectEntryById(id);
+  return entry ? entry.state : null;
+}
+
+function getEventObjectStateByIndex(index) {
+  const entry = getEventObjectEntryByIndex(index);
+  return entry ? entry.state : null;
+}
+
 function getCollisionState() {
   ensureInitialised();
   return collisionStateCache;
+}
+
+function getListenerCount() {
+  return listeners.size;
 }
 
 function dispose() {
@@ -141,6 +213,7 @@ function dispose() {
   listeners.clear();
   sceneIdCache = 0;
   eventObjectsCache = [];
+  eventObjectsVersion = 0;
   collisionStateCache = null;
 }
 
@@ -148,6 +221,13 @@ export default {
   subscribe,
   getSceneId,
   getEventObjects,
+  getEventObjectsVersion,
+  getEventObjectIds,
+  getEventObjectEntryById,
+  getEventObjectEntryByIndex,
+  getEventObjectStateById,
+  getEventObjectStateByIndex,
   getCollisionState,
+  getListenerCount,
   dispose
 };

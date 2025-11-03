@@ -4,6 +4,7 @@ import Sprite from './sprite';
 import Map from './map';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
+import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 
 log.trace('scene module load');
@@ -379,7 +380,7 @@ function legacyCheckObstacle(pos, checkEventObjects, selfObject) {
   }
 
   if (checkEventObjects) {
-    var eventEntries = worldService.getEventObjectsInCurrentScene();
+    var eventEntries = sceneEventAdapter.getEventObjects();
     for (var idx = 0; idx < eventEntries.length; idx++) {
       var entry = eventEntries[idx];
       if (!entry || !entry.state) {
@@ -476,7 +477,7 @@ scene.applyWave = function(buffer) {
 
 utils.extend(Scene.prototype, {
   loadEventObjectSpites: function(version) {
-    var entries = worldService.getEventObjectsInCurrentScene();
+    var entries = sceneEventAdapter.getEventObjects();
     if (!entries || !entries.length) {
       this.eventObjectSprite = [];
       this._eventSpriteVersion = version;
@@ -507,9 +508,7 @@ utils.extend(Scene.prototype, {
     worldService.setPartyOffset(PAL_XY(160, 112));
   },
   getEventObjectSprite: function(eventObjectID) {
-    var version = typeof worldService.getEventObjectsVersion === 'function'
-      ? worldService.getEventObjectsVersion()
-      : null;
+    var version = sceneEventAdapter.getEventObjectsVersion();
     if (!this.eventObjectSprite || (version != null && this._eventSpriteVersion !== version)) {
       this.loadEventObjectSpites(version);
     }
@@ -526,7 +525,7 @@ utils.extend(Scene.prototype, {
       return null;
     }
 
-    var state = worldService.getEventObject(targetIndex);
+    var state = sceneEventAdapter.getEventObjectStateByIndex(targetIndex);
     var spriteNum = state && typeof state.spriteNum === 'number' ? state.spriteNum : 0;
     var cached = this.eventObjectSprite[localIndex];
 
@@ -670,7 +669,8 @@ utils.extend(Scene.prototype, {
     worldService.runSystems(['collision', 'movement'], {
       mapCache: scene.mapCache,
       Files: typeof Files !== 'undefined' ? Files : null,
-      viewportComponent: worldService.getViewportComponent()
+      viewportComponent: worldService.getViewportComponent(),
+      sceneEventObjects: sceneEventAdapter.getEventObjects()
     });
     var viewport = worldService.getViewport();
     var viewportX = PAL_X(viewport);
@@ -710,7 +710,8 @@ utils.extend(Scene.prototype, {
       viewportValue: viewport,
       addToDrawList: this.addToDrawList.bind(this),
       calcCoverTiles: this.calcCoverTiles.bind(this),
-      getEventObjectSprite: this.getEventObjectSprite.bind(this)
+      getEventObjectSprite: this.getEventObjectSprite.bind(this),
+      sceneEventObjects: sceneEventAdapter.getEventObjects()
     });
 
     // All sprites are now in our array; sort them by their vertical positions.

@@ -33,10 +33,7 @@ const ObjectState = getGlobalObject('ObjectState') || {};
 
 export default function renderEventObjectSystem(context = {}) {
   const world = context.worldService || context.world;
-  if (!world) {
-    return;
-  }
-  if (typeof world.getEventObjectIds !== 'function' || typeof world.getViewportComponent !== 'function') {
+  if (!world || typeof world.getViewportComponent !== 'function') {
     return;
   }
   const surface = context.surface;
@@ -65,18 +62,76 @@ export default function renderEventObjectSystem(context = {}) {
   const sceneId = typeof world.getSceneId === 'function' ? world.getSceneId() : null;
 
   const debugStr = typeof surface.__debugStr === 'function' ? surface.__debugStr.bind(surface) : null;
-  const eventIds = world.getEventObjectIds();
-  for (let idx = 0; idx < eventIds.length; idx++) {
-    const eventId = eventIds[idx];
-    const eventComponent = world.getEventObjectComponent(eventId);
-    const npcState = typeof world.getNpcStateByEventId === 'function'
-      ? world.getNpcStateByEventId(eventId)
-      : null;
-    const eventObj = (npcState && npcState.stateRef) || (eventComponent && eventComponent.stateRef);
-    if (!eventObj) {
+  const sceneEventObjects = Array.isArray(context.sceneEventObjects)
+    ? context.sceneEventObjects
+    : null;
+  if (sceneEventObjects && sceneEventObjects.length > 0) {
+    for (let idx = 0; idx < sceneEventObjects.length; idx++) {
+      const entry = sceneEventObjects[idx];
+      if (!entry || !entry.state) {
+        continue;
+      }
+      const eventObj = entry.state;
+      if (!eventObj || eventObj.state == null) {
+        continue;
+      }
+      if (eventObj.state === ObjectState.Hidden || eventObj.vanishTime > 0 || eventObj.state < 0) {
+        continue;
+      }
+      const sprite = getEventObjectSprite(entry.id);
+      if (!sprite) {
+        continue;
+      }
+      let frameNum = eventObj.currentFrameNum || 0;
+      if (eventObj.spriteFrames === 3) {
+        if (frameNum === 2) {
+          frameNum = 0;
+        } else if (frameNum === 3) {
+          frameNum = 2;
+        }
+      }
+      const direction = typeof eventObj.direction === 'number' ? eventObj.direction : 0;
+      const spriteFrames = typeof eventObj.spriteFrames === 'number' ? eventObj.spriteFrames : 1;
+      const frame = sprite.getFrame(direction * spriteFrames + frameNum);
+      if (!frame) {
+        continue;
+      }
+
+      if (debugStr) {
+        debugStr('[' + entry.id + ']', SHORT(eventObj.x) - viewportX, SHORT(eventObj.y) - viewportY, '#f00', 'middle', 'center', 24);
+      }
+
+      const screenX = SHORT(eventObj.x) - viewportX - ~~(frame.width / 2);
+      if (screenX >= 320 || screenX < -frame.width) {
+        continue;
+      }
+      const layerValue = eventObj.layer || 0;
+      const screenY = SHORT(eventObj.y) - viewportY + layerValue * 8 + 9;
+      const vy = screenY - frame.height - layerValue * 8 + 2;
+      if (vy >= 200 || vy < -frame.height) {
+        continue;
+      }
+
+      const spriteEntry = addToDrawList(frame, screenX, screenY, layerValue * 8 + 2);
+      if (spriteEntry && calcCoverTiles) {
+        calcCoverTiles(spriteEntry);
+      }
+    }
+    return;
+  }
+
+  if (typeof world.getEventObjectsInCurrentScene !== 'function') {
+    return;
+  }
+
+  const fallbackEntries = world.getEventObjectsInCurrentScene() || [];
+  for (let idx = 0; idx < fallbackEntries.length; idx++) {
+    const entry = fallbackEntries[idx];
+    if (!entry || !entry.state) {
       continue;
     }
-    if (sceneId != null && eventComponent && eventComponent.sceneId != null && eventComponent.sceneId !== sceneId) {
+    const eventObj = entry.state;
+    if (!eventObj) {
       continue;
     }
     if (eventObj.state == null) {
@@ -86,7 +141,7 @@ export default function renderEventObjectSystem(context = {}) {
       continue;
     }
 
-    const sprite = getEventObjectSprite(eventId + 1);
+    const sprite = getEventObjectSprite(entry.id);
     if (!sprite) {
       continue;
     }
@@ -106,7 +161,7 @@ export default function renderEventObjectSystem(context = {}) {
     }
 
     if (debugStr) {
-      debugStr('[' + eventId + ']', SHORT(eventObj.x) - viewportX, SHORT(eventObj.y) - viewportY, '#f00', 'middle', 'center', 24);
+      debugStr('[' + entry.id + ']', SHORT(eventObj.x) - viewportX, SHORT(eventObj.y) - viewportY, '#f00', 'middle', 'center', 24);
     }
 
     const screenX = SHORT(eventObj.x) - viewportX - ~~(frame.width / 2);

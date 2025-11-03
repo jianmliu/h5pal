@@ -59,12 +59,17 @@ import {
 import {
   updatePartyValue as updatePartySliceValue,
   updateTrailValue as updateTrailSliceValue,
-  updateFollowerCountValue as updateFollowerCountSliceValue
+  updateFollowerCountValue as updateFollowerCountSliceValue,
+  getTrailValue,
+  getFollowerCountValue
 } from '../state/slices/party-trail.js';
 import {
   updateSceneIdValue,
   updateEventObjectsValue,
-  updateCollisionStateValue
+  updateCollisionStateValue,
+  getSceneIdValue,
+  getEventObjectsValue,
+  getCollisionStateValue
 } from '../state/slices/scene-events.js';
 import {
   updateMusicTrackValue,
@@ -90,7 +95,8 @@ import {
   updateScriptEntriesValue,
   updateObjectTableValue,
   updateObjectDescValue,
-  resetScriptObjectSlice
+  resetScriptObjectSlice,
+  scriptObjectSignals
 } from '../state/slices/script-objects.js';
 import {
   updateEnemyTeamValue,
@@ -109,7 +115,10 @@ import {
   updateStoreTableValue,
   updateExpStateValue,
   updateEnemyTableValue,
-  updateBattleEffectTableValue
+  updateBattleEffectTableValue,
+  updateLevelUpExpTableValue,
+  updateLevelUpMagicTableValue,
+  getLevelUpExpTableValue
 } from '../state/slices/game-data.js';
 import {
   updateCollectValue,
@@ -228,6 +237,8 @@ class WorldService extends EventBus {
     this.systemManager = createWorldSystemManager({ worldService: this });
     this._collisionState = null;
     this._eventObjectsVersion = 0;
+    this._eventObjectsCache = null;
+    this._eventObjectsCacheVersion = -1;
     this._maxSpriteDrawLimit = DEFAULT_MAX_SPRITE_TO_DRAW;
   }
 
@@ -262,6 +273,8 @@ class WorldService extends EventBus {
     this.entityMaps.collision = null;
     this._collisionState = null;
     this._eventObjectsVersion = (typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0) + 1;
+    this._eventObjectsCache = null;
+    this._eventObjectsCacheVersion = -1;
     updateSceneIdValue(0, { source: 'worldService:dispose' });
     updateEventObjectsValue([], { source: 'worldService:dispose' });
     updateCollisionStateValue(null, { source: 'worldService:dispose' });
@@ -920,6 +933,10 @@ class WorldService extends EventBus {
     updateMagicTableValue(magicTable, { source: 'worldService:syncObjectStores' });
     const storeTable = gameData && Array.isArray(gameData.store) ? gameData.store : [];
     updateStoreTableValue(storeTable, { source: 'worldService:syncObjectStores' });
+    const levelUpMagicTable = gameData && Array.isArray(gameData.levelUpMagic) ? gameData.levelUpMagic : [];
+    updateLevelUpMagicTableValue(levelUpMagicTable, { source: 'worldService:syncObjectStores' });
+    const levelUpExpTable = gameData && Array.isArray(gameData.levelUpExp) ? gameData.levelUpExp : [];
+    updateLevelUpExpTableValue(levelUpExpTable, { source: 'worldService:syncObjectStores' });
     const objectDesc = stateService.getGlobal('objectDesc');
     updateObjectDescValue(typeof objectDesc === 'undefined' ? null : objectDesc, { source: 'worldService:syncObjectStores' });
     const expState = stateService.getGlobal('exp');
@@ -1027,33 +1044,6 @@ class WorldService extends EventBus {
       return null;
     }
     return this.registry.getComponent(this.entityMaps.mapTile, WorldComponents.MapTile);
-  }
-
-  getEventObjectComponent(id) {
-    this._ensureInitialised();
-    const entityId = this.entityMaps.eventObject.get(id);
-    if (!entityId) {
-      return null;
-    }
-    return this.registry.getComponent(entityId, WorldComponents.EventObject);
-  }
-
-  getNpcStateByEventId(id) {
-    this._ensureInitialised();
-    const entityId = this.entityMaps.eventObject.get(id);
-    if (!entityId) {
-      return null;
-    }
-    return this.registry.getComponent(entityId, WorldComponents.NpcState);
-  }
-
-  getEventObjectIds() {
-    this._ensureInitialised();
-    return Array.from(this.entityMaps.eventObject.keys());
-  }
-
-  getEventObjectsVersion() {
-    return typeof this._eventObjectsVersion === 'number' ? this._eventObjectsVersion : 0;
   }
 
   getScriptEntry(entry) {
@@ -1493,11 +1483,8 @@ class WorldService extends EventBus {
 
   getTrail() {
     this._ensureInitialised();
-    const trail = stateService.getGlobal('trail');
-    if (Array.isArray(trail)) {
-      return trail;
-    }
-    return trail || [];
+    const trail = getTrailValue([]);
+    return Array.isArray(trail) ? trail : [];
   }
 
   getSceneId() {
@@ -1524,9 +1511,9 @@ class WorldService extends EventBus {
   getSceneEntry(sceneId) {
     this._ensureInitialised();
     if (typeof sceneId !== 'number' || sceneId <= 0) {
-      sceneId = this.getSceneId();
+      sceneId = getSceneIdValue(0);
     }
-    const currentId = this.getSceneId();
+    const currentId = getSceneIdValue(0);
     if (sceneId === currentId) {
       const component = this.getSceneComponent();
       return component ? component.sceneRef : null;
@@ -1572,12 +1559,6 @@ class WorldService extends EventBus {
     return this._replaceGameDataTable('scene', scenes || []);
   }
 
-  getSceneTable() {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    return store ? store.scene || null : null;
-  }
-
   getNextSceneData() {
     const component = this.getSceneComponent();
     return component ? component.nextSceneRef : null;
@@ -1612,11 +1593,7 @@ class WorldService extends EventBus {
         : (typeof request.eventObjectId === 'number' ? request.eventObjectId - 1 : null))
       : null;
     if (eventIndex != null) {
-      const component = this.getEventObjectComponent(eventIndex);
-      const currentRef = this.getEventObject(eventIndex);
-      if (component && currentRef && component.stateRef !== currentRef) {
-        this.syncEventObjects();
-      }
+      this.syncEventObjects();
     }
     const queue = this._ensureMoveQueue();
     queue.requests.push(Object.assign({}, request));
@@ -1687,7 +1664,14 @@ class WorldService extends EventBus {
     const state = this._collisionState;
     const currentMapId = state && typeof state.mapId === 'number' ? state.mapId : null;
     if (!state || (expectedMapId != null && currentMapId !== expectedMapId)) {
-      this.runSystems('collision', context);
+      const runtimeContext = Object.assign(
+        {},
+        context,
+        {
+          sceneEventObjects: getEventObjectsValue([])
+        }
+      );
+      this.runSystems('collision', runtimeContext);
     }
     updateCollisionStateValue(this._collisionState, { emitEvent: false, source: 'worldService:ensureCollisionState' });
     return this._collisionState;
@@ -1714,15 +1698,6 @@ class WorldService extends EventBus {
     const result = mutator(member);
     this.syncPartyMembers();
     return result;
-  }
-
-  getEventObject(id) {
-    this._ensureInitialised();
-    const gameData = getGameDataStore();
-    if (!gameData || !Array.isArray(gameData.eventObject)) {
-      return null;
-    }
-    return gameData.eventObject[id] || null;
   }
 
   mutateEventObject(id, mutator) {
@@ -1784,13 +1759,9 @@ class WorldService extends EventBus {
   }
 
   setEventObjectTable(eventObjects) {
-    return this._replaceGameDataTable('eventObject', eventObjects || []);
-  }
-
-  getEventObjectTable() {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    return store ? store.eventObject || null : null;
+    const resolved = this._replaceGameDataTable('eventObject', eventObjects || []);
+    this.syncEventObjects();
+    return resolved;
   }
 
   getSceneEventObjectRange() {
@@ -1814,6 +1785,12 @@ class WorldService extends EventBus {
 
   getEventObjectsInCurrentScene() {
     this._ensureInitialised();
+    if (
+      Array.isArray(this._eventObjectsCache) &&
+      this._eventObjectsCacheVersion === this._eventObjectsVersion
+    ) {
+      return this._eventObjectsCache;
+    }
     const range = this.getSceneEventObjectRange();
     const store = getGameDataStore();
     const eventObjects = store && Array.isArray(store.eventObject) ? store.eventObject : [];
@@ -1829,26 +1806,24 @@ class WorldService extends EventBus {
         state
       });
     }
-    return results;
+    this._eventObjectsCache = results;
+    this._eventObjectsCacheVersion = this._eventObjectsVersion;
+    return this._eventObjectsCache;
   }
 
   getAllEventObjects() {
     this._ensureInitialised();
+    const current = getEventObjectsValue([]);
+    if (Array.isArray(current) && current.length) {
+      return current;
+    }
     const store = getGameDataStore();
     const eventObjects = store && Array.isArray(store.eventObject) ? store.eventObject : [];
-    const results = [];
-    for (let idx = 0; idx < eventObjects.length; idx++) {
-      const state = eventObjects[idx];
-      if (!state) {
-        continue;
-      }
-      results.push({
-        index: idx,
-        id: idx + 1,
-        state
-      });
-    }
-    return results;
+    return eventObjects.map((state, idx) => ({
+      index: idx,
+      id: idx + 1,
+      state
+    })).filter((entry) => entry.state);
   }
 
   mutateObjectEntry(id, mutator) {
@@ -1944,12 +1919,6 @@ class WorldService extends EventBus {
     return resolved;
   }
 
-  getObjectTable() {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    return store ? store.object || null : null;
-  }
-
   mutateMagicTable(mutator) {
     this._ensureInitialised();
     if (typeof mutator !== 'function') {
@@ -2018,50 +1987,16 @@ class WorldService extends EventBus {
     });
   }
 
-  getMagicEntry(id) {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    if (!store || !Array.isArray(store.magic)) {
-      return null;
-    }
-    return store.magic[id] || null;
-  }
-
-  getLevelUpMagicTable() {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    if (!store || !Array.isArray(store.levelUpMagic)) {
-      return [];
-    }
-    return store.levelUpMagic;
-  }
-
   setLevelUpMagicTable(levelUpMagic) {
-    return this._replaceGameDataTable('levelUpMagic', levelUpMagic || []);
-  }
-
-  getStoreEntry(id) {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    if (!store || !Array.isArray(store.store)) {
-      return null;
-    }
-    return store.store[id] || null;
+    const resolved = this._replaceGameDataTable('levelUpMagic', levelUpMagic || []);
+    updateLevelUpMagicTableValue(resolved || [], { source: 'worldService:setLevelUpMagicTable' });
+    return resolved;
   }
 
   setStoreTable(stores) {
     const resolved = this._replaceGameDataTable('store', stores || []);
     updateStoreTableValue(resolved || [], { source: 'worldService:setStoreTable' });
     return resolved;
-  }
-
-  getEnemyEntry(id) {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    if (!store || !Array.isArray(store.enemy)) {
-      return null;
-    }
-    return store.enemy[id] || null;
   }
 
   setEnemyTable(enemies) {
@@ -2071,7 +2006,10 @@ class WorldService extends EventBus {
   }
 
   copyEnemyTemplate(enemyId) {
-    const entry = this.getEnemyEntry(enemyId);
+    this._ensureInitialised();
+    const store = getGameDataStore();
+    const enemyTable = store && Array.isArray(store.enemy) ? store.enemy : [];
+    const entry = typeof enemyId === 'number' ? enemyTable[enemyId] : null;
     if (!entry) {
       return null;
     }
@@ -2111,15 +2049,6 @@ class WorldService extends EventBus {
     const resolved = this._replaceGameDataTable('battleField', battleFields || []);
     updateBattleFieldValue(resolved || [], { source: 'worldService:setBattleFieldTable' });
     return resolved;
-  }
-
-  getBattleEffectIndexRow(id) {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    if (!store || !Array.isArray(store.battleEffectIndex)) {
-      return null;
-    }
-    return store.battleEffectIndex[id] || null;
   }
 
   setBattleEffectIndexTable(battleEffectIndex) {
@@ -2653,8 +2582,7 @@ class WorldService extends EventBus {
 
   getLevelUpExp(level) {
     this._ensureInitialised();
-    const store = getGameDataStore();
-    const table = store && Array.isArray(store.levelUpExp) ? store.levelUpExp : [];
+    const table = getLevelUpExpTableValue([]);
     if (typeof level !== 'number') {
       return 0;
     }
@@ -2664,36 +2592,33 @@ class WorldService extends EventBus {
     return table[level] || 0;
   }
 
-  getLevelUpExpTable() {
-    this._ensureInitialised();
-    const store = getGameDataStore();
-    return store && Array.isArray(store.levelUpExp) ? store.levelUpExp : [];
-  }
-
   setLevelUpExpTable(levelUpExp) {
-    return this._replaceGameDataTable('levelUpExp', levelUpExp || []);
+    const resolved = this._replaceGameDataTable('levelUpExp', levelUpExp || []);
+    updateLevelUpExpTableValue(resolved || [], { source: 'worldService:setLevelUpExpTable' });
+    return resolved;
   }
 
   getPartyDirection() {
     this._ensureInitialised();
-    const dir = stateService.getGlobal('partyDirection');
-    const fallback = typeof dir === 'number' ? dir : DEFAULT_PARTY_DIRECTION;
-    updatePartyDirectionValue(fallback, { emitEvent: false, source: 'worldService:get' });
-    return fallback;
+    const resolved = getPartyDirectionValue(DEFAULT_PARTY_DIRECTION);
+    const direction = typeof resolved === 'number' ? resolved : DEFAULT_PARTY_DIRECTION;
+    stateService.setGlobal('partyDirection', direction);
+    return direction;
   }
 
   setPartyDirection(value) {
     this._ensureInitialised();
     const resolved = typeof value === 'number' ? value : DEFAULT_PARTY_DIRECTION;
     stateService.setGlobal('partyDirection', resolved);
-    updatePartyDirectionValue(resolved, { source: 'worldService' });
+    updatePartyDirectionValue(resolved, { source: 'worldService:setPartyDirection' });
     return resolved;
   }
 
   getFollowerCount() {
     this._ensureInitialised();
-    const count = stateService.getGlobal('numFollower');
-    const resolved = typeof count === 'number' ? count : 0;
+    const value = getFollowerCountValue(0);
+    const resolved = Number.isFinite(value) ? Math.max(0, value | 0) : 0;
+    stateService.setGlobal('numFollower', resolved);
     updateFollowerCountSliceValue(resolved, { emitEvent: false, source: 'worldService:getFollowerCount' });
     return resolved;
   }
@@ -2708,100 +2633,112 @@ class WorldService extends EventBus {
 
   getScreenWave() {
     this._ensureInitialised();
-    const resolved = this._getNumberGlobal('screenWave', getScreenWaveValue(0));
+    const value = getScreenWaveValue(0);
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : 0;
+    stateService.setGlobal('screenWave', resolved);
     updateScreenWaveValue(resolved, { emitEvent: false, source: 'worldService:getScreenWave' });
     return resolved;
   }
 
   setScreenWave(value) {
     this._ensureInitialised();
-    const resolved = this._setNumberGlobal('screenWave', value, getScreenWaveValue(0));
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : getScreenWaveValue(0);
+    stateService.setGlobal('screenWave', resolved);
     updateScreenWaveValue(resolved, { source: 'worldService:setScreenWave' });
     return resolved;
   }
 
   adjustScreenWave(delta) {
     this._ensureInitialised();
-    const resolved = this._adjustNumberGlobal('screenWave', delta, getScreenWaveValue(0));
+    const current = getScreenWaveValue(0);
+    const adjustment = Number.isFinite(delta) ? delta : 0;
+    const resolved = Math.trunc((Number.isFinite(current) ? current : 0) + adjustment);
+    stateService.setGlobal('screenWave', resolved);
     updateScreenWaveValue(resolved, { source: 'worldService:adjustScreenWave' });
     return resolved;
   }
 
   getWaveProgression() {
     this._ensureInitialised();
-    const resolved = this._getNumberGlobal('waveProgression', getWaveProgressionValue(0));
+    const value = getWaveProgressionValue(0);
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : 0;
+    stateService.setGlobal('waveProgression', resolved);
     updateWaveProgressionValue(resolved, { emitEvent: false, source: 'worldService:getWaveProgression' });
     return resolved;
   }
 
   setWaveProgression(value) {
     this._ensureInitialised();
-    const resolved = this._setNumberGlobal('waveProgression', value, getWaveProgressionValue(0));
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : getWaveProgressionValue(0);
+    stateService.setGlobal('waveProgression', resolved);
     updateWaveProgressionValue(resolved, { source: 'worldService:setWaveProgression' });
     return resolved;
   }
 
   getNeedToFadeIn() {
     this._ensureInitialised();
-    const resolved = this._getBooleanGlobal('needToFadeIn', getNeedToFadeInValue(false));
+    const resolved = !!getNeedToFadeInValue(false);
+    stateService.setGlobal('needToFadeIn', resolved);
     updateNeedToFadeInValue(resolved, { emitEvent: false, source: 'worldService:getNeedToFadeIn' });
     return resolved;
   }
 
   setNeedToFadeIn(value) {
     this._ensureInitialised();
-    const resolved = this._setBooleanGlobal('needToFadeIn', value);
+    const resolved = !!value;
+    stateService.setGlobal('needToFadeIn', resolved);
     updateNeedToFadeInValue(resolved, { source: 'worldService:setNeedToFadeIn' });
     return resolved;
   }
 
   getPaletteId() {
     this._ensureInitialised();
-    const resolved = this._getNumberGlobal('numPalette', getPaletteIdValue(0));
+    const value = getPaletteIdValue(0);
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : 0;
+    stateService.setGlobal('numPalette', resolved);
     updatePaletteIdValue(resolved, { emitEvent: false, source: 'worldService:getPaletteId' });
     return resolved;
   }
 
   setPaletteId(value) {
     this._ensureInitialised();
-    const resolved = this._setNumberGlobal('numPalette', value, getPaletteIdValue(0));
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : getPaletteIdValue(0);
+    stateService.setGlobal('numPalette', resolved);
     updatePaletteIdValue(resolved, { source: 'worldService:setPaletteId' });
     return resolved;
   }
 
   getNightPaletteFlag() {
     this._ensureInitialised();
-    const resolved = this._getBooleanGlobal('nightPalette', getNightPaletteValue(false));
+    const resolved = !!getNightPaletteValue(false);
+    stateService.setGlobal('nightPalette', resolved);
     updateNightPaletteValue(resolved, { emitEvent: false, source: 'worldService:getNightPalette' });
     return resolved;
   }
 
   setNightPaletteFlag(value) {
     this._ensureInitialised();
-    const resolved = this._setBooleanGlobal('nightPalette', value);
+    const resolved = !!value;
+    stateService.setGlobal('nightPalette', resolved);
     updateNightPaletteValue(resolved, { source: 'worldService:setNightPalette' });
     return resolved;
   }
 
   getLayer() {
     this._ensureInitialised();
-    const resolved = this._getNumberGlobal('layer', getLayerValue(0));
+    const value = getLayerValue(0);
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : 0;
+    stateService.setGlobal('layer', resolved);
     updateLayerValue(resolved, { emitEvent: false, source: 'worldService:getLayer' });
     return resolved;
   }
 
   setLayer(value) {
     this._ensureInitialised();
-    const resolved = this._setNumberGlobal('layer', value, getLayerValue(0));
+    const resolved = Number.isFinite(value) ? Math.trunc(value) : getLayerValue(0);
+    stateService.setGlobal('layer', resolved);
     updateLayerValue(resolved, { source: 'worldService:setLayer' });
     return resolved;
-  }
-
-  getCash() {
-    this._ensureInitialised();
-    const cash = this._getNumberGlobal('cash', 0);
-    updateCashValue(cash, { emitEvent: false, source: 'worldService:get' });
-    return cash;
   }
 
   setCash(value) {
@@ -2879,12 +2816,6 @@ class WorldService extends EventBus {
   _setValueGlobal(key, value) {
     this._ensureInitialised();
     stateService.setGlobal(key, value);
-    return value;
-  }
-
-  getObjectDescTable() {
-    const value = this._getValueGlobal('objectDesc', null);
-    updateObjectDescValue(typeof value === 'undefined' ? null : value, { emitEvent: false, source: 'worldService:getObjectDescTable' });
     return value;
   }
 

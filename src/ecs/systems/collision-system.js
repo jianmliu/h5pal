@@ -94,14 +94,19 @@ export default function collisionSystem(context = {}) {
 
   const mapInstance = getMapInstance(mapId, context.mapCache, context.Files);
 
-  const eventIds = typeof world.getEventObjectIds === 'function' ? world.getEventObjectIds() : [];
-  const eventStates = eventIds.map((eventIndex) => {
-    const component = world.getEventObjectComponent(eventIndex);
-    return {
-      id: eventIndex,
-      stateRef: component && component.stateRef ? component.stateRef : null
-    };
-  });
+  let eventStates = [];
+  if (Array.isArray(context.sceneEventObjects) && context.sceneEventObjects.length > 0) {
+    eventStates = context.sceneEventObjects.map((entry) => ({
+      id: entry.index,
+      stateRef: entry.state || null
+    }));
+  } else if (typeof world.getEventObjectsInCurrentScene === 'function') {
+    const entries = world.getEventObjectsInCurrentScene() || [];
+    eventStates = entries.map((entry) => ({
+      id: entry ? entry.index : null,
+      stateRef: entry ? entry.state || null : null
+    }));
+  }
 
   const collisionState = {
     mapId,

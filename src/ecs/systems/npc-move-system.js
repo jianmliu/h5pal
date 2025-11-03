@@ -32,6 +32,12 @@ export default function npcMoveSystem(context = {}) {
     ? collisionState.isBlocked
     : null;
 
+  const sceneEventObjects = Array.isArray(context.sceneEventObjects)
+    ? context.sceneEventObjects
+    : (typeof world.getEventObjectsInCurrentScene === 'function'
+      ? world.getEventObjectsInCurrentScene()
+      : []);
+
   for (let i = 0; i < requests.length; i++) {
     const request = requests[i];
     const eventIndex = typeof request.eventIndex === 'number'
@@ -40,11 +46,10 @@ export default function npcMoveSystem(context = {}) {
     if (eventIndex == null) {
       continue;
     }
-    const eventComponent = world.getEventObjectComponent(eventIndex);
-    const npcState = typeof world.getNpcStateByEventId === 'function'
-      ? world.getNpcStateByEventId(eventIndex)
-      : null;
-    const stateRef = (npcState && npcState.stateRef) || (eventComponent && eventComponent.stateRef);
+    const entry = sceneEventObjects.find((candidate) => candidate && candidate.index === eventIndex);
+    const stateRef = entry && entry.state
+      ? entry.state
+      : (world.getEventObject ? world.getEventObject(eventIndex) : null);
     if (!stateRef) {
       continue;
     }
@@ -70,16 +75,6 @@ export default function npcMoveSystem(context = {}) {
       stateRef.currentFrameNum = (stateRef.currentFrameNum + 1) % cycle;
     } else if (spriteFramesAuto > 0) {
       stateRef.currentFrameNum = (stateRef.currentFrameNum + 1) % spriteFramesAuto;
-    }
-
-    if (npcState) {
-      npcState.position = {
-        x: stateRef.x,
-        y: stateRef.y,
-        layer: stateRef.layer || 0
-      };
-      npcState.direction = stateRef.direction;
-      npcState.currentFrame = stateRef.currentFrameNum;
     }
 
     world.setMoveIntent(eventIndex, {

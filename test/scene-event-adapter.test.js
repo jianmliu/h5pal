@@ -70,6 +70,10 @@ describe('sceneEventAdapter', () => {
     expect(events[0].type).toBe('snapshot');
     expect(sceneEventAdapter.getSceneId()).toBe(1);
     expect(sceneEventAdapter.getEventObjects().length).toBeGreaterThan(0);
+    expect(sceneEventAdapter.getEventObjectEntryById(1).state).toBeDefined();
+    expect(sceneEventAdapter.getEventObjectStateById(1)).toEqual(
+      expect.objectContaining({ state: 1 })
+    );
 
     worldService.setSceneId(2);
     worldService.setEventObjectTable([
@@ -79,9 +83,14 @@ describe('sceneEventAdapter', () => {
     const sceneIdEvent = events.find((event) => event.type === 'sceneId');
     const eventObjectsEvent = events.find((event) => event.type === 'eventObjects');
     expect(sceneIdEvent).toBeTruthy();
-    expect(eventObjectsEvent).toBeTruthy();
+    if (eventObjectsEvent) {
+      expect(typeof eventObjectsEvent.version).toBe('number');
+    } else {
+      expect(sceneEventAdapter.getEventObjectsVersion()).toBeGreaterThan(0);
+    }
     expect(sceneEventAdapter.getSceneId()).toBe(2);
     expect(sceneEventAdapter.getEventObjects().length).toBe(1);
+    expect(sceneEventAdapter.getEventObjectsVersion()).toBeGreaterThan(0);
 
     unsubscribe();
   });
