@@ -1,6 +1,7 @@
 import EventBus from './event-bus.js';
 import scriptService from './script-service.js';
 import worldService from './world-service.js';
+import sceneEventAdapter from './scene-event-adapter.js';
 import { getPlayerStatusRow as getPlayerStatusRowSnapshot } from './player-state-adapter.js';
 import { getBattleStateSnapshot } from './battle-state-adapter.js';
 import {
@@ -36,6 +37,31 @@ function sortByActorIndexDescending(registry, entities) {
       return b.actor.index - a.actor.index;
     });
 }
+
+function resolveEnemyEventObjectId(index) {
+  if (!Number.isFinite(index)) {
+    return index;
+  }
+  const resolved = typeof sceneEventAdapter.getEventObjectIdForRelativeIndex === 'function'
+    ? sceneEventAdapter.getEventObjectIdForRelativeIndex(index)
+    : null;
+  return Number.isFinite(resolved) ? resolved : index;
+}
+
+function resolveEnemyScriptEntry(entry, enemyIndex) {
+  if (Number.isFinite(entry) && entry > 0) {
+    return entry;
+  }
+  if (entry === 0) {
+    return 0;
+  }
+  const eventEntry = typeof sceneEventAdapter.getEventObjectEntryById === 'function'
+    ? sceneEventAdapter.getEventObjectEntryById(resolveEnemyEventObjectId(enemyIndex))
+    : null;
+  const fallback = eventEntry && eventEntry.state ? eventEntry.state.triggerScript : null;
+  return Number.isFinite(fallback) && fallback > 0 ? fallback : 0;
+}
+
 
 function getGameData() {
   if (typeof globalThis !== 'undefined' && globalThis.GameData) {
@@ -896,6 +922,14 @@ export function* performActionPhaseSystem(runtime) {
         var poisonRow = poisonMatrix ? poisonMatrix[poisonSlot] : null;
         var poisonEntry = poisonRow ? poisonRow[partyIndex] : null;
         if (poisonEntry && poisonEntry.poisonID !== 0) {
+          if (typeof poisonEntry.poisonScript === 'undefined') {
+            console.warn('[BATTLE] player poison missing script', {
+              partyIndex,
+              partyRole,
+              poisonSlot,
+              entry: poisonEntry
+            });
+          }
           var nextScriptEntry = yield* scriptService.runTriggerScript(
             poisonEntry.poisonScript,
             partyRole
@@ -919,9 +953,16 @@ export function* performActionPhaseSystem(runtime) {
       for (var enemyPoison = 0; enemyPoison < Const.MAX_POISONS; enemyPoison++) {
         var enemySlot = enemyState.poisons ? enemyState.poisons[enemyPoison] : null;
         if (enemySlot && enemySlot.poisonID != 0) {
+          if (typeof enemySlot.poisonScript === 'undefined') {
+            console.warn('[BATTLE] enemy poison missing script', {
+              enemyIndex,
+              poisonSlot: enemyPoison,
+              slot: enemySlot
+            });
+          }
           var nextEnemyScript = yield* scriptService.runTriggerScript(
             enemySlot.poisonScript,
-            WORD(enemyIndex)
+            resolveEnemyEventObjectId(enemyIndex)
           );
           battleService.setEnemyPoison(enemyIndex, enemyPoison, function(slot) {
             slot.poisonScript = nextEnemyScript;
@@ -964,14 +1005,26 @@ export function* performActionPhaseSystem(runtime) {
         if (!enemyTurnState || enemyTurnState.objectID == 0 || !enemyTurnState.scriptOnTurnStart) {
           continue;
         }
-        var turnStartResult = yield* scriptService.runTriggerScript(
-          enemyTurnState.scriptOnTurnStart,
-          WORD(enemyIdx)
-        );
-        mutateEnemyState(battleService, enemyIdx, function(enemy) {
-          enemy.scriptOnTurnStart = turnStartResult;
-          return enemy;
-        });
+        if (typeof enemyTurnState.scriptOnTurnStart === 'undefined') {
+          console.warn('[BATTLE] enemy turn start script undefined', {
+            enemyIndex: enemyIdx,
+            enemyTurnState
+          });
+        }
+        var enemyTurnEventId = resolveEnemyEventObjectId(enemyIdx);
+        var initialTurnScript = resolveEnemyScriptEntry(enemyTurnState.scriptOnTurnStart, enemyIdx, 'triggerScript');
+        if (Number.isFinite(initialTurnScript) && initialTurnScript > 0) {
+          var turnStartResult = yield* scriptService.runTriggerScript(
+            initialTurnScript,
+            enemyTurnEventId
+          );
+          mutateEnemyState(battleService, enemyIdx, function(enemy) {
+            enemy.scriptOnTurnStart = Number.isFinite(turnStartResult) && turnStartResult > 0
+              ? turnStartResult
+              : initialTurnScript;
+            return enemy;
+          });
+        }
       }
     }
 
@@ -997,20 +1050,30 @@ export function* performActionPhaseSystem(runtime) {
 
   if (isEnemy) {
     var actingEnemy = state.enemy && state.enemy[actionIndex];
-    if ((state.hidingTime || 0) === 0 &&
-        !onlyPuppet &&
-        actingEnemy &&
-        actingEnemy.objectID != 0) {
-      if (actingEnemy.scriptOnReady) {
-        var readyScriptResult = yield* scriptService.runTriggerScript(
-          actingEnemy.scriptOnReady,
-          WORD(actionIndex)
-        );
-        mutateEnemyState(battleService, actionIndex, function(enemy) {
-          enemy.scriptOnReady = readyScriptResult;
-          return enemy;
-        });
-      }
+      if ((state.hidingTime || 0) === 0 &&
+          !onlyPuppet &&
+          actingEnemy &&
+          actingEnemy.objectID != 0) {
+        if (actingEnemy.scriptOnReady) {
+          if (typeof actingEnemy.scriptOnReady === 'undefined') {
+            console.warn('[BATTLE] enemy ready script undefined', {
+              enemyIndex: actionIndex,
+              actingEnemy
+            });
+          }
+          var readyEventId = resolveEnemyEventObjectId(actionIndex);
+          var readyScript = resolveEnemyScriptEntry(actingEnemy.scriptOnReady, actionIndex, 'autoScript');
+          if (Number.isFinite(readyScript) && readyScript > 0) {
+            var readyScriptResult = yield* scriptService.runTriggerScript(
+              readyScript,
+              readyEventId
+            );
+            mutateEnemyState(battleService, actionIndex, function(enemy) {
+              enemy.scriptOnReady = readyScriptResult;
+              return enemy;
+            });
+          }
+        }
 
       setBattleFieldValue(battleService, 'enemyMoving', true);
       if (battle && typeof battle.enemyPerformAction === 'function') {

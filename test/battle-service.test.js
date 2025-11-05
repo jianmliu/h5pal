@@ -5,6 +5,12 @@ import stateService from '../src/services/state-service.js';
 import scriptService from '../src/services/script-service.js';
 import reactiveContext from '../src/state/reactive-context.js';
 import { getCashValue } from '../src/state/slices/inventory.js';
+import {
+  getPlayerLevel as getPlayerLevelValue,
+  getPlayerHP as getPlayerHPValue,
+  getPlayerMaxHP as getPlayerMaxHPValue,
+  getPlayerAttackStrength as getPlayerAttackStrengthValue
+} from '../src/services/player-state-adapter.js';
 
 const initMock = vi.fn(function* (...args) {
   yield { type: 'initStep', args };
@@ -477,10 +483,10 @@ describe('BattleService', () => {
     const summary = battleService.awardExp(0, 30);
     expect(summary.roleId).toBe(0);
     expect(summary.levelUp).toBe(true);
-    expect(worldService.getPlayerLevel(0)).toBe(3);
-    expect(worldService.getPlayerHP(0)).toBeLessThanOrEqual(worldService.getPlayerMaxHP(0));
-    expect(worldService.getPlayerHP(0)).toBeGreaterThanOrEqual(beforeSnapshot.hp);
-    expect(worldService.getPlayerAttackStrength(0)).toBeGreaterThan(beforeSnapshot.attackStrength);
+    expect(getPlayerLevelValue(0)).toBe(3);
+    expect(getPlayerHPValue(0)).toBeLessThanOrEqual(getPlayerMaxHPValue(0));
+    expect(getPlayerHPValue(0)).toBeGreaterThanOrEqual(beforeSnapshot.hp);
+    expect(getPlayerAttackStrengthValue(0)).toBeGreaterThan(beforeSnapshot.attackStrength);
 
     const updatedExpState = worldService.getExpState();
     expect(updatedExpState.primaryExp[0].exp).toBe(0);
@@ -489,7 +495,7 @@ describe('BattleService', () => {
     const registry = battleService.getRegistry();
     const statsComp = registry.getComponent(battleService.getPlayerEntity(0), BattleComponents.Stats);
     expect(statsComp).toBeTruthy();
-    expect(statsComp.statsRef.hp[0]).toBe(worldService.getPlayerHP(0));
+    expect(statsComp.statsRef.hp[0]).toBe(getPlayerHPValue(0));
 
     worldService.adjustCash(50);
     expect(getCashValue()).toBe(150);

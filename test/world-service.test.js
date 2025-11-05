@@ -3,6 +3,7 @@ import worldService from '../src/services/world-service.js';
 import stateService from '../src/services/state-service.js';
 import scriptObjectAdapter from '../src/services/script-object-adapter.js';
 import sceneEventAdapter from '../src/services/scene-event-adapter.js';
+import { getPlayerHP as getPlayerHPValue, getPlayerMP as getPlayerMPValue } from '../src/services/player-state-adapter.js';
 import reactiveContext from '../src/state/reactive-context.js';
 import { autoBattleSignal, autoBattleStream } from '../src/state/slices/auto-battle.js';
 import { frameCountSignal, frameCountStream } from '../src/state/slices/frame-count.js';
@@ -480,8 +481,8 @@ describe('world service', () => {
       }
     });
 
-    const initialHp = worldService.getPlayerHP(0) || 0;
-    const initialMp = worldService.getPlayerMP(0) || 0;
+    const initialHp = getPlayerHPValue(0) || 0;
+    const initialMp = getPlayerMPValue(0) || 0;
 
     worldService.setPlayerHP(0, initialHp + 10);
     worldService.setPlayerMP(0, initialMp + 8);

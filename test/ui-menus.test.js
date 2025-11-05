@@ -7,6 +7,16 @@ let resetViewportSlice;
 const worldServiceMock = {
   getParty: vi.fn(),
   getMaxPartyMemberIndex: vi.fn(),
+  getPlayerRoles: vi.fn(() => ({
+    equipment: [],
+    HP: [],
+    maxHP: [],
+    MP: [],
+    maxMP: [],
+    level: [],
+    name: [],
+    uint8Array: []
+  })),
   getPlayerLevel: vi.fn(),
   getPlayerHP: vi.fn(),
   getPlayerMaxHP: vi.fn(),
@@ -25,6 +35,7 @@ const worldServiceMock = {
   getExpState: vi.fn(),
   getPoisonStatusMatrix: vi.fn(),
   getLevelUpExp: vi.fn(),
+  getPlayerRoleWord: vi.fn(() => 0),
   getCash: vi.fn(() => 0),
   getFollowerCount: vi.fn(() => 0),
   isInBattle: vi.fn(() => false),
@@ -361,6 +372,9 @@ describe('ui menus (service-backed)', () => {
     worldServiceMock.getPlayerEquipment.mockReturnValue(200);
     objectStore[200] = { item: { flags: ItemFlag.Usable, bitmap: 0, scriptOnEquip: 123 } };
     objectStore[10] = { item: { flags: ItemFlag.Usable, bitmap: 0 } };
+    const equipmentMatrix = Array.from({ length: Const.MAX_PLAYER_EQUIPMENTS }, () => []);
+    equipmentMatrix[0][1] = 200;
+    updatePlayerRolesValue({ equipment: equipmentMatrix });
     syncScriptObjectSlice();
     updatePartyValue([{ playerRole: 1 }]);
     stateServiceMock.getGlobal.mockImplementation((key) => {

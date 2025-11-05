@@ -23,6 +23,9 @@ vi.mock('../src/js/pal/ajax.js', () => {
         if (path === 'desc.dat') {
           const content = encoder.encode('0001=DESC_LINE\n0002=SECOND*LINE');
           fileBuffers.set(path, content.buffer);
+        } else if (path === 'game-data.json') {
+          const payload = encoder.encode(JSON.stringify({ version: 1, files: {} }));
+          fileBuffers.set(path, payload.buffer);
         } else {
           fileBuffers.set(path, new ArrayBuffer(0));
         }
@@ -94,5 +97,12 @@ describe('ResourceService', () => {
     const first = await service.loadFiles('m.msg');
     const second = await service.loadFiles('m.msg');
     expect(first).toBe(second);
+  });
+
+  it('loads generated game data JSON and caches it', async () => {
+    const first = await service.loadGeneratedGameData();
+    const second = await service.loadGeneratedGameData();
+    expect(first).toEqual({ version: 1, files: {} });
+    expect(second).toBe(first);
   });
 });

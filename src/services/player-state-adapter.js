@@ -23,12 +23,56 @@ function ensureArray(value) {
   return [];
 }
 
+function toUnsignedWord(highByte, lowByte) {
+  const hi = typeof highByte === 'number' ? highByte & 0xFF : 0;
+  const lo = typeof lowByte === 'number' ? lowByte & 0xFF : 0;
+  return (hi << 8) | lo;
+}
+
+function resolveMaxRoles(snapshot) {
+  if (snapshot) {
+    if (Array.isArray(snapshot.level)) {
+      return snapshot.level.length;
+    }
+    if (Array.isArray(snapshot.HP)) {
+      return snapshot.HP.length;
+    }
+    if (Array.isArray(snapshot.avatar)) {
+      return snapshot.avatar.length;
+    }
+  }
+  if (typeof Const !== 'undefined' && Const && typeof Const.MAX_PLAYER_ROLES === 'number') {
+    return Const.MAX_PLAYER_ROLES;
+  }
+  const fallback = worldService.getPlayerRoles();
+  if (fallback && Array.isArray(fallback.level)) {
+    return fallback.level.length;
+  }
+  if (fallback && Array.isArray(fallback.HP)) {
+    return fallback.HP.length;
+  }
+  return 0;
+}
+
 function getRolesSnapshot() {
   const roles = rolesSignal.value;
   if (roles) {
     return roles;
   }
   return worldService.getPlayerRoles();
+}
+
+function getPlayerRolesBuffer(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object') {
+    return null;
+  }
+  if (snapshot.uint8Array) {
+    return snapshot.uint8Array;
+  }
+  if (Array.isArray(snapshot.buffer)) {
+    return snapshot.buffer;
+  }
+  return null;
 }
 
 function getRoleArray(key) {
@@ -39,13 +83,30 @@ function getRoleArray(key) {
   return ensureArray(roles[key]);
 }
 
-function getRoleArrayValue(key, roleId, fallback = 0) {
+function getRoleArrayValue(key, roleId, fallback) {
   const arr = getRoleArray(key);
+  const hasExplicitFallback = arguments.length >= 3 && typeof fallback !== 'undefined';
+  const resolvedFallback = hasExplicitFallback ? fallback : 0;
   if (roleId < 0 || roleId >= arr.length) {
-    return fallback;
+    if (!hasExplicitFallback) {
+      const roles = worldService.getPlayerRoles();
+      if (roles && roles[key] && typeof roles[key][roleId] === 'number') {
+        return roles[key][roleId];
+      }
+    }
+    return resolvedFallback;
   }
   const value = arr[roleId];
-  return typeof value === 'number' ? value : fallback;
+  if (typeof value === 'number') {
+    return value;
+  }
+  if (!hasExplicitFallback) {
+    const roles = worldService.getPlayerRoles();
+    if (roles && roles[key] && typeof roles[key][roleId] === 'number') {
+      return roles[key][roleId];
+    }
+  }
+  return resolvedFallback;
 }
 
 function getEquipmentMatrix() {
@@ -103,51 +164,51 @@ export function getMaxPartyMemberIndex() {
 }
 
 export function getPlayerHP(roleId) {
-  return getRoleArrayValue('HP', roleId, worldService.getPlayerHP(roleId));
+  return getRoleArrayValue('HP', roleId, 0);
 }
 
 export function getPlayerMaxHP(roleId) {
-  return getRoleArrayValue('maxHP', roleId, worldService.getPlayerMaxHP(roleId));
+  return getRoleArrayValue('maxHP', roleId, 0);
 }
 
 export function getPlayerMP(roleId) {
-  return getRoleArrayValue('MP', roleId, worldService.getPlayerMP(roleId));
+  return getRoleArrayValue('MP', roleId, 0);
 }
 
 export function getPlayerMaxMP(roleId) {
-  return getRoleArrayValue('maxMP', roleId, worldService.getPlayerMaxMP(roleId));
+  return getRoleArrayValue('maxMP', roleId, 0);
 }
 
 export function getPlayerLevel(roleId) {
-  return getRoleArrayValue('level', roleId, worldService.getPlayerLevel(roleId));
+  return getRoleArrayValue('level', roleId, 0);
 }
 
 export function getPlayerNameId(roleId) {
-  return getRoleArrayValue('name', roleId, worldService.getPlayerNameId(roleId));
+  return getRoleArrayValue('name', roleId, 0);
 }
 
 export function getPlayerAttackStrength(roleId) {
-  return getRoleArrayValue('attackStrength', roleId, worldService.getPlayerAttackStrength(roleId));
+  return getRoleArrayValue('attackStrength', roleId, 0);
 }
 
 export function getPlayerMagicStrength(roleId) {
-  return getRoleArrayValue('magicStrength', roleId, worldService.getPlayerMagicStrength(roleId));
+  return getRoleArrayValue('magicStrength', roleId, 0);
 }
 
 export function getPlayerDefense(roleId) {
-  return getRoleArrayValue('defense', roleId, worldService.getPlayerDefense(roleId));
+  return getRoleArrayValue('defense', roleId, 0);
 }
 
 export function getPlayerDexterity(roleId) {
-  return getRoleArrayValue('dexterity', roleId, worldService.getPlayerDexterity(roleId));
+  return getRoleArrayValue('dexterity', roleId, 0);
 }
 
 export function getPlayerFleeRate(roleId) {
-  return getRoleArrayValue('fleeRate', roleId, worldService.getPlayerFleeRate(roleId));
+  return getRoleArrayValue('fleeRate', roleId, 0);
 }
 
 export function getPlayerAvatarId(roleId) {
-  return getRoleArrayValue('avatar', roleId, worldService.getPlayerAvatarId(roleId));
+  return getRoleArrayValue('avatar', roleId, 0);
 }
 
 export function getPlayerEquipment(partIndex, roleId) {
@@ -158,13 +219,13 @@ export function getPlayerEquipment(partIndex, roleId) {
       return part[roleId];
     }
   }
-  return worldService.getPlayerEquipment(partIndex, roleId);
+  return 0;
 }
 
 export function getPlayerMagicSlots(roleId) {
   const slots = getMagicSlots();
   if (!Array.isArray(slots) || slots.length === 0) {
-    return worldService.getPlayerMagicSlots(roleId) || [];
+    return [];
   }
   const result = [];
   for (let index = 0; index < slots.length; index++) {
@@ -182,7 +243,7 @@ export function getPlayerMagicAt(slotIndex, roleId) {
       return slot[roleId];
     }
   }
-  return worldService.getPlayerMagicAt(slotIndex, roleId);
+  return 0;
 }
 
 export function getEquipmentEffectScalar(part, field, roleId) {
@@ -249,40 +310,73 @@ export function getPlayerRoleField(field) {
   return getRoleArray(field);
 }
 
-export function getPlayerRoleFieldValue(field, roleId, fallback = 0) {
-  return getRoleArrayValue(field, roleId, fallback);
+export function getPlayerRoleFieldValue(field, roleId, fallback) {
+  if (arguments.length >= 3 && typeof fallback !== 'undefined') {
+    return getRoleArrayValue(field, roleId, fallback);
+  }
+  return getRoleArrayValue(field, roleId);
 }
 
 export function getPlayerMagicSound(roleId) {
-  return getRoleArrayValue('magicSound', roleId, worldService.getPlayerMagicSound(roleId));
+  return getRoleArrayValue('magicSound', roleId, 0);
 }
 
 export function getPlayerAttackSound(roleId) {
-  return getRoleArrayValue('attackSound', roleId, worldService.getPlayerAttackSound(roleId));
+  return getRoleArrayValue('attackSound', roleId, 0);
 }
 
 export function getPlayerCriticalSound(roleId) {
-  return getRoleArrayValue('criticalSound', roleId, worldService.getPlayerCriticalSound(roleId));
+  return getRoleArrayValue('criticalSound', roleId, 0);
 }
 
 export function getPlayerWeaponSound(roleId) {
-  return getRoleArrayValue('weaponSound', roleId, worldService.getPlayerWeaponSound(roleId));
+  return getRoleArrayValue('weaponSound', roleId, 0);
 }
 
 export function getPlayerCoverSound(roleId) {
-  return getRoleArrayValue('coverSound', roleId, worldService.getPlayerCoverSound(roleId));
+  return getRoleArrayValue('coverSound', roleId, 0);
 }
 
 export function getPlayerDyingSound(roleId) {
-  return getRoleArrayValue('dyingSound', roleId, worldService.getPlayerDyingSound(roleId));
+  return getRoleArrayValue('dyingSound', roleId, 0);
 }
 
 export function getPlayerDeathSound(roleId) {
-  return getRoleArrayValue('deathSound', roleId, worldService.getPlayerDeathSound(roleId));
+  return getRoleArrayValue('deathSound', roleId, 0);
 }
 
 export function getPlayerCoveredBy(roleId) {
-  return getRoleArrayValue('coveredBy', roleId, worldService.getPlayerCoveredBy(roleId));
+  return getRoleArrayValue('coveredBy', roleId, 0);
+}
+
+export function getPlayerRoleWord(fieldIndex, roleId, fallback = 0) {
+  if (typeof fieldIndex !== 'number' || typeof roleId !== 'number') {
+    return fallback;
+  }
+  const snapshot = getRolesSnapshot();
+  const maxRoles = resolveMaxRoles(snapshot);
+  const buffer = getPlayerRolesBuffer(snapshot);
+  if (buffer && maxRoles > 0) {
+    const offset = (fieldIndex * maxRoles + roleId) * 2;
+    if (ArrayBuffer.isView(buffer)) {
+      const byteLength = buffer.byteLength || buffer.length || 0;
+      if (offset >= 0 && offset + 2 <= byteLength) {
+        try {
+          const view = new DataView(buffer.buffer, buffer.byteOffset || 0, byteLength);
+          return view.getUint16(offset, false);
+        } catch (err) {
+          // fall through to array read
+        }
+      }
+    }
+    if (Array.isArray(buffer) && offset >= 0 && offset + 1 < buffer.length) {
+      return toUnsignedWord(buffer[offset], buffer[offset + 1]);
+    }
+  }
+  const fallbackValue = typeof worldService.getPlayerRoleWord === 'function'
+    ? worldService.getPlayerRoleWord(fieldIndex, roleId)
+    : fallback;
+  return typeof fallbackValue === 'number' ? fallbackValue : fallback;
 }
 
 export default {
@@ -317,5 +411,6 @@ export default {
   getPlayerDyingSound,
   getPlayerDeathSound,
   getPlayerCoveredBy,
+  getPlayerRoleWord,
   getMaxPartyMemberIndex
 };

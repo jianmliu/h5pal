@@ -16,6 +16,7 @@ h5pal
 - 音乐可选：默认关闭 MP3 播放，若准备好原版 MP3 资源，将 `PAL_CONFIG.enableAudio` 设为 `true` 并提供 `audioBaseUrl`。
 - 系统菜单的存档/读档使用浏览器 localStorage，可选择 1~5 号槽位。
 - 构建产物可直接复制到 `xianjian.github.com/ultimate/`，包含运行所需资源。
+- 新增 `h5pal/scripts/import-rpg-save.mjs`，可将 DOS 版 `SAVEDATAxx.RPG` 转换成本项目使用的 localStorage 存档。
 
 # 如何搞起
 
@@ -31,6 +32,22 @@ h5pal
 * `npm install`
 * `gulp`
 * 若需要替换资源，可准备仙剑95版（存档180~185KB版本）的所有文件放入`pal-assets/`目录（仓库已预置示例）。
+
+## 导入 DOS 版 RPG 存档
+
+1. 准备原版 `SAVEDATAxx.RPG` 存档文件。
+2. 在项目根目录执行：
+
+   ```bash
+   node h5pal/scripts/import-rpg-save.mjs --input path/to/SAVEDATA01.RPG --slot 1 --output pal-save-1.json
+   ```
+
+   - `--slot` 会打印一段 `localStorage.setItem(...)` 代码，粘贴到浏览器控制台即可写入对应槽位（`PAL-SAVE-1`）。
+   - `--output` 可额外导出 JSON 文件，方便备份或后续导入。
+
+3. 刷新游戏页面，在系统菜单中选择相同槽位即可读档。
+
+> 提示：旧版存档没有时间戳，转换时会默认填写当前时间；如需自定义可使用 `--timestamp`、`--saved-times` 参数。
 
 ## 运行
 
@@ -113,6 +130,22 @@ GPL v3
 * `npm install`
 * `gulp`
 * Optionally replace the bundled assets by copying pal95 (180~185KB save) files into `pal-assets/` (a sample set is already included).
+
+## Importing legacy RPG saves
+
+1. Grab the original `SAVEDATAxx.RPG` files.
+2. From the project root run:
+
+   ```bash
+   node h5pal/scripts/import-rpg-save.mjs --input path/to/SAVEDATA01.RPG --slot 1 --output pal-save-1.json
+   ```
+
+   - `--slot` prints a ready-to-paste `localStorage.setItem(...)` snippet that writes to `PAL-SAVE-<slot>`.
+   - `--output` stores the converted JSON on disk for backup/reuse.
+
+3. Reload the game and pick the same slot inside the system menu.
+
+> The legacy format has no timestamp; the converter fills it with `Date.now()` unless you override it with `--timestamp` / `--saved-times`.
 
 ## Run
 

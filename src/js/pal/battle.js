@@ -10,6 +10,7 @@ import fight from './fight';
 import ui from './ui';
 import uibattle from './uibattle';
 import battleService from '../../services/battle-service.js';
+import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import createBattleSystemManager from '../../services/battle-systems.js';
 import worldService from '../../services/world-service.js';
 import gameDataAdapter from '../../services/game-data-adapter.js';
@@ -18,7 +19,9 @@ import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import {
   getEquipmentEffectsMatrix,
   getEquipmentEffectAt,
-  getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex
+  getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex,
+  getPlayerRoleFieldValue,
+  getPlayerHP as getPlayerHPValue
 } from '../../services/player-state-adapter.js';
 import {
   getEnemyTeamEntry as getCachedEnemyTeamEntry,
@@ -51,8 +54,108 @@ function BATTLE() {
   return getBattleStateSnapshot() || {};
 }
 
+function resolveEnemyEventObjectId(index) {
+  if (!Number.isFinite(index)) {
+    return index;
+  }
+  if (typeof sceneEventAdapter.getEventObjectIdForRelativeIndex === 'function') {
+    const mapped = sceneEventAdapter.getEventObjectIdForRelativeIndex(index);
+    if (Number.isFinite(mapped)) {
+      return mapped;
+    }
+  }
+  const range = typeof worldService.getSceneEventObjectRange === 'function'
+    ? worldService.getSceneEventObjectRange()
+    : null;
+  if (!range || typeof range.start !== 'number') {
+    return Math.trunc(index) + 1;
+  }
+  return range.start + Math.trunc(index) + 1;
+}
+
 function getParty() {
   return partyTrailAdapter.getPartyState();
+}
+
+function hasScriptEntry(scriptEntry) {
+  if (!Number.isFinite(scriptEntry) || scriptEntry <= 0) {
+    return false;
+  }
+  if (typeof scriptObjectAdapter.getScriptEntry === 'function') {
+    const resolved = scriptObjectAdapter.getScriptEntry(scriptEntry);
+    return !!resolved;
+  }
+  return true;
+}
+
+function getTriggerModeEnum() {
+  if (typeof TriggerMode !== 'undefined' && TriggerMode) {
+    return TriggerMode;
+  }
+  if (typeof globalThis !== 'undefined' && globalThis.TriggerMode) {
+    return globalThis.TriggerMode;
+  }
+  return {
+    None: 0,
+    SearchNear: 1,
+    SearchNormal: 2,
+    SearchFar: 3,
+    TouchNear: 4,
+    TouchNormal: 5,
+    TouchFar: 6,
+    TouchFarther: 7,
+    TouchFarthest: 8
+  };
+}
+
+function isSearchTriggerMode(triggerMode) {
+  if (!Number.isFinite(triggerMode)) {
+    return false;
+  }
+  const modes = getTriggerModeEnum();
+  return triggerMode >= modes.SearchNear && triggerMode <= modes.SearchFar;
+}
+
+function resolveEnemyScriptEntry(entry, enemyIndex, fallbackKey = 'triggerScript') {
+  if (Number.isFinite(entry) && entry > 0 && hasScriptEntry(entry)) {
+    return entry;
+  }
+
+  if (entry === 0 && fallbackKey === 'triggerScript') {
+    return 0;
+  }
+
+  const eventEntry = typeof sceneEventAdapter.getEventObjectEntryById === 'function'
+    ? sceneEventAdapter.getEventObjectEntryById(resolveEnemyEventObjectId(enemyIndex))
+    : null;
+  if (!eventEntry || !eventEntry.state) {
+    return Number.isFinite(entry) && entry > 0 ? entry : 0;
+  }
+
+  const fallbackKeys = [];
+  if (fallbackKey && !fallbackKeys.includes(fallbackKey)) {
+    fallbackKeys.push(fallbackKey);
+  }
+  if (!fallbackKeys.includes('triggerScript')) {
+    fallbackKeys.push('triggerScript');
+  }
+  if (!fallbackKeys.includes('autoScript')) {
+    fallbackKeys.push('autoScript');
+  }
+  ['enemyScript', 'battleScript'].forEach((key) => {
+    if (!fallbackKeys.includes(key)) {
+      fallbackKeys.push(key);
+    }
+  });
+
+  for (let idx = 0; idx < fallbackKeys.length; idx++) {
+    const candidate = eventEntry.state[fallbackKeys[idx]];
+    if (Number.isFinite(candidate) && candidate > 0 && hasScriptEntry(candidate)) {
+      return candidate;
+    }
+  }
+
+  return Number.isFinite(entry) && entry > 0 ? entry : 0;
 }
 
 function getPartyMember(index) {
@@ -427,10 +530,15 @@ battle.main = function*() {
   var battleState = BATTLE();
   for (var i = 0; i <= battleState.maxEnemyIndex; i++) {
     var enemyState = battleState.enemy[i];
-    var nextEntry = yield script.runTriggerScript(enemyState.scriptOnTurnStart, i);
+    var eventId = resolveEnemyEventObjectId(i);
+    var startScript = resolveEnemyScriptEntry(enemyState ? enemyState.scriptOnTurnStart : null, i, 'triggerScript');
+    if (!Number.isFinite(startScript) || startScript <= 0) {
+      continue;
+    }
+    var nextEntry = yield script.runTriggerScript(startScript, eventId);
     battleService.setEnemy(i, function(current) {
       if (!current) return current;
-      current.scriptOnTurnStart = nextEntry;
+      current.scriptOnTurnStart = Number.isFinite(nextEntry) && nextEntry > 0 ? nextEntry : startScript;
       return current;
     });
 
@@ -504,9 +612,9 @@ battle.freeBattleSprites = function() {
  */
 battle.getPlayerBattleSprite = function(playerRole) {
   log.trace(['[BATTLE] getPlayerBattleSprite', playerRole].join(' '));
-  var w = worldService.getPlayerBattleSpriteNum(playerRole);
+  var w = getPlayerRoleFieldValue('spriteNumInBattle', playerRole, undefined);
   if (typeof w !== 'number') {
-    w = worldService.getPlayerSpriteNum(playerRole) || 0;
+    w = getPlayerRoleFieldValue('spriteNum', playerRole, 0);
   }
 
   var equipmentEffects = getEquipmentEffects();
@@ -652,9 +760,9 @@ battle.spawnEnemy = function(targetIndex, objectID, options) {
       var objectEnemy = objectEntry && objectEntry.enemy ? objectEntry.enemy : null;
       if (objectEnemy) {
         enemy.e = worldService.copyEnemyTemplate(objectEnemy.enemyID);
-        enemy.scriptOnTurnStart = objectEnemy.scriptOnTurnStart;
-        enemy.scriptOnBattleEnd = objectEnemy.scriptOnBattleEnd;
-        enemy.scriptOnReady = objectEnemy.scriptOnReady;
+        enemy.scriptOnTurnStart = resolveEnemyScriptEntry(objectEnemy.scriptOnTurnStart, targetIndex, 'triggerScript');
+        enemy.scriptOnBattleEnd = Number.isFinite(objectEnemy.scriptOnBattleEnd) ? objectEnemy.scriptOnBattleEnd : 0;
+        enemy.scriptOnReady = resolveEnemyScriptEntry(objectEnemy.scriptOnReady, targetIndex, 'autoScript');
       } else {
         enemy.e = null;
         enemy.scriptOnTurnStart = 0;
@@ -881,7 +989,11 @@ battle.won = function*() {
 
   battleState = BATTLE();
   for (var enemyIndex = 0; enemyIndex <= battleState.maxEnemyIndex; enemyIndex++) {
-    yield script.runTriggerScript(battleState.enemy[enemyIndex].scriptOnBattleEnd, enemyIndex);
+    var eventId = resolveEnemyEventObjectId(enemyIndex);
+    var battleEndScript = resolveEnemyScriptEntry(battleState.enemy[enemyIndex] ? battleState.enemy[enemyIndex].scriptOnBattleEnd : null, enemyIndex, 'triggerScript');
+    if (Number.isFinite(battleEndScript) && battleEndScript > 0) {
+      yield script.runTriggerScript(battleEndScript, eventId);
+    }
   }
 
   var postBattleParty = getParty();
@@ -962,7 +1074,7 @@ battle.playerEscape = function*() {
     }
     playerRole = escapeMember.playerRole;
 
-    if (worldService.getPlayerHP(playerRole) > 0) {
+    if (getPlayerHPValue(playerRole) > 0) {
       battleService.setPlayer(i, function(playerState) {
         if (!playerState) return playerState;
         playerState.currentFrame = 0;
@@ -980,7 +1092,7 @@ battle.playerEscape = function*() {
       playerRole = movingMember.playerRole;
       var player = battleState.player[j];
 
-      if (worldService.getPlayerHP(playerRole) > 0) {
+      if (getPlayerHPValue(playerRole) > 0) {
         // TODO: This is still not the same as the original game
         switch (j) {
           case 0:
@@ -1052,7 +1164,7 @@ battle.start = function*(enemyTeam, isBoss) {
     var w = partyMember.playerRole;
     var roleIndex = w;
 
-    if (worldService.getPlayerHP(w) === 0) {
+    if (getPlayerHPValue(w) === 0) {
       worldService.setPlayerHP(w, 1);
       worldService.mutatePlayerStatusEntry(w, function(row) {
         if (row) {

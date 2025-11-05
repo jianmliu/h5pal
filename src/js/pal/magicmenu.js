@@ -7,6 +7,10 @@ import gameDataAdapter from '../../services/game-data-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import {
+  getPlayerMP as getPlayerMPValue,
+  getPlayerMagicSlots as getPlayerMagicSlotsValue
+} from '../../services/player-state-adapter.js';
 
 log.trace('magicmenu module load');
 
@@ -214,9 +218,9 @@ magicmenu.magicSelectMenuInit = function(playerRole, inBattle, defaultMagic) {
   magicmenu.currentItem = 0;
   magicmenu.magicNum = 0;
 
-  magicmenu.playerMP = worldService.getPlayerMP(playerRole);
+  magicmenu.playerMP = getPlayerMPValue(playerRole);
 
-  const magicSlots = worldService.getPlayerMagicSlots(playerRole);
+  const magicSlots = getPlayerMagicSlotsValue(playerRole);
   for (var slotIndex = 0; slotIndex < magicSlots.length && slotIndex < Const.MAX_PLAYER_MAGICS; slotIndex++) {
     var objectId = magicSlots[slotIndex];
     if (!objectId) {

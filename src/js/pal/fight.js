@@ -2804,17 +2804,36 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
           // Using a defensive magic
           var w = 0;
 
-          if (BATTLE().player[playerIndex].action.target != -1) {
-            w = getPartyMemberRole(BATTLE().player[playerIndex].action.target);
-          }
-          else if (GameData.magic[magicNum].type == MagicType.Trance) {
-            w = playerRole;
-          }
+      if (BATTLE().player[playerIndex].action.target != -1) {
+        w = getPartyMemberRole(BATTLE().player[playerIndex].action.target);
+      }
+      else if (GameData.magic[magicNum].type == MagicType.Trance) {
+        w = playerRole;
+      }
 
-          const defensiveUseScript = yield script.runTriggerScript(
-            GameData.object[object].magic.scriptOnUse,
-            playerRole
-          );
+      var magicEntry = GameData.object[object] && GameData.object[object].magic;
+      if (log && typeof log.debug === 'function') {
+        try {
+          log.debug('[BATTLE] magic action object ' + object + ' ' + JSON.stringify(magicEntry || {}));
+        } catch (err) {
+          log.debug('[BATTLE] magic action object ' + object);
+        }
+      } else if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+        console.debug('[BATTLE] magic action object', object, magicEntry);
+      }
+      if (!magicEntry || typeof magicEntry.scriptOnUse !== 'number' || typeof magicEntry.scriptOnSuccess !== 'number') {
+        const message = '[BATTLE] missing magic scripts for object ' + object + ' use=' + (magicEntry && magicEntry.scriptOnUse) + ' success=' + (magicEntry && magicEntry.scriptOnSuccess);
+        if (log && typeof log.warning === 'function') {
+          log.warning(message);
+        } else if (typeof console !== 'undefined' && typeof console.warn === 'function') {
+          console.warn(message);
+        }
+      }
+
+      const defensiveUseScript = yield script.runTriggerScript(
+        GameData.object[object].magic.scriptOnUse,
+        playerRole
+      );
           worldService.mutateObjectEntry(object, function(objectEntry) {
             if (objectEntry && objectEntry.magic) {
               objectEntry.magic.scriptOnUse = defensiveUseScript;

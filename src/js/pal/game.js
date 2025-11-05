@@ -11,6 +11,8 @@ import worldService from '../../services/world-service.js';
 import { getPlayerRolesSnapshot } from '../../services/player-state-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
+import { hydrateGeneratedGameData } from '../../services/generated-game-data.js';
+import debugUtils from './debug-utils';
 import {
   getMusicTrack as getCachedMusicTrack,
   getBattleMusicTrack as getCachedBattleMusicTrack,
@@ -23,6 +25,32 @@ var game = {};
 
 const inventorySlice = inventorySignals();
 const cashSignal = inventorySlice.cash;
+
+function normaliseSaveBuffer(buffer) {
+  var size = (typeof SaveData !== 'undefined' && SaveData && typeof SaveData.size === 'number')
+    ? SaveData.size
+    : 0;
+  var result = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer || 0);
+  if (!size || result.length === size) {
+    return result;
+  }
+  if (result.length < size) {
+    var padded = new Uint8Array(size);
+    padded.set(result);
+    return padded;
+  }
+  return result.subarray(0, size);
+}
+let generatedGameDataFallback = null;
+
+if (typeof globalThis !== 'undefined') {
+  globalThis.debugUtils = debugUtils;
+} else if (typeof window !== 'undefined') {
+  window.debugUtils = debugUtils;
+} else if (typeof global !== 'undefined') {
+  global.debugUtils = debugUtils;
+}
+
 
 function getCashValue() {
   const value = cashSignal.value;
@@ -87,6 +115,7 @@ function readStorageSlot(slot) {
   for (var i = 0; i < bytes.length; ++i) {
     buf[i] = bytes[i] & 0xFF;
   }
+  buf = normaliseSaveBuffer(buf);
   var saveData = new SaveData(buf);
   var savedTimes = 0;
   if (parsed.savedTimes != null) {
@@ -123,10 +152,28 @@ game.clearPlayerStatus = function() {
 
 game.loadDefaultGame = function*() {
   // Load the default data from the game data files.
-  worldService.setEventObjectTable(readTypedArray(EventObject, Files.SSS.readChunk(0)));
-  worldService.setSceneTable(readTypedArray(Scene, Files.SSS.readChunk(1)));
-  worldService.setObjectTable(readTypedArray(ObjectUnion, Files.SSS.readChunk(2)));
-  worldService.setPlayerRoles(new PlayerRoles(Files.DATA.readChunk(3)));
+  if (Files.SSS && Files.DATA) {
+    worldService.setEventObjectTable(readTypedArray(EventObject, Files.SSS.readChunk(0)));
+    worldService.setSceneTable(readTypedArray(Scene, Files.SSS.readChunk(1)));
+    worldService.setObjectTable(readTypedArray(ObjectUnion, Files.SSS.readChunk(2)));
+    worldService.setScriptEntries(readTypedArray(ScriptEntry, Files.SSS.readChunk(4)));
+    worldService.setPlayerRoles(new PlayerRoles(Files.DATA.readChunk(3)));
+  } else if (generatedGameDataFallback) {
+    if (generatedGameDataFallback.eventObjects) {
+      worldService.setEventObjectTable(generatedGameDataFallback.eventObjects);
+    }
+    if (generatedGameDataFallback.scenes) {
+      worldService.setSceneTable(generatedGameDataFallback.scenes);
+    }
+    if (generatedGameDataFallback.objects) {
+      worldService.setObjectTable(generatedGameDataFallback.objects);
+    }
+    if (generatedGameDataFallback.playerRoles) {
+      worldService.setPlayerRoles(generatedGameDataFallback.playerRoles);
+    }
+  } else {
+    throw new Error('Default game data is unavailable: missing SSS.MKF/DATA.MKF and generated fallback data');
+  }
   // Set some other default data.
   worldService.setCash(0);
   worldService.setMusicTrack(0);
@@ -172,20 +219,101 @@ game.loadDefaultGame = function*() {
  * Initialize global game data.
  */
 game.initGlobalGameData = function*() {
+  if (!Files.SSS || !Files.DATA || true) {
+    const generatedPayload = yield resourceService.loadGeneratedGameData();
+    generatedGameDataFallback = generatedPayload ? hydrateGeneratedGameData(generatedPayload) : null;
+    if (generatedGameDataFallback) {
+      // Apply immediately so the world-service caches (script/object tables, etc.) stay in sync.
+      worldService.setEventObjectTable(generatedGameDataFallback.eventObjects || []);
+      worldService.setSceneTable(generatedGameDataFallback.scenes || []);
+      worldService.setObjectTable(generatedGameDataFallback.objects || []);
+      if (generatedGameDataFallback.playerRoles) {
+        worldService.setPlayerRoles(generatedGameDataFallback.playerRoles);
+      }
+      if (generatedGameDataFallback.scriptEntries) {
+        worldService.setScriptEntries(generatedGameDataFallback.scriptEntries);
+      }
+      if (generatedGameDataFallback.store) {
+        worldService.setStoreTable(generatedGameDataFallback.store);
+      }
+      if (generatedGameDataFallback.enemy) {
+        worldService.setEnemyTable(generatedGameDataFallback.enemy);
+      }
+      if (generatedGameDataFallback.enemyTeam) {
+        worldService.setEnemyTeamTable(generatedGameDataFallback.enemyTeam);
+      }
+      if (generatedGameDataFallback.magic) {
+        worldService.setMagicTable(generatedGameDataFallback.magic);
+      }
+      if (generatedGameDataFallback.battleField) {
+        worldService.setBattleFieldTable(generatedGameDataFallback.battleField);
+      }
+      if (generatedGameDataFallback.levelUpMagic) {
+        worldService.setLevelUpMagicTable(generatedGameDataFallback.levelUpMagic);
+      }
+      if (generatedGameDataFallback.battleEffectIndex) {
+        worldService.setBattleEffectIndexTable(generatedGameDataFallback.battleEffectIndex);
+      }
+      if (generatedGameDataFallback.enemyPos) {
+        worldService.setEnemyPositionTable(generatedGameDataFallback.enemyPos);
+      }
+      if (generatedGameDataFallback.levelUpExp) {
+        worldService.setLevelUpExpTable(generatedGameDataFallback.levelUpExp);
+      }
+      if (console && console.debug) {
+        console.debug('[Game] loaded generated fallback', {
+          scenes: generatedGameDataFallback.scenes && generatedGameDataFallback.scenes.length,
+          eventObjects: generatedGameDataFallback.eventObjects && generatedGameDataFallback.eventObjects.length,
+          scriptEntries: generatedGameDataFallback.scriptEntries && generatedGameDataFallback.scriptEntries.length
+        });
+      }
+    } else if (console && console.warn) {
+      console.warn('[Game] generated fallback game-data missing or invalid');
+    }
+  } else {
+    generatedGameDataFallback = null;
+  }
+
   // MKF bundles are preloaded during startup via the resource service.
-  worldService.setScriptEntries(readTypedArray(ScriptEntry, Files.SSS.readChunk(4)));
-  worldService.setStoreTable(readTypedArray(Store, Files.DATA.readChunk(0)));
-  worldService.setEnemyTable(readTypedArray(Enemy, Files.DATA.readChunk(1)));
-  worldService.setEnemyTeamTable(readTypedArray(EnemyTeam, Files.DATA.readChunk(2)));
-  worldService.setMagicTable(readTypedArray(Magic, Files.DATA.readChunk(4)));
-  worldService.setBattleFieldTable(readTypedArray(BattleField, Files.DATA.readChunk(5)));
-  worldService.setLevelUpMagicTable(readTypedArray(LevelUpMagicAll, Files.DATA.readChunk(6)));
-  worldService.setBattleEffectIndexTable(readArray2D(
-    Files.DATA.readChunk(11),
-    10, 2, 2, 0
-  ));
-  worldService.setEnemyPositionTable(new EnemyPos(Files.DATA.readChunk(13)));
-  worldService.setLevelUpExpTable(readArray(Files.DATA.readChunk(14), Const.MAX_LEVELS, 2, 0));
+  if (generatedGameDataFallback && generatedGameDataFallback.scriptEntries) {
+    worldService.setScriptEntries(generatedGameDataFallback.scriptEntries);
+  } else if (Files.SSS) {
+    worldService.setScriptEntries(readTypedArray(ScriptEntry, Files.SSS.readChunk(4)));
+  } else {
+    throw new Error('Generated game data fallback is unavailable and SSS.MKF is missing');
+  }
+
+  if (generatedGameDataFallback) {
+    if (generatedGameDataFallback.store) {
+      worldService.setStoreTable(generatedGameDataFallback.store);
+    }
+    if (generatedGameDataFallback.enemy) {
+      worldService.setEnemyTable(generatedGameDataFallback.enemy);
+    }
+    if (generatedGameDataFallback.enemyTeam) {
+      worldService.setEnemyTeamTable(generatedGameDataFallback.enemyTeam);
+    }
+    if (generatedGameDataFallback.magic) {
+      worldService.setMagicTable(generatedGameDataFallback.magic);
+    }
+    if (generatedGameDataFallback.battleField) {
+      worldService.setBattleFieldTable(generatedGameDataFallback.battleField);
+    }
+    if (generatedGameDataFallback.levelUpMagic) {
+      worldService.setLevelUpMagicTable(generatedGameDataFallback.levelUpMagic);
+    }
+    if (generatedGameDataFallback.battleEffectIndex) {
+      worldService.setBattleEffectIndexTable(generatedGameDataFallback.battleEffectIndex);
+    }
+    if (generatedGameDataFallback.enemyPos) {
+      worldService.setEnemyPositionTable(generatedGameDataFallback.enemyPos);
+    }
+    if (generatedGameDataFallback.levelUpExp) {
+      worldService.setLevelUpExpTable(generatedGameDataFallback.levelUpExp);
+    }
+  } else {
+    throw new Error('Generated game data fallback is unavailable and DATA.MKF is missing');
+  }
 };
 
 game.loadGame = function*(slot) {
@@ -197,7 +325,7 @@ game.loadGame = function*(slot) {
   // Read all data from the file and close.
   try {
     var buffer = yield resourceService.loadFiles(slot + '.RPG');
-    var buf = new Uint8Array(buffer);
+    var buf = normaliseSaveBuffer(new Uint8Array(buffer));
     var s = (new SaveData(buf)).copy();
   } catch(ex) {
     return false;

@@ -42,7 +42,7 @@ music.play = function() {
       audio.pause();
       audio.load();
     } catch (ex) {
-      log.warn('[MUSIC] preload failed: %o', ex);
+      log.warn('[MUSIC] preload failed: %s', ex && ex.message ? ex.message : ex);
     }
   }
   audio.pause();
@@ -50,12 +50,12 @@ music.play = function() {
   try {
     playPromise = audio.play();
   } catch (ex) {
-    log.warn('[MUSIC] play failed: %o', ex);
+    log.warn('[MUSIC] play failed: %s', ex && ex.message ? ex.message : ex);
     return;
   }
   if (playPromise && typeof playPromise.catch === 'function') {
     playPromise.catch(function(err) {
-      log.warn('[MUSIC] playback rejected: %o', err);
+      log.warn('[MUSIC] playback rejected: %s', err && err.message ? err.message : err);
     });
   }
 };
@@ -66,7 +66,7 @@ music.stop = function() {
     try {
       audio.pause();
     } catch (ex) {
-      log.warn('[MUSIC] stop failed: %o', ex);
+      log.warn('[MUSIC] stop failed: %s', ex && ex.message ? ex.message : ex);
     }
   }
 };

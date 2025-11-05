@@ -1445,7 +1445,7 @@ class WorldService extends EventBus {
     return this._copyStructIntoGlobal('poisonStatus', struct);
   }
 
-  getPlayerMagicSlots(roleId) {
+  _getPlayerMagicSlots(roleId) {
     const roles = this.getPlayerRoles();
     if (!roles || !Array.isArray(roles.magic)) {
       return [];
@@ -1468,7 +1468,7 @@ class WorldService extends EventBus {
   }
 
   findPlayerMagicSlot(roleId, magicId) {
-    const slots = this.getPlayerMagicSlots(roleId);
+    const slots = this._getPlayerMagicSlots(roleId);
     for (let i = 0; i < slots.length; i++) {
       if (slots[i] === magicId) {
         return i;
@@ -2090,11 +2090,6 @@ class WorldService extends EventBus {
     return snapshot;
   }
 
-  getPlayerHP(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.HP ? roles.HP[roleId] || 0 : 0;
-  }
-
   setPlayerHP(roleId, value) {
     return this.mutatePlayerRoles((roles) => {
       if (roles && roles.HP) {
@@ -2106,13 +2101,8 @@ class WorldService extends EventBus {
 
   adjustPlayerHP(roleId, delta) {
     const adjustment = Number.isFinite(delta) ? delta : 0;
-    const current = this.getPlayerHP(roleId);
+    const current = this._getPlayerRoleArrayValue('HP', roleId, 0);
     return this.setPlayerHP(roleId, current + adjustment);
-  }
-
-  getPlayerMP(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.MP ? roles.MP[roleId] || 0 : 0;
   }
 
   setPlayerMP(roleId, value) {
@@ -2126,13 +2116,8 @@ class WorldService extends EventBus {
 
   adjustPlayerMP(roleId, delta) {
     const adjustment = Number.isFinite(delta) ? delta : 0;
-    const current = this.getPlayerMP(roleId);
+    const current = this._getPlayerRoleArrayValue('MP', roleId, 0);
     return this.setPlayerMP(roleId, current + adjustment);
-  }
-
-  getPlayerMaxHP(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.maxHP ? roles.maxHP[roleId] || 0 : 0;
   }
 
   setPlayerMaxHP(roleId, value) {
@@ -2143,12 +2128,6 @@ class WorldService extends EventBus {
       return roles;
     });
   }
-
-  getPlayerMaxMP(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.maxMP ? roles.maxMP[roleId] || 0 : 0;
-  }
-
   setPlayerMaxMP(roleId, value) {
     return this.mutatePlayerRoles((roles) => {
       if (roles && roles.maxMP) {
@@ -2157,12 +2136,6 @@ class WorldService extends EventBus {
       return roles;
     });
   }
-
-  getPlayerLevel(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.level ? roles.level[roleId] || 0 : 0;
-  }
-
   setPlayerLevel(roleId, value) {
     return this.mutatePlayerRoles((roles) => {
       if (roles && roles.level) {
@@ -2171,32 +2144,6 @@ class WorldService extends EventBus {
       return roles;
     });
   }
-
-  getPlayerNameId(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.name ? roles.name[roleId] || 0 : 0;
-  }
-
-  getPlayerSpriteNum(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.spriteNum ? roles.spriteNum[roleId] || 0 : 0;
-  }
-
-  getPlayerWalkFrames(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.walkFrames ? roles.walkFrames[roleId] || 0 : 0;
-  }
-
-  getPlayerAvatarId(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.avatar ? roles.avatar[roleId] || 0 : 0;
-  }
-
-  getPlayerAttackStrength(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.attackStrength ? roles.attackStrength[roleId] || 0 : 0;
-  }
-
   setPlayerAttackStrength(roleId, value) {
     return this.mutatePlayerRoles((roles) => {
       if (roles && roles.attackStrength) {
@@ -2205,12 +2152,6 @@ class WorldService extends EventBus {
       return roles;
     });
   }
-
-  getPlayerMagicStrength(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.magicStrength ? roles.magicStrength[roleId] || 0 : 0;
-  }
-
   setPlayerMagicStrength(roleId, value) {
     return this.mutatePlayerRoles((roles) => {
       if (roles && roles.magicStrength) {
@@ -2218,11 +2159,6 @@ class WorldService extends EventBus {
       }
       return roles;
     });
-  }
-
-  getPlayerDefense(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.defense ? roles.defense[roleId] || 0 : 0;
   }
 
   setPlayerDefense(roleId, value) {
@@ -2234,11 +2170,6 @@ class WorldService extends EventBus {
     });
   }
 
-  getPlayerDexterity(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.dexterity ? roles.dexterity[roleId] || 0 : 0;
-  }
-
   setPlayerDexterity(roleId, value) {
     return this.mutatePlayerRoles((roles) => {
       if (roles && roles.dexterity) {
@@ -2248,11 +2179,6 @@ class WorldService extends EventBus {
     });
   }
 
-  getPlayerFleeRate(roleId) {
-    const roles = this.getPlayerRoles();
-    return roles && roles.fleeRate ? roles.fleeRate[roleId] || 0 : 0;
-  }
-
   setPlayerFleeRate(roleId, value) {
     return this.mutatePlayerRoles((roles) => {
       if (roles && roles.fleeRate) {
@@ -2260,18 +2186,6 @@ class WorldService extends EventBus {
       }
       return roles;
     });
-  }
-
-  getPlayerEquipment(slot, roleId) {
-    const roles = this.getPlayerRoles();
-    if (!roles || !Array.isArray(roles.equipment)) {
-      return 0;
-    }
-    const equipmentRow = roles.equipment[slot];
-    if (!equipmentRow) {
-      return 0;
-    }
-    return equipmentRow[roleId] || 0;
   }
 
   setPlayerEquipment(slot, roleId, value) {
@@ -2419,37 +2333,37 @@ class WorldService extends EventBus {
   }
 
   adjustPlayerMaxHP(roleId, delta) {
-    const current = this.getPlayerMaxHP(roleId);
+    const current = this._getPlayerRoleArrayValue('maxHP', roleId, 0);
     return this.setPlayerMaxHP(roleId, current + delta);
   }
 
   adjustPlayerMaxMP(roleId, delta) {
-    const current = this.getPlayerMaxMP(roleId);
+    const current = this._getPlayerRoleArrayValue('maxMP', roleId, 0);
     return this.setPlayerMaxMP(roleId, current + delta);
   }
 
   adjustPlayerAttackStrength(roleId, delta) {
-    const current = this.getPlayerAttackStrength(roleId);
+    const current = this._getPlayerRoleArrayValue('attackStrength', roleId, 0);
     return this.setPlayerAttackStrength(roleId, current + delta);
   }
 
   adjustPlayerMagicStrength(roleId, delta) {
-    const current = this.getPlayerMagicStrength(roleId);
+    const current = this._getPlayerRoleArrayValue('magicStrength', roleId, 0);
     return this.setPlayerMagicStrength(roleId, current + delta);
   }
 
   adjustPlayerDefense(roleId, delta) {
-    const current = this.getPlayerDefense(roleId);
+    const current = this._getPlayerRoleArrayValue('defense', roleId, 0);
     return this.setPlayerDefense(roleId, current + delta);
   }
 
   adjustPlayerDexterity(roleId, delta) {
-    const current = this.getPlayerDexterity(roleId);
+    const current = this._getPlayerRoleArrayValue('dexterity', roleId, 0);
     return this.setPlayerDexterity(roleId, current + delta);
   }
 
   adjustPlayerFleeRate(roleId, delta) {
-    const current = this.getPlayerFleeRate(roleId);
+    const current = this._getPlayerRoleArrayValue('fleeRate', roleId, 0);
     return this.setPlayerFleeRate(roleId, current + delta);
   }
 
@@ -2469,50 +2383,6 @@ class WorldService extends EventBus {
     }
     const view = new DataView(buffer.buffer, buffer.byteOffset, buffer.byteLength);
     return view.getUint16(offset, false);
-  }
-
-  getPlayerCoveredBy(roleId) {
-    return this._getPlayerRoleArrayValue('coveredBy', roleId, 0);
-  }
-
-  getPlayerMagicSound(roleId) {
-    return this._getPlayerRoleArrayValue('magicSound', roleId, 0);
-  }
-
-  getPlayerAttackSound(roleId) {
-    return this._getPlayerRoleArrayValue('attackSound', roleId, 0);
-  }
-
-  getPlayerCriticalSound(roleId) {
-    return this._getPlayerRoleArrayValue('criticalSound', roleId, 0);
-  }
-
-  getPlayerWeaponSound(roleId) {
-    return this._getPlayerRoleArrayValue('weaponSound', roleId, 0);
-  }
-
-  getPlayerCoverSound(roleId) {
-    return this._getPlayerRoleArrayValue('coverSound', roleId, 0);
-  }
-
-  getPlayerDyingSound(roleId) {
-    return this._getPlayerRoleArrayValue('dyingSound', roleId, 0);
-  }
-
-  getPlayerDeathSound(roleId) {
-    return this._getPlayerRoleArrayValue('deathSound', roleId, 0);
-  }
-
-  getPlayerMagicAt(slotIndex, roleId) {
-    const roles = this.getPlayerRoles();
-    if (!roles || !Array.isArray(roles.magic)) {
-      return 0;
-    }
-    const row = roles.magic[slotIndex];
-    if (!row) {
-      return 0;
-    }
-    return row[roleId] || 0;
   }
 
   _mutatePlayerRoleWord(fieldIndex, roleId, updater) {

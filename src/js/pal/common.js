@@ -44,6 +44,14 @@ for (var name in LogLevel) {
   log[name] = log.write.bind(log, level);
 }
 
+// Backward-compatible aliases.
+if (typeof log.warn === 'undefined' && typeof log.warning === 'function') {
+  log.warn = log.warning;
+}
+if (typeof log.info === 'undefined' && typeof log.notice === 'function') {
+  log.info = log.notice;
+}
+
 log.level = LogLevel.Debug;
 
 /**

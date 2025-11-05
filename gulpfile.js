@@ -6,6 +6,7 @@ import babel from 'gulp-babel';
 import stylus from 'gulp-stylus';
 import rename from 'gulp-rename';
 import path from 'path';
+import { exportGameData } from './scripts/export-game-data.mjs';
 
 const JS = ['src/**/*.js'];
 
@@ -46,6 +47,14 @@ function html() {
   console.log('Copying HTML files...');
   return gulp.src(['h5pal.html', 'pal.ico'])
     .pipe(gulp.dest('dist/'));
+}
+
+// Export MKF tables to JSON for runtime fallbacks
+async function exportGameDataTask() {
+  console.log('Exporting game data tables...');
+  const assetDir = path.resolve('pal-assets');
+  const outputPath = path.resolve(assetDir, 'game-data.json');
+  await exportGameData({ assets: assetDir, output: outputPath, pretty: true });
 }
 
 // Build libraries
@@ -94,9 +103,9 @@ function watchFiles() {
 }
 
 // Define tasks
-const build = gulp.series(buildLib, gulp.parallel(js, style, html));
+const build = gulp.series(exportGameDataTask, buildLib, gulp.parallel(js, style, html));
 const dev = gulp.series(build, gulp.parallel(serve, watchFiles));
 const defaultTask = gulp.series(clean, build);
 
 // Export tasks
-export { clean, js, style, html, buildLib, build, serve, dev, defaultTask as default };
+export { clean, js, style, html, buildLib, build, serve, dev, exportGameDataTask, defaultTask as default };

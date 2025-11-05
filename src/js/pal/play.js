@@ -142,12 +142,15 @@ play.update = function*(trigger) {
 
           var updatedTrigger = yield script.runTriggerScript(obj.triggerScript, eventObjectID);
           var resolvedTrigger = Number.isFinite(updatedTrigger) ? updatedTrigger : 0;
-          var triggerState = worldService.mutateEventObjectById(eventObjectID, (evt) => {
-            if (evt) {
-              evt.triggerScript = resolvedTrigger;
-            }
-            return evt;
-          });
+          var triggerState = null;
+          if (script.scriptSuccess) {
+            triggerState = worldService.mutateEventObjectById(eventObjectID, (evt) => {
+              if (evt) {
+                evt.triggerScript = resolvedTrigger;
+              }
+              return evt;
+            });
+          }
           if (triggerState) {
             obj = triggerState;
           } else {
@@ -396,10 +399,12 @@ play.search = function*() {
 
       // Execute the script
       var nextTriggerScript = yield script.runTriggerScript(p.triggerScript, eventId);
-      worldService.mutateEventObjectById(eventId, (evt) => {
-        evt.triggerScript = nextTriggerScript;
-        return evt;
-      });
+      if (script.scriptSuccess) {
+        worldService.mutateEventObjectById(eventId, (evt) => {
+          evt.triggerScript = nextTriggerScript;
+          return evt;
+        });
+      }
 
       // Clear inputs and delay for a short time
       yield sleep(50); // WARNING param normalize

@@ -2,6 +2,12 @@ import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import worldService from '../src/services/world-service.js';
 import stateService from '../src/services/state-service.js';
 import scriptExtras from '../src/js/pal/script-extras.js';
+import {
+  getPlayerLevel as getPlayerLevelValue,
+  getPlayerMaxHP as getPlayerMaxHPValue,
+  getPlayerMaxMP as getPlayerMaxMPValue,
+  getPlayerAttackStrength as getPlayerAttackStrengthValue
+} from '../src/services/player-state-adapter.js';
 
 const DEFAULT_PLAYER_ROLES = 4;
 const DEFAULT_POISON_SLOTS = 3;
@@ -198,9 +204,9 @@ describe('script extras service hooks', () => {
 
   it('levels up players through worldService and resets exp', () => {
     const role = 1;
-    const initialLevel = worldService.getPlayerLevel(role);
-    const initialMaxHP = worldService.getPlayerMaxHP(role);
-    const initialMaxMP = worldService.getPlayerMaxMP(role);
+    const initialLevel = getPlayerLevelValue(role);
+    const initialMaxHP = getPlayerMaxHPValue(role);
+    const initialMaxMP = getPlayerMaxMPValue(role);
 
     stateService.setGlobal('exp', {
       primaryExp: Array(DEFAULT_PLAYER_ROLES).fill(null).map(() => ({ exp: 123, level: initialLevel }))
@@ -208,11 +214,11 @@ describe('script extras service hooks', () => {
 
     script.playerLevelUp(role, 1);
 
-    const levelAfter = worldService.getPlayerLevel(role);
+    const levelAfter = getPlayerLevelValue(role);
     expect(levelAfter).toBe(initialLevel + 1);
-    expect(worldService.getPlayerMaxHP(role)).toBe(initialMaxHP + 10);
-    expect(worldService.getPlayerMaxMP(role)).toBe(initialMaxMP + 8);
-    expect(worldService.getPlayerAttackStrength(role)).toBeGreaterThan(10);
+    expect(getPlayerMaxHPValue(role)).toBe(initialMaxHP + 10);
+    expect(getPlayerMaxMPValue(role)).toBe(initialMaxMP + 8);
+    expect(getPlayerAttackStrengthValue(role)).toBeGreaterThan(10);
     expect(worldService.getExpState().primaryExp[role].exp).toBe(0);
     expect(worldService.getExpState().primaryExp[role].level).toBe(levelAfter);
   });

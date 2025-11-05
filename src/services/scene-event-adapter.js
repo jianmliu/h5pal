@@ -1,4 +1,5 @@
 import worldService from './world-service.js';
+import stateService from './state-service.js';
 import { sceneEventSignals } from '../state/slices/scene-events.js';
 
 const listeners = new Set();
@@ -160,13 +161,50 @@ function getEventObjectIds() {
     .filter((id) => Number.isFinite(id));
 }
 
+function getGlobalEventObjects() {
+  if (!stateService || typeof stateService.getGameData !== 'function') {
+    return [];
+  }
+  const table = stateService.getGameData('eventObject');
+  if (!table) {
+    return [];
+  }
+  const length = Array.isArray(table)
+    ? table.length
+    : (typeof table.length === 'number' ? table.length : 0);
+  if (!length) {
+    return [];
+  }
+  const results = [];
+  for (let i = 0; i < length; i++) {
+    const state = table[i];
+    if (!state) {
+      continue;
+    }
+    results.push({
+      index: i,
+      id: i + 1,
+      state
+    });
+  }
+  return results;
+}
+
 function findEventObjectEntry(predicate) {
   ensureInitialised();
   if (typeof predicate !== 'function') {
     return null;
   }
-  for (let i = 0; i < eventObjectsCache.length; i++) {
+  const cacheLength = eventObjectsCache.length;
+  for (let i = 0; i < cacheLength; i++) {
     const entry = eventObjectsCache[i];
+    if (entry && predicate(entry)) {
+      return entry;
+    }
+  }
+  const globalEntries = getGlobalEventObjects();
+  for (let i = 0; i < globalEntries.length; i++) {
+    const entry = globalEntries[i];
     if (entry && predicate(entry)) {
       return entry;
     }
@@ -186,6 +224,22 @@ function getEventObjectEntryByIndex(index) {
     return null;
   }
   return findEventObjectEntry((entry) => entry.index === index);
+}
+
+function getEventObjectIdForRelativeIndex(relativeIndex) {
+  ensureInitialised();
+  if (!Number.isFinite(relativeIndex)) {
+    return null;
+  }
+  const range = typeof worldService.getSceneEventObjectRange === 'function'
+    ? worldService.getSceneEventObjectRange()
+    : null;
+  if (!range || typeof range.start !== 'number') {
+    return null;
+  }
+  const absoluteIndex = range.start + Math.trunc(relativeIndex);
+  const entry = getEventObjectEntryByIndex(absoluteIndex);
+  return entry && Number.isFinite(entry.id) ? entry.id : null;
 }
 
 function getEventObjectStateById(id) {
@@ -225,6 +279,7 @@ export default {
   getEventObjectIds,
   getEventObjectEntryById,
   getEventObjectEntryByIndex,
+  getEventObjectIdForRelativeIndex,
   getEventObjectStateById,
   getEventObjectStateByIndex,
   getCollisionState,

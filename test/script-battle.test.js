@@ -5,6 +5,8 @@ import sceneEventAdapter from '../src/services/scene-event-adapter.js';
 import stateService from '../src/services/state-service.js';
 import { resetInventorySlice, getCashValue } from '../src/state/slices/inventory.js';
 import { resetScriptObjectSlice } from '../src/state/slices/script-objects.js';
+import { getPlayerMP as getPlayerMPValue } from '../src/services/player-state-adapter.js';
+import { updatePlayerRolesValue } from '../src/state/slices/player-state.js';
 
 vi.mock('../src/js/pal/script-extras.js', () => ({
   default: {
@@ -492,6 +494,7 @@ describe('script utility behaviour', () => {
     Global.party = battleState.player.map((_, index) => ({ playerRole: index }));
     Global.maxPartyMemberIndex = battleState.player.length - 1;
     Global.inBattle = true;
+    updatePlayerRolesValue(GameData.playerRoles);
   });
 
   it('NPCWalkOneStep moves event object according to direction', () => {
@@ -542,10 +545,11 @@ describe('script utility behaviour', () => {
     GameData.magic[magicNumber] = { costMP: 5, baseDamage: 10 };
     GameData.playerRoles.MP[0] = 20;
     GameData.playerRoles.maxMP[0] = 30;
+    updatePlayerRolesValue(GameData.playerRoles);
     await runInstruction(0x0057, [magicObjectId, 2], { eventObjectID: 0 });
 
     expect(GameData.magic[magicNumber].baseDamage).toBe(40);
-    expect(worldService.getPlayerMP(0)).toBe(0);
+    expect(getPlayerMPValue(0)).toBe(0);
   });
 
   it('scales magic base damage based on current cash (opcode 0x0088)', async () => {

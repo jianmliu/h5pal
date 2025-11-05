@@ -42,18 +42,22 @@ describe('sceneEventAdapter', () => {
 
     globalThis.GameData = {
       eventObject: [
-        { state: 1, triggerMode: 0, autoScript: 0, x: 10, y: 20, layer: 0, direction: 0, currentFrameNum: 0, vanishTime: 0 }
+        { state: 1, triggerMode: 0, triggerScript: 123, autoScript: 0, x: 10, y: 20, layer: 0, direction: 0, currentFrameNum: 0, vanishTime: 0 },
+        { state: 2, triggerMode: 0, triggerScript: 456, autoScript: 789, x: 30, y: 40, layer: 0, direction: 1, currentFrameNum: 0, vanishTime: 0 }
       ],
       scene: [
-        { eventObjectIndex: 0, mapNum: 0, scriptOnEnter: 0 }
+        { eventObjectIndex: 0, mapNum: 0, scriptOnEnter: 0 },
+        { eventObjectIndex: 1, mapNum: 1, scriptOnEnter: 0 }
       ],
       map: [
-        { metadata: { name: 'map0' } }
+        { metadata: { name: 'map0' } },
+        { metadata: { name: 'map1' } }
       ]
     };
 
     worldService.init();
     worldService.syncEventObjects();
+
   });
 
   afterEach(() => {
@@ -77,7 +81,8 @@ describe('sceneEventAdapter', () => {
 
     worldService.setSceneId(2);
     worldService.setEventObjectTable([
-      { state: 2, triggerMode: 0, autoScript: 0, x: 5, y: 5, layer: 0, direction: 0, currentFrameNum: 1, vanishTime: 0 }
+      { state: 3, triggerMode: 0, autoScript: 0, x: 5, y: 5, layer: 0, direction: 0, currentFrameNum: 1, vanishTime: 0 },
+      { state: 4, triggerMode: 0, autoScript: 0, x: 6, y: 6, layer: 0, direction: 1, currentFrameNum: 0, vanishTime: 0 }
     ]);
 
     const sceneIdEvent = events.find((event) => event.type === 'sceneId');
@@ -93,5 +98,19 @@ describe('sceneEventAdapter', () => {
     expect(sceneEventAdapter.getEventObjectsVersion()).toBeGreaterThan(0);
 
     unsubscribe();
+  });
+
+  it('falls back to global event data when entry is outside current scene range', () => {
+    // First scene only covers index 0. Entry with id 2 belongs to next scene and
+    // should be resolved via the worldService fallback.
+    const arrayLike = { length: globalThis.GameData.eventObject.length };
+    for (let i = 0; i < arrayLike.length; i++) {
+      arrayLike[i] = globalThis.GameData.eventObject[i];
+    }
+    stateService.setGameData('eventObject', arrayLike);
+    const entry = sceneEventAdapter.getEventObjectEntryById(2);
+    expect(entry).toBeTruthy();
+    expect(entry && entry.id).toBe(2);
+    expect(entry && entry.state && entry.state.triggerScript).toBe(456);
   });
 });

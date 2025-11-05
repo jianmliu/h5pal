@@ -6,6 +6,10 @@ import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
 import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import {
+  getPlayerRoleField,
+  getPlayerRoleFieldValue
+} from '../../services/player-state-adapter.js';
 
 log.trace('scene module load');
 
@@ -164,8 +168,8 @@ scene.getPlayerSprite = function(i) {
     // 如果是跟随者，那么spriteNum就是它的ID
     spriteNum = playerID;
   } else {
-    // 否则从 worldService 的 playerRoles 数据里获取 spriteNum（我也不知道为虾米要这么搞……）
-    spriteNum = worldService.getPlayerSpriteNum(playerID);
+    // 否则从玩家数据中读取 spriteNum
+    spriteNum = getPlayerRoleFieldValue('spriteNum', playerID, undefined);
   }
   if (typeof spriteNum === 'undefined') {
     return null;
@@ -235,12 +239,18 @@ scene.updatePartyGestures = function(walking) {
   //log.trace('[Scene] updatePartyGestures ' + walking);
   var party = getCachedPartyState();
   var trail = getCachedTrailState();
-  var playerRoles = worldService.getPlayerRoles();
+  var walkFrames = getPlayerRoleField('walkFrames');
   var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
   var viewport = worldService.getViewport();
   var partyOffset = worldService.getPartyOffset();
   var partyDirection = worldService.getPartyDirection();
   var followerCount = getCachedFollowerCount();
+  function resolveWalkFrame(roleId, fallback) {
+    if (Array.isArray(walkFrames) && typeof walkFrames[roleId] === 'number') {
+      return walkFrames[roleId];
+    }
+    return fallback;
+  }
 
   if (!party.length || !trail.length) {
     return;
@@ -264,10 +274,10 @@ scene.updatePartyGestures = function(walking) {
     party[0].x = PAL_X(partyOffset);
     party[0].y = PAL_Y(partyOffset);
 
-    if (playerRoles.walkFrames[party[0].playerRole] === 4) {
+    if (resolveWalkFrame(party[0].playerRole, 0) === 4) {
       party[0].frame = partyDirection * 4 + scene.thisStepFrame;
     } else {
-       party[0].frame = partyDirection * 3 + stepFrameLeader;
+      party[0].frame = partyDirection * 3 + stepFrameLeader;
     }
 
     // Update the gestures and positions for other party members
@@ -297,7 +307,7 @@ scene.updatePartyGestures = function(walking) {
 
       // Update gesture for this party member
       var gestureTrail = trail[2] || baseTrail;
-      if (playerRoles.walkFrames[party[i].playerRole] === 4) {
+      if (resolveWalkFrame(party[i].playerRole, 0) === 4) {
         party[i].frame = gestureTrail.direction * 4 + scene.thisStepFrame;
       } else {
         party[i].frame = gestureTrail.direction * 3 + stepFrameLeader;
@@ -312,15 +322,15 @@ scene.updatePartyGestures = function(walking) {
     }
   } else {
     // Player is not moved. Use the "standing" gesture instead of "walking" one.
-    var i = playerRoles.walkFrames[party[0].playerRole];
+    var i = resolveWalkFrame(party[0].playerRole, 3);
     if (i === 0) {
-       i = 3;
+      i = 3;
     }
     party[0].frame = partyDirection * i;
 
     var idleTrail = trail[2] || leadTrail;
     for (i = 1; i <= maxPartyMemberIndex && i < party.length; i++) {
-      var f = playerRoles.walkFrames[party[i].playerRole];
+      var f = resolveWalkFrame(party[i].playerRole, 3);
       if (f === 0) {
         f = 3;
       }

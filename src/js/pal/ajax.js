@@ -33,6 +33,9 @@ var loadBinaryFile = ajax.loadBinaryFile = function(path) {
         var data = xhr.response,
             buf = data; //new Uint8Array(data);
         resolve(buf);
+      } else if (xhr.status === 404) {
+        console.warn('[ajax] loadBinaryFile missing', path, xhr.status);
+        resolve(new ArrayBuffer(0));
       } else {
         reject(xhr.status);
       }
@@ -141,8 +144,20 @@ var loadMKF = ajax.loadMKF = function(mkfList) {
     return ajax.load(fileList).then(function(bufs) {
       for (var i=0; i<mkfList.length; ++i) {
         var name = mkfList[i];
-        //ajax[name] = bufs[i];
-        ajax.MKF[name] = new MKF(bufs[i]);
+        var buffer = bufs[i];
+        var mkf = null;
+        try {
+          if (buffer && buffer.byteLength >= 8) {
+            var view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+            mkf = new MKF(view);
+          } else {
+            console.warn('[ajax] MKF', name, 'missing or empty, continuing with fallback');
+          }
+        } catch (err) {
+          console.warn('[ajax] failed to parse MKF', name, err);
+          mkf = null;
+        }
+        ajax.MKF[name] = mkf;
       }
       return bufs;
     });

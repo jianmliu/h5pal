@@ -14,6 +14,15 @@ import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import {
+  getPlayerEquipment as getPlayerEquipmentFromAdapter,
+  getPlayerHP as getPlayerHPValue,
+  getPlayerMaxHP as getPlayerMaxHPValue,
+  getPlayerMP as getPlayerMPValue,
+  getPlayerAttackStrength as getPlayerAttackStrengthValue,
+  getPlayerNameId as getPlayerNameIdValue,
+  getPlayerRoleWord as getPlayerRoleWordValue
+} from '../../services/player-state-adapter.js';
+import {
   getBattleStateSnapshot,
   subscribeBattleState
 } from '../../services/battle-state-adapter.js';
@@ -149,7 +158,7 @@ function getTrailValue() {
 }
 
 function getPlayerEquipmentValue(slot, roleId) {
-  return worldService.getPlayerEquipment(slot, roleId);
+  return getPlayerEquipmentFromAdapter(slot, roleId);
 }
 
 function setPlayerEquipmentValue(slot, roleId, value) {
@@ -474,13 +483,38 @@ function getScriptEntrySafe(scriptEntry, eventObjectID, context) {
     warnLog('[SCRIPT] ' + (context || 'script') +
       ' invalid script index ' + scriptEntry +
       ' (event ' + (eventObjectID || 0) + ')');
-    return null;
+    if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+    let battleSnapshot = null;
+    try {
+      if (battleService && typeof battleService.getState === 'function') {
+        battleSnapshot = battleService.getState();
+      }
+    } catch (err) {
+      battleSnapshot = 'unavailable: ' + err.message;
+    }
+    console.debug('[SCRIPT] invalid index debug', {
+      context: context || 'script',
+      scriptEntry,
+      eventObjectID: eventObjectID || 0,
+      stack: (new Error()).stack,
+      battleAction: battleSnapshot && battleSnapshot.player ? battleSnapshot.player.map((player) => player && player.action) : battleSnapshot
+    });
   }
+  return null;
+}
   var sc = scriptObjectAdapter.getScriptEntry(scriptEntry);
   if (!sc) {
     warnLog('[SCRIPT] ' + (context || 'script') +
       ' missing script entry ' + scriptEntry +
       ' (event ' + (eventObjectID || 0) + ')');
+    if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+      console.debug('[SCRIPT] missing entry debug', {
+        context: context || 'script',
+        scriptEntry,
+        eventObjectID: eventObjectID || 0,
+        stack: (new Error()).stack
+      });
+    }
     script.scriptSuccess = false;
     return null;
   }
@@ -1442,8 +1476,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         script.scriptSuccess = false;
         forEachPartyMember(function(member) {
           var roleIndex = member.playerRole;
-          if (worldService.getPlayerHP(roleIndex) === 0) {
-            var revivedHP = Math.floor(worldService.getPlayerMaxHP(roleIndex) * sc.operand[1] / 10);
+          if (getPlayerHPValue(roleIndex) === 0) {
+            var revivedHP = Math.floor(getPlayerMaxHPValue(roleIndex) * sc.operand[1] / 10);
             worldService.setPlayerHP(roleIndex, revivedHP);
             script.curePoisonByLevel(roleIndex, 3);
             for (x = 0; x < PlayerStatus.All; x++) {
@@ -1454,8 +1488,8 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         });
       } else {
         // Apply to one player
-        if (worldService.getPlayerHP(eventObjectID) === 0) {
-          var revivedHP = Math.floor(worldService.getPlayerMaxHP(eventObjectID) * sc.operand[1] / 10);
+        if (getPlayerHPValue(eventObjectID) === 0) {
+          var revivedHP = Math.floor(getPlayerMaxHPValue(eventObjectID) * sc.operand[1] / 10);
           worldService.setPlayerHP(eventObjectID, revivedHP);
           script.curePoisonByLevel(eventObjectID, 3);
           for (x = 0; x < PlayerStatus.All; x++) {
@@ -1716,7 +1750,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       } else {
         playerRole = sc.operand[2] - 1;
       }
-      var baseValue = worldService.getPlayerRoleWord(sc.operand[0], playerRole) || 0;
+      var baseValue = getPlayerRoleWordValue(sc.operand[0], playerRole, 0);
       var val = baseValue * floor(SHORT(sc.operand[1]) / 100);
       setEquipmentEffectWordValue(BodyPart.Extra, sc.operand[0], playerRole, val);
       break;
@@ -2004,7 +2038,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       script.debug('[SCRIPT] Set the base damage of magic according to MP value'); // 酒神吧大概是
       i = ((sc.operand[1] === 0) ? 8 : sc.operand[1]);
       j = getMagicNumberFromObject(sc.operand[0]);
-      var mpValue = worldService.getPlayerMP(eventObjectID);
+      var mpValue = getPlayerMPValue(eventObjectID);
       mutateMagic(function(magicData) {
         if (magicData && magicData[j]) {
           magicData[j].baseDamage = mpValue * i;
@@ -2031,7 +2065,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x005A:
       script.debug('[SCRIPT] Halve the player\'s HP');
       // The eventObjectID parameter here should indicate the player role
-      var currentHP = worldService.getPlayerHP(eventObjectID);
+      var currentHP = getPlayerHPValue(eventObjectID);
       worldService.setPlayerHP(eventObjectID, Math.floor(currentHP / 2));
       break;
     case 0x005B:
@@ -2122,7 +2156,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
       w = sc.operand[1] * 5;
       var attackingMember = getPartyMember(BATTLE().movingPlayerIndex);
       var attackingRole = attackingMember ? attackingMember.playerRole : 0;
-      w += worldService.getPlayerAttackStrength(attackingRole);
+      w += getPlayerAttackStrengthValue(attackingRole);
       w += randomLong(0, 4);
       yield battle.simulateMagic(SHORT(eventObjectID), sc.operand[0], w);
       break;
@@ -2237,7 +2271,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         var shouldJump = false;
         forEachPartyMember(function(member) {
           var roleId = member.playerRole;
-          if (worldService.getPlayerHP(roleId) < worldService.getPlayerMaxHP(roleId)) {
+          if (getPlayerHPValue(roleId) < getPlayerMaxHPValue(roleId)) {
             shouldJump = true;
           }
         });
@@ -2302,7 +2336,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         for (var partyIndex = 0; partyIndex <= maxIndex && partyIndex < party.length; partyIndex++) {
           var member = party[partyIndex];
           if (!member) continue;
-          if (worldService.getPlayerNameId(member.playerRole) === sc.operand[0]) {
+          if (getPlayerNameIdValue(member.playerRole) === sc.operand[0]) {
             scriptEntry = sc.operand[1] - 1;
             return;
           }
@@ -2978,6 +3012,19 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
  * @yield {Number} The entry point of the script.
  */
 script.runTriggerScript = function*(scriptEntry, eventObjectID) {
+  if (typeof scriptEntry === 'undefined') {
+    const debugPayload = {
+      eventObjectID: eventObjectID || 0,
+      stack: (new Error()).stack
+    };
+    if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+      console.debug('[SCRIPT] runTriggerScript received undefined entry', debugPayload);
+    }
+    warnLog('[SCRIPT] runTriggerScript received invalid entry ' + scriptEntry +
+      ' (event ' + (eventObjectID || 0) + ')');
+    script.scriptSuccess = false;
+    return 0;
+  }
   if (typeof scriptEntry !== 'number' || Number.isNaN(scriptEntry)) {
     warnLog('[SCRIPT] runTriggerScript received invalid entry ' + scriptEntry +
       ' (event ' + (eventObjectID || 0) + ')');
@@ -3072,6 +3119,21 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
         break;
       case 0x0004:
         script.debug('[SCRIPT] Call script');
+        if (typeof sc.operand[0] === 'undefined') {
+          console.debug('[SCRIPT] call script operand undefined', {
+            scriptEntry,
+            operands: sc.operand,
+            battleAction: (function() {
+              try {
+                return battleService && typeof battleService.getState === 'function'
+                  ? (battleService.getState()?.player || []).map((player) => player && player.action)
+                  : null;
+              } catch (err) {
+                return 'unavailable: ' + err.message;
+              }
+            })()
+          });
+        }
         yield script.runTriggerScript(sc.operand[0], ((sc.operand[1] == 0) ? eventObjectID : sc.operand[1]));
         scriptEntry++;
         break;
@@ -3255,6 +3317,21 @@ script.runAutoScript = function*(scriptEntry, eventObjectID) {
       break;
     case 0x0004:
       script.debug('[SCRIPT] Call subroutine');
+      if (typeof sc.operand[0] === 'undefined') {
+        console.debug('[SCRIPT] autoscript call operand undefined', {
+          scriptEntry,
+          operands: sc.operand,
+          battleAction: (function() {
+            try {
+              return battleService && typeof battleService.getState === 'function'
+                ? (battleService.getState()?.player || []).map((player) => player && player.action)
+                : null;
+            } catch (err) {
+              return 'unavailable: ' + err.message;
+            }
+          })()
+        });
+      }
       yield script.runTriggerScript(sc.operand[0], sc.operand[1] ? sc.operand[1] : eventObjectID);
       scriptEntry++;
       break;

@@ -16,7 +16,10 @@ import {
   getPlayerFleeRate as getPlayerFleeRateValue,
   getEquipmentEffectScalar as getEquipmentEffectScalarFromAdapter,
   getEquipmentEffectElemental as getEquipmentEffectElementalFromAdapter,
-  getPlayerStatusValue as getPlayerStatusValueFromAdapter
+  getPlayerStatusValue as getPlayerStatusValueFromAdapter,
+  getPlayerEquipment as getPlayerEquipmentValue,
+  getPlayerMagicSlots as getPlayerMagicSlotsValue,
+  getPlayerLevel as getPlayerLevelValue
 } from '../../services/player-state-adapter.js';
 console.trace('script_extras module load');
 
@@ -87,7 +90,7 @@ script_extras.init = function*(surf, _script) {
     worldService.resetEquipmentEffects();
     for (var i=0; i<Const.MAX_PLAYER_ROLES; ++i) {
       for (var j=0; j<Const.MAX_PLAYER_EQUIPMENTS; ++j) {
-        var w = worldService.getPlayerEquipment(j, i);
+        var w = getPlayerEquipmentValue(j, i);
         if (w != 0) {
           var obj = scriptObjectAdapter.getObjectEntry(w);
           if (!obj || !obj.item) {
@@ -624,7 +627,7 @@ script_extras.init = function*(surf, _script) {
       return false;
     }
 
-    var slots = worldService.getPlayerMagicSlots(role);
+    var slots = getPlayerMagicSlotsValue(role);
     var targetSlot = -1;
     for (var i = 0; i < Const.MAX_PLAYER_MAGICS && i < slots.length; ++i) {
       if (!slots[i]) {
@@ -651,7 +654,7 @@ script_extras.init = function*(surf, _script) {
 
   script.playerLevelUp = function(role, level) {
     var requestedLevels = Math.max(0, level | 0);
-    var currentLevel = worldService.getPlayerLevel(role);
+    var currentLevel = getPlayerLevelValue(role);
     var targetLevel = currentLevel + requestedLevels;
     if (targetLevel > Const.MAX_LEVELS) {
       targetLevel = Const.MAX_LEVELS;

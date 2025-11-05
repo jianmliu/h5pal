@@ -6,6 +6,7 @@ import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { menuSelectionSignals } from '../../state/slices/menu-selections.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import { getPlayerEquipment as getPlayerEquipmentValue } from '../../services/player-state-adapter.js';
 
 log.trace('itemmenu module load');
 
@@ -265,7 +266,7 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
         }
         var roleId = member.playerRole;
         for (var j = 0; j < Const.MAX_PLAYER_EQUIPMENTS; j++) {
-          var equipId = worldService.getPlayerEquipment(j, roleId);
+          var equipId = getPlayerEquipmentValue(j, roleId);
           if (!equipId) {
             continue;
           }
