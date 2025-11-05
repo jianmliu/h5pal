@@ -292,7 +292,7 @@ function getBattleEffectIndexRow(id) {
   return battleEffectTableCache[id] || null;
 }
 
-function getExpStateSnapshot() {
+export function getExpStateSnapshot() {
   ensureInitialised();
   return expStateCache ? clone(expStateCache) : null;
 }

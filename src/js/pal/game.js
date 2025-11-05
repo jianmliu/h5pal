@@ -8,7 +8,11 @@ import res from './res';
 import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';
 import worldService from '../../services/world-service.js';
-import { getPlayerRolesSnapshot } from '../../services/player-state-adapter.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import {
+  getPlayerRolesSnapshot,
+  getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
+} from '../../services/player-state-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import { hydrateGeneratedGameData } from '../../services/generated-game-data.js';
@@ -18,6 +22,29 @@ import {
   getBattleMusicTrack as getCachedBattleMusicTrack,
   getBattleFieldId as getCachedBattleFieldId
 } from '../../services/battle-state-adapter.js';
+import {
+  getCollectValue as getCollectValueFlagValue,
+  getChaseRange as getChaseRangeFlagValue,
+  getChaseSpeedChangeCycles as getChaseSpeedCyclesFlagValue,
+  getBattleSpeed as getBattleSpeedFlagValue
+} from '../../services/game-flags-adapter.js';
+import {
+  getViewportValue as getViewportSnapshot,
+  getPaletteIdValue as getPaletteIdSnapshot,
+  getPartyDirectionValue as getPartyDirectionSnapshot,
+  getCurrentSaveSlotValue,
+  isNightPaletteEnabled,
+  getScreenWaveValue as getScreenWaveSnapshot,
+  getLayerValue as getLayerSnapshot
+} from '../../services/environment-adapter.js';
+import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.js';
+import {
+  getPartyStructSnapshot,
+  getTrailStructSnapshot,
+  getExpStructSnapshot,
+  getPoisonStructSnapshot,
+  getInventoryStructSnapshot
+} from '../../services/save-data-adapter.js';
 
 log.trace('game module load');
 
@@ -387,38 +414,41 @@ game._loadGame = function(s) {
 game._saveGame = function() {
   var saveData = new SaveData();
 
-  var viewport = worldService.getViewport();
+  var viewport = getViewportSnapshot();
   saveData.viewportX = PAL_X(viewport);
   saveData.viewportY = PAL_Y(viewport);
-  saveData.numPartyMember = worldService.getMaxPartyMemberIndex();
-  saveData.numScene = worldService.getSceneId();
-  saveData.paletteOffset = worldService.getNightPaletteFlag() ? 0x180 : 0;
-  saveData.partyDirection = worldService.getPartyDirection();
+  var maxPartyIndexSnapshot = getMaxPartyMemberIndexValue();
+  saveData.numPartyMember = Number.isFinite(maxPartyIndexSnapshot)
+    ? maxPartyIndexSnapshot
+    : worldService.getMaxPartyMemberIndex();
+  saveData.numScene = getSceneIdSnapshot();
+  saveData.paletteOffset = isNightPaletteEnabled() ? 0x180 : 0;
+  saveData.partyDirection = getPartyDirectionSnapshot();
   saveData.numMusic = getCachedMusicTrack();
   saveData.numBattleMusic = getCachedBattleMusicTrack();
   saveData.numBattleField = getCachedBattleFieldId();
-  saveData.screenWave = worldService.getScreenWave();
-  saveData.collectValue = worldService.getCollectValue();
-  saveData.layer = worldService.getLayer();
-  saveData.chaseRange = worldService.getChaseRange();
-  saveData.chaseSpeedChangeCycles = worldService.getChaseSpeedChangeCycles();
-  saveData.numFollower = worldService.getFollowerCount();
+  saveData.screenWave = getScreenWaveSnapshot();
+  saveData.collectValue = getCollectValueFlagValue();
+  saveData.layer = getLayerSnapshot();
+  saveData.chaseRange = getChaseRangeFlagValue();
+  saveData.chaseSpeedChangeCycles = getChaseSpeedCyclesFlagValue();
+  saveData.numFollower = partyTrailAdapter.getFollowerCount();
   saveData.cash = getCashValue();
   if (!PAL_CLASSIC) {
-    saveData.battleSpeed = worldService.getBattleSpeed();
+    saveData.battleSpeed = getBattleSpeedFlagValue();
     if (saveData.battleSpeed > 5 || saveData.battleSpeed == 0) {
       saveData.battleSpeed = 2;
     }
   }
-  var partyStruct = worldService.getPartyStruct();
+  var partyStruct = getPartyStructSnapshot();
   if (partyStruct && partyStruct.uint8Array) {
     saveData.party.uint8Array.set(partyStruct.uint8Array);
   }
-  var trailStruct = worldService.getTrailStruct();
+  var trailStruct = getTrailStructSnapshot();
   if (trailStruct && trailStruct.uint8Array) {
     saveData.trail.uint8Array.set(trailStruct.uint8Array);
   }
-  var expStruct = worldService.getExpState();
+  var expStruct = getExpStructSnapshot();
   if (expStruct && expStruct.uint8Array) {
     saveData.exp.uint8Array.set(expStruct.uint8Array);
   }
@@ -426,11 +456,11 @@ game._saveGame = function() {
   if (playerRoles && playerRoles.uint8Array) {
     memcpy(saveData.playerRoles.uint8Array, playerRoles.uint8Array, saveData.playerRoles.uint8Array.length);
   }
-  var poisonStruct = worldService.getPoisonStatusStruct();
+  var poisonStruct = getPoisonStructSnapshot();
   if (poisonStruct && poisonStruct.uint8Array) {
     saveData.poisonStatus.uint8Array.set(poisonStruct.uint8Array);
   }
-  var inventoryStruct = worldService.getInventoryStruct();
+  var inventoryStruct = getInventoryStructSnapshot();
   if (inventoryStruct && inventoryStruct.uint8Array) {
     saveData.inventory.uint8Array.set(inventoryStruct.uint8Array);
   }
@@ -460,7 +490,7 @@ game.getSaveSlotMeta = function(slot) {
 };
 
 game.saveGame = function(slot) {
-  slot = slot || worldService.getCurrentSaveSlot() || 1;
+  slot = slot || getCurrentSaveSlotValue() || 1;
   var existing = readStorageSlot(slot);
   var saveData = game._saveGame();
   var nextSavedTimes = (existing ? existing.savedTimes : (saveData.savedTimes || 0)) + 1;

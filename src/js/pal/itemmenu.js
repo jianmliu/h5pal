@@ -6,7 +6,10 @@ import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { menuSelectionSignals } from '../../state/slices/menu-selections.js';
 import { inventorySignals } from '../../state/slices/inventory.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
-import { getPlayerEquipment as getPlayerEquipmentValue } from '../../services/player-state-adapter.js';
+import {
+  getPlayerEquipment as getPlayerEquipmentValue,
+  getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
+} from '../../services/player-state-adapter.js';
 
 log.trace('itemmenu module load');
 
@@ -257,7 +260,10 @@ itemmenu.itemSelectMenuInit = function(itemFlags) {
         return inventory;
       }
       var party = partyTrailAdapter.getPartyState();
-      var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+      var maxPartyMemberIndex = getMaxPartyMemberIndexValue();
+      if (!Number.isFinite(maxPartyMemberIndex) || maxPartyMemberIndex < 0) {
+        maxPartyMemberIndex = Array.isArray(party) ? (party.length - 1) : -1;
+      }
       var capacity = getInventoryCapacityFromSignal();
       for (var i = 0; i <= maxPartyMemberIndex; i++) {
         var member = party[i];

@@ -13,6 +13,8 @@ import gameDataAdapter from '../../services/game-data-adapter.js';
 import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
+import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.js';
+import { getSceneEntry as getSceneEntrySnapshot } from '../../services/scene-data-adapter.js';
 import {
   getPlayerEquipment as getPlayerEquipmentFromAdapter,
   getPlayerHP as getPlayerHPValue,
@@ -20,7 +22,8 @@ import {
   getPlayerMP as getPlayerMPValue,
   getPlayerAttackStrength as getPlayerAttackStrengthValue,
   getPlayerNameId as getPlayerNameIdValue,
-  getPlayerRoleWord as getPlayerRoleWordValue
+  getPlayerRoleWord as getPlayerRoleWordValue,
+  getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
 } from '../../services/player-state-adapter.js';
 import {
   getBattleStateSnapshot,
@@ -29,6 +32,19 @@ import {
 import { inventorySignals } from '../../state/slices/inventory.js';
 import { gameFlagSignals } from '../../state/slices/game-flags.js';
 import { viewportSignals } from '../../state/slices/viewport.js';
+import {
+  shouldFadeIn,
+  getCurrentSaveSlotValue as getCurrentSaveSlotSnapshot,
+  getPaletteIdValue as getPaletteIdSnapshot,
+  isNightPaletteEnabled,
+  getViewportValue as getViewportSnapshot,
+  getPartyOffsetValue as getPartyOffsetSnapshot,
+  getPartyDirectionValue as getPartyDirectionSnapshot
+} from '../../services/environment-adapter.js';
+import {
+  getChaseRange as getChaseRangeFlagValue,
+  getCollectValue as getCollectValueFlagValue
+} from '../../services/game-flags-adapter.js';
 
 log.trace('script module load');
 
@@ -126,7 +142,7 @@ function getViewportValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return worldService.getViewport();
+  return getViewportSnapshot();
 }
 
 function setViewportValue(value) {
@@ -138,7 +154,7 @@ function getPartyOffsetValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return worldService.getPartyOffset();
+  return getPartyOffsetSnapshot();
 }
 
 function setPartyOffsetValue(value) {
@@ -418,25 +434,38 @@ function getPartyState() {
 }
 
 function getPartyMember(index) {
-  return worldService.getPartyMember(index);
+  ensurePartyTrailBinding();
+  if (typeof partyTrailAdapter.getPartyMember === 'function') {
+    return partyTrailAdapter.getPartyMember(index);
+  }
+  const party = getPartyState();
+  return Array.isArray(party) ? party[index] || null : null;
 }
 
 function getMaxPartyMemberIndex() {
-  return worldService.getMaxPartyMemberIndex();
+  const value = getMaxPartyMemberIndexValue();
+  if (typeof value === 'number' && value >= 0) {
+    return value;
+  }
+  const party = getPartyState();
+  if (Array.isArray(party) && party.length > 0) {
+    return party.length - 1;
+  }
+  return value;
 }
 
 function getSceneIdValue() {
-  return worldService.getSceneId();
+  return getSceneIdSnapshot();
 }
 
 function getChaseRangeValue() {
   const value = chaseRangeSignal.value;
-  return Number.isFinite(value) ? value : worldService.getChaseRange();
+  return Number.isFinite(value) ? value : getChaseRangeFlagValue();
 }
 
 function getCollectValue() {
   const value = collectSignal.value;
-  return Number.isFinite(value) ? value : worldService.getCollectValue();
+  return Number.isFinite(value) ? value : getCollectValueFlagValue();
 }
 
 function getCurPlayingRNGValue() {
@@ -452,15 +481,15 @@ function isInBattle() {
 }
 
 function getCurrentSaveSlot() {
-  return worldService.getCurrentSaveSlot();
+  return getCurrentSaveSlotSnapshot();
 }
 
 function getPaletteNumber() {
-  return worldService.getPaletteId();
+  return getPaletteIdSnapshot();
 }
 
 function getNightPaletteFlag() {
-  return worldService.getNightPaletteFlag();
+  return isNightPaletteEnabled();
 }
 
 function warnLog(message) {
@@ -533,8 +562,8 @@ function getScriptEntrySafe(scriptEntry, eventObjectID, context) {
 
 function getSceneEventRange() {
   var sceneId = getSceneIdValue();
-  var currentScene = worldService.getSceneEntry(sceneId);
-  var nextScene = worldService.getSceneEntry(sceneId + 1);
+  var currentScene = getSceneEntrySnapshot(sceneId);
+  var nextScene = getSceneEntrySnapshot(sceneId + 1);
   var startIndex = currentScene && typeof currentScene.eventObjectIndex === 'number'
     ? currentScene.eventObjectIndex
     : 0;
@@ -575,7 +604,7 @@ function getPartyDirection() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return worldService.getPartyDirection();
+  return getPartyDirectionSnapshot();
 }
 
 function setPartyDirection(value) {
@@ -1829,7 +1858,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x0038:
       script.debug('[SCRIPT] Teleport the party out of the scene');
       var sceneId = getSceneIdValue();
-      var currentScene = worldService.getSceneEntry(sceneId);
+      var currentScene = getSceneEntrySnapshot(sceneId);
       if (!isInBattle() && currentScene && currentScene.scriptOnTeleport !== 0) {
         var ret = yield script.runTriggerScript(currentScene.scriptOnTeleport, 0xFFFF);
         worldService.mutateSceneEntry(sceneId, function(entry) {
@@ -2585,7 +2614,7 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
     case 0x008B:
       script.debug('[SCRIPT] change the current palette');
       worldService.setPaletteId(sc.operand[0]);
-      if (!worldService.getNeedToFadeIn()) {
+      if (!shouldFadeIn()) {
         var palette = Palette.get(getPaletteNumber(), false);
         surface.setPalette(palette);
       }

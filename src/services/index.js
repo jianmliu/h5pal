@@ -9,6 +9,8 @@ import battleStateAdapter from './battle-state-adapter.js';
 import scriptObjectAdapter from './script-object-adapter.js';
 import sceneEventAdapter from './scene-event-adapter.js';
 import battleFlagsAdapter from './battle-flags-adapter.js';
+import saveDataAdapter from './save-data-adapter.js';
+import sceneDataAdapter from './scene-data-adapter.js';
 
 const services = {
   storage: storageService,
@@ -22,7 +24,9 @@ const services = {
     battleState: battleStateAdapter,
     scriptObjects: scriptObjectAdapter,
     sceneEvents: sceneEventAdapter,
-    battleFlags: battleFlagsAdapter
+    battleFlags: battleFlagsAdapter,
+    saveData: saveDataAdapter,
+    sceneData: sceneDataAdapter
   }
 };
 
@@ -37,6 +41,8 @@ export {
   battleStateAdapter,
   scriptObjectAdapter,
   sceneEventAdapter,
-  battleFlagsAdapter
+  battleFlagsAdapter,
+  saveDataAdapter,
+  sceneDataAdapter
 };
 export default services;

@@ -7,6 +7,10 @@ import Palette from './palette';
 import input from './input';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
+import {
+  getPaletteIdValue as getPaletteIdSnapshot,
+  isNightPaletteEnabled
+} from '../../services/environment-adapter.js';
 import { getBattleStateSnapshot } from '../../services/battle-state-adapter.js';
 
 log.trace('text module load');
@@ -310,8 +314,8 @@ text.init = function*(surf, _ui) {
   ui.dialogWaitForKey = function*() {
     log.trace('[TEXT] dialogWaitForKey');
     // get the current palette
-    var paletteId = worldService.getPaletteId();
-    var nightPalette = worldService.getNightPaletteFlag();
+    var paletteId = getPaletteIdSnapshot();
+    var nightPalette = isNightPaletteEnabled();
     var palette = utils.arrClone(Palette.get(paletteId, nightPalette));
     var isCenter = (textLib.dialogPosition !== DialogPosition.CenterWindow &&
                     textLib.dialogPosition !== DialogPosition.Center);

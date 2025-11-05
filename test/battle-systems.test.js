@@ -15,6 +15,28 @@ vi.mock('../src/js/pal/input.js', () => ({
   default: inputMock
 }));
 
+const getPartyStateMock = vi.fn(() => []);
+vi.mock('../src/services/party-trail-adapter.js', () => ({
+  __esModule: true,
+  default: {
+    getPartyState: getPartyStateMock
+  }
+}));
+
+vi.mock('../src/services/game-flags-adapter.js', () => ({
+  __esModule: true,
+  getBattleSpeed: () => 2,
+  getCollectValue: () => 0,
+  getChaseRange: () => 0,
+  getChaseSpeedChangeCycles: () => 0,
+  default: {
+    getBattleSpeed: () => 2,
+    getCollectValue: () => 0,
+    getChaseRange: () => 0,
+    getChaseSpeedChangeCycles: () => 0
+  }
+}));
+
 let BattleSystemManager;
 let idleAnimationSystem;
 let renderSceneSystem;
@@ -165,7 +187,9 @@ describe('BattleSystemManager', () => {
   beforeEach(() => {
     setGlobalScaffolding();
     applyWaveMock.mockReset();
-});
+    getPartyStateMock.mockReset();
+    getPartyStateMock.mockReturnValue([]);
+  });
 
 describe('selectActionQueueSystem', () => {
   beforeEach(() => {
@@ -213,6 +237,7 @@ describe('selectActionQueueSystem', () => {
         { magic: { flags: 0 } }
       ]
     };
+    getPartyStateMock.mockReturnValue(globalThis.Global.party);
     const battleStub = {
       getPlayerActualDexterity: () => 15,
       isPlayerDying: () => false
@@ -240,6 +265,8 @@ describe('performActionPhaseSystem', () => {
     setGlobalScaffolding();
     inputMock.isKeyPressed.mockReset();
     inputMock.keyPress = 0;
+    getPartyStateMock.mockReset();
+    getPartyStateMock.mockReturnValue([]);
   });
 
   it('executes player action and advances the queue', async () => {
@@ -289,8 +316,8 @@ describe('performActionPhaseSystem', () => {
         { magic: { flags: 0 } }
       ]
     };
+    getPartyStateMock.mockReturnValue(globalThis.Global.party);
     const service = createStubBattleService(state, null);
-
     const iterator = performActionPhaseSystem({
       battleService: service,
       battle: battleStub,
@@ -388,6 +415,7 @@ describe('performActionPhaseSystem', () => {
         maxMP: [5]
       }
     };
+    getPartyStateMock.mockReturnValue(globalThis.Global.party);
     const battleStub = {
       isPlayerDying: () => false
     };

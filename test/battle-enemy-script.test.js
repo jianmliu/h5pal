@@ -54,7 +54,8 @@ vi.mock('../src/js/pal/utils.js', () => ({
   default: {
     initArray: () => [],
     arrClone: (value) => (Array.isArray(value) ? value.slice() : value),
-    objClone: (value) => (value ? { ...value } : value)
+    objClone: (value) => (value ? { ...value } : value),
+    extend: (target, source) => Object.assign(target, source)
   }
 }));
 
@@ -96,9 +97,11 @@ vi.mock('../src/services/world-service.js', () => ({
   }
 }));
 vi.mock('../src/services/game-data-adapter.js', () => ({
+  __esModule: true,
   default: {
     getLevelUpMagicTable: vi.fn(() => [])
-  }
+  },
+  getExpStateSnapshot: vi.fn(() => null)
 }));
 vi.mock('../src/services/script-object-adapter.js', () => ({ default: scriptObjectAdapterMock }));
 vi.mock('../src/services/party-trail-adapter.js', () => ({

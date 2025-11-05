@@ -106,7 +106,8 @@ vi.mock('../src/js/pal/rle.js', () => ({
 
 vi.mock('../src/services/game-data-adapter.js', () => ({
   __esModule: true,
-  default: gameDataAdapterMock
+  default: gameDataAdapterMock,
+  getExpStateSnapshot: vi.fn(() => null)
 }));
 
 const surfaceStub = {

@@ -6,7 +6,19 @@ import battleService from '../../services/battle-service.js';
 import ending from './ending';
 import worldService from '../../services/world-service.js';
 import sceneEventAdapter from '../../services/scene-event-adapter.js';
+import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
+import {
+  getViewportValue as getViewportSnapshot,
+  getPartyOffsetValue as getPartyOffsetSnapshot,
+  getPartyDirectionValue as getPartyDirectionSnapshot
+} from '../../services/environment-adapter.js';
+import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.js';
+import {
+  getSceneEntry as getSceneEntrySnapshot,
+  getSceneEventObjectRange as getSceneEventObjectRangeSnapshot
+} from '../../services/scene-data-adapter.js';
+import { getChaseSpeedChangeCycles } from '../../services/game-flags-adapter.js';
 
 battleService.bindModule(battleModule);
 
@@ -21,8 +33,8 @@ play.init = function*(surf) {
   log.debug('[PLAY] init');
   global.play = play;
   surface = surf;
-  yield script.init(surf);
   worldService.init();
+  yield script.init(surf);
   yield battleService.init(surf);
   yield ending.init(surf);
 };
@@ -33,13 +45,13 @@ play.init = function*(surf) {
  * @param {Boolean} trigger       whether to process trigger events or not.
  */
 play.update = function*(trigger) {
-  var currentSceneId = worldService.getSceneId() || 0;
+  var currentSceneId = getSceneIdSnapshot() || 0;
 
   if (trigger) {
     if (worldService.isEnteringScene()) {
       worldService.setEnteringScene(false);
 
-      var sceneData = worldService.getSceneData();
+      var sceneData = getSceneEntrySnapshot(currentSceneId);
       var scriptOnEnter = sceneData && typeof sceneData.scriptOnEnter === 'number'
         ? sceneData.scriptOnEnter
         : 0;
@@ -76,8 +88,8 @@ play.update = function*(trigger) {
     }
   }
 
-    var viewportValue = worldService.getViewport();
-    var partyOffsetValue = worldService.getPartyOffset();
+    var viewportValue = getViewportSnapshot();
+    var partyOffsetValue = getPartyOffsetSnapshot();
     var sceneEventObjects = sceneEventAdapter.getEventObjects();
 
     for (var ei = 0; ei < sceneEventObjects.length; ei++) {
@@ -134,8 +146,8 @@ play.update = function*(trigger) {
             yield scene.makeScene();
             surface.updateScreen(null);
 
-            viewportValue = worldService.getViewport();
-            partyOffsetValue = worldService.getPartyOffset();
+            viewportValue = getViewportSnapshot();
+            partyOffsetValue = getPartyOffsetSnapshot();
             heroX = PAL_X(viewportValue) + PAL_X(partyOffsetValue);
             heroY = PAL_Y(viewportValue) + PAL_Y(partyOffsetValue);
           }
@@ -167,8 +179,8 @@ play.update = function*(trigger) {
     }
   }
 
-  var viewportCurrent = worldService.getViewport();
-  var partyOffsetCurrent = worldService.getPartyOffset();
+  var viewportCurrent = getViewportSnapshot();
+  var partyOffsetCurrent = getPartyOffsetSnapshot();
   var sceneObjects = sceneEventAdapter.getEventObjects();
 
   for (var index = 0; index < sceneObjects.length; index++) {
@@ -219,8 +231,8 @@ play.update = function*(trigger) {
               PAL_X(targetPos) - PAL_X(partyOffsetCurrent),
               PAL_Y(targetPos) - PAL_Y(partyOffsetCurrent)
             ));
-            viewportCurrent = worldService.getViewport();
-            partyOffsetCurrent = worldService.getPartyOffset();
+            viewportCurrent = getViewportSnapshot();
+            partyOffsetCurrent = getPartyOffsetSnapshot();
             break;
           }
 
@@ -323,9 +335,9 @@ play.search = function*() {
   var poses = [];
 
   // Get the party location
-  var viewport = worldService.getViewport();
-  var partyOffset = worldService.getPartyOffset();
-  var partyDirection = worldService.getPartyDirection();
+  var viewport = getViewportSnapshot();
+  var partyOffset = getPartyOffsetSnapshot();
+  var partyDirection = getPartyDirectionSnapshot();
   x = PAL_X(viewport) + PAL_X(partyOffset);
   y = PAL_Y(viewport) + PAL_Y(partyOffset);
   if (partyDirection == Direction.North || partyDirection == Direction.East) {
@@ -350,9 +362,12 @@ play.search = function*() {
     y += yOffset;
   }
 
-  var sceneData = worldService.getSceneData();
-  var range = worldService.getSceneEventObjectRange();
-  var partyMembers = worldService.getParty();
+  var currentSceneId = getSceneIdSnapshot() || 0;
+  var sceneData = getSceneEntrySnapshot(currentSceneId);
+  var eventRange = getSceneEventObjectRangeSnapshot();
+  var rangeStart = eventRange && Number.isFinite(eventRange.start) ? eventRange.start : 0;
+  var rangeEnd = eventRange && Number.isFinite(eventRange.end) ? eventRange.end : rangeStart;
+  var partyMembers = partyTrailAdapter.getPartyState();
   for (i = 0; i < 13; i++) {
     // Convert to map location
     dh = ((PAL_X(poses[i]) % 32) ? 1 : 0);
@@ -360,7 +375,7 @@ play.search = function*() {
     dy = ~~(PAL_Y(poses[i]) / 16);
 
     // Loop through all event objects
-    for (k = range.start; k < range.end; k++){
+    for (k = rangeStart; k < rangeEnd; k++){
       var eventId = k + 1;
       p = sceneEventAdapter.getEventObjectStateByIndex(k);
       if (!p) {
@@ -466,8 +481,9 @@ play.startFrame = function*() {
     }
   }
 
-  worldService.setChaseSpeedChangeCycles(worldService.getChaseSpeedChangeCycles() - 1);
-  if (worldService.getChaseSpeedChangeCycles() === 0) {
+  var remainingCycles = Math.max(getChaseSpeedChangeCycles() - 1, 0);
+  worldService.setChaseSpeedChangeCycles(remainingCycles);
+  if (remainingCycles === 0) {
     worldService.setChaseRange(1);
   }
 };

@@ -19,7 +19,11 @@ import {
   getPlayerStatusValue as getPlayerStatusValueFromAdapter,
   getPlayerEquipment as getPlayerEquipmentValue,
   getPlayerMagicSlots as getPlayerMagicSlotsValue,
-  getPlayerLevel as getPlayerLevelValue
+  getPlayerLevel as getPlayerLevelValue,
+  getPoisonStatusMatrix as getPoisonStatusMatrixValue,
+  getEquipmentEffect as getEquipmentEffectValue,
+  findPlayerMagicSlot as findPlayerMagicSlotValue,
+  getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
 } from '../../services/player-state-adapter.js';
 console.trace('script_extras module load');
 
@@ -35,6 +39,10 @@ const cashSignal = inventorySlice.cash;
 const getEquipmentEffectScalar = getEquipmentEffectScalarFromAdapter;
 const getEquipmentEffectElemental = getEquipmentEffectElementalFromAdapter;
 const getPlayerStatusValue = getPlayerStatusValueFromAdapter;
+const getPoisonStatusMatrix = getPoisonStatusMatrixValue;
+const getEquipmentEffect = getEquipmentEffectValue;
+const findPlayerMagicSlot = findPlayerMagicSlotValue;
+const getMaxPartyMemberIndex = getMaxPartyMemberIndexValue;
 
 function getInventoryList() {
   const items = inventoryItemsSignal.value;
@@ -480,7 +488,7 @@ script_extras.init = function*(surf, _script) {
     var index = findIndexByPlayerRole(role);
     if (index < 0) return false;
 
-    var poisonStatus = worldService.getPoisonStatusMatrix();
+    var poisonStatus = getPoisonStatusMatrix();
     for (var i=0; i<Const.MAX_POISONS; ++i) {
       var row = poisonStatus[i];
       if (!row || !row[index]) {
@@ -505,7 +513,7 @@ script_extras.init = function*(surf, _script) {
     var index = findIndexByPlayerRole(role);
     if (index < 0) return false;
 
-    var poisonStatus = worldService.getPoisonStatusMatrix();
+    var poisonStatus = getPoisonStatusMatrix();
     for (var i=0; i<Const.MAX_POISONS; ++i) {
       var row = poisonStatus[i];
       if (!row || !row[index]) {
@@ -586,7 +594,7 @@ script_extras.init = function*(surf, _script) {
     var roles = getPlayerRolesSnapshot();
     var w = roles && roles.spriteNumInBattle ? roles.spriteNumInBattle[role] || 0 : 0;
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
-      var effect = worldService.getEquipmentEffect(i);
+      var effect = getEquipmentEffect(i);
       var x = effect && effect.spriteNumInBattle ? effect.spriteNumInBattle[role] || 0 : 0;
       if (x != 0) {
         w = x;
@@ -600,7 +608,7 @@ script_extras.init = function*(surf, _script) {
     var roles = getPlayerRolesSnapshot();
     var w = roles && roles.cooperativeMagic ? roles.cooperativeMagic[role] || 0 : 0;
     for (var i=0; i<Const.MAX_PLAYER_EQUIPMENTS; ++i) {
-      var effect = worldService.getEquipmentEffect(i);
+      var effect = getEquipmentEffect(i);
       var x = effect && effect.cooperativeMagic ? effect.cooperativeMagic[role] || 0 : 0;
       if (x != 0) {
         w = x;
@@ -612,7 +620,7 @@ script_extras.init = function*(surf, _script) {
 
   script.playerCanAttackAll = function(role) {
     for (var i = 0; i < Const.MAX_PLAYER_EQUIPMENTS; ++i) {
-      var effect = worldService.getEquipmentEffect(i);
+      var effect = getEquipmentEffect(i);
       if (effect && effect.attackAll && effect.attackAll[role] != 0){
         return true;
       }
@@ -622,7 +630,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.addMagic = function(role, magic) {
-    if (worldService.findPlayerMagicSlot(role, magic) >= 0) {
+    if (findPlayerMagicSlot(role, magic) >= 0) {
       // already have this magic
       return false;
     }
@@ -646,7 +654,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   script.removeMagic = function(role, magic) {
-    var slotIndex = worldService.findPlayerMagicSlot(role, magic);
+    var slotIndex = findPlayerMagicSlot(role, magic);
     if (slotIndex >= 0) {
       worldService.setPlayerMagicSlot(role, slotIndex, 0);
     }
@@ -708,7 +716,7 @@ script_extras.init = function*(surf, _script) {
   };
 
   function findIndexByPlayerRole(role) {
-    var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+    var maxPartyMemberIndex = getMaxPartyMemberIndex();
     var party = partyTrailAdapter.getPartyState();
     for (var i=0; i<=maxPartyMemberIndex; ++i) {
       if (party[i] && party[i].playerRole == role) {

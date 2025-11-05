@@ -1,5 +1,6 @@
 import worldService from './world-service.js';
-import { playerStateSignals } from '../state/slices/player-state.js';
+import stateService from './state-service.js';
+import { playerStateSignals, updatePlayerRolesValue } from '../state/slices/player-state.js';
 import { statusSignals } from '../state/slices/status-matrices.js';
 import { viewportSignals } from '../state/slices/viewport.js';
 
@@ -44,12 +45,12 @@ function resolveMaxRoles(snapshot) {
   if (typeof Const !== 'undefined' && Const && typeof Const.MAX_PLAYER_ROLES === 'number') {
     return Const.MAX_PLAYER_ROLES;
   }
-  const fallback = worldService.getPlayerRoles();
-  if (fallback && Array.isArray(fallback.level)) {
-    return fallback.level.length;
+  const globalRoles = stateService.getGlobal('playerRoles');
+  if (globalRoles && Array.isArray(globalRoles.level)) {
+    return globalRoles.level.length;
   }
-  if (fallback && Array.isArray(fallback.HP)) {
-    return fallback.HP.length;
+  if (globalRoles && Array.isArray(globalRoles.HP)) {
+    return globalRoles.HP.length;
   }
   return 0;
 }
@@ -59,7 +60,24 @@ function getRolesSnapshot() {
   if (roles) {
     return roles;
   }
-  return worldService.getPlayerRoles();
+  const globalRoles = stateService.getGlobal('playerRoles');
+  if (globalRoles) {
+    return globalRoles;
+  }
+  const gameDataRoles = stateService.getGameData('playerRoles');
+  if (gameDataRoles) {
+    updatePlayerRolesValue(gameDataRoles, { emitEvent: false, source: 'player-state-adapter:fallback-gameData' });
+    return gameDataRoles;
+  }
+  const store = typeof GameData !== 'undefined' && GameData ? GameData : null;
+  if (store && store.playerRoles) {
+    updatePlayerRolesValue(store.playerRoles, { emitEvent: false, source: 'player-state-adapter:fallback-GameData' });
+    return store.playerRoles;
+  }
+  if (worldService && typeof worldService.getPlayerRoles === 'function') {
+    return worldService.getPlayerRoles();
+  }
+  return null;
 }
 
 function getPlayerRolesBuffer(snapshot) {
@@ -88,25 +106,10 @@ function getRoleArrayValue(key, roleId, fallback) {
   const hasExplicitFallback = arguments.length >= 3 && typeof fallback !== 'undefined';
   const resolvedFallback = hasExplicitFallback ? fallback : 0;
   if (roleId < 0 || roleId >= arr.length) {
-    if (!hasExplicitFallback) {
-      const roles = worldService.getPlayerRoles();
-      if (roles && roles[key] && typeof roles[key][roleId] === 'number') {
-        return roles[key][roleId];
-      }
-    }
     return resolvedFallback;
   }
   const value = arr[roleId];
-  if (typeof value === 'number') {
-    return value;
-  }
-  if (!hasExplicitFallback) {
-    const roles = worldService.getPlayerRoles();
-    if (roles && roles[key] && typeof roles[key][roleId] === 'number') {
-      return roles[key][roleId];
-    }
-  }
-  return resolvedFallback;
+  return typeof value === 'number' ? value : resolvedFallback;
 }
 
 function getEquipmentMatrix() {
@@ -114,7 +117,7 @@ function getEquipmentMatrix() {
   if (effects) {
     return effects;
   }
-  return worldService.getEquipmentEffects ? worldService.getEquipmentEffects() : [];
+  return [];
 }
 
 export function getEquipmentEffectsMatrix() {
@@ -135,10 +138,6 @@ function getMagicSlots() {
   if (roles && Array.isArray(roles.magic)) {
     return roles.magic;
   }
-  const fallback = worldService.getPlayerRoles();
-  if (fallback && Array.isArray(fallback.magic)) {
-    return fallback.magic;
-  }
   return [];
 }
 
@@ -152,15 +151,39 @@ export function getPlayerStatusMatrix() {
   if (matrix) {
     return matrix;
   }
-  return worldService.getPlayerStatusMatrix();
+  const globalMatrix = stateService.getGlobal('playerStatus');
+  return Array.isArray(globalMatrix) ? globalMatrix : [];
+}
+
+export function getPoisonStatusMatrix() {
+  const matrix = statusSlice.poison.value;
+  if (Array.isArray(matrix) && matrix.length > 0) {
+    return matrix;
+  }
+  const globalMatrix = stateService.getGlobal('poisonStatus');
+  return Array.isArray(globalMatrix) ? globalMatrix : [];
 }
 
 export function getMaxPartyMemberIndex() {
+  const legacyGlobal = (typeof globalThis !== 'undefined' && globalThis.Global)
+    ? globalThis.Global
+    : (typeof global !== 'undefined' ? global.Global : null);
+  if (legacyGlobal && typeof legacyGlobal.maxPartyMemberIndex === 'number') {
+    return legacyGlobal.maxPartyMemberIndex;
+  }
   const value = maxPartyIndexSignal.value;
   if (typeof value === 'number' && value >= -1) {
     return value;
   }
-  return worldService.getMaxPartyMemberIndex();
+  const globalMax = stateService.getGlobal('maxPartyMemberIndex');
+  if (typeof globalMax === 'number' && globalMax >= 0) {
+    return globalMax;
+  }
+  const resolved = worldService.getMaxPartyMemberIndex();
+  if (typeof resolved === 'number' && resolved >= 0) {
+    return resolved;
+  }
+  return typeof resolved === 'number' ? resolved : -1;
 }
 
 export function getPlayerHP(roleId) {
@@ -286,11 +309,6 @@ export function getPlayerStatusValue(roleId, statusId) {
       return typeof value === 'number' ? value : 0;
     }
   }
-  const fallback = worldService.getPlayerStatus(roleId);
-  if (fallback) {
-    const value = fallback[statusId];
-    return typeof value === 'number' ? value : 0;
-  }
   return 0;
 }
 
@@ -299,7 +317,11 @@ export function getPlayerStatusRow(roleId) {
   if (Array.isArray(matrix) && matrix[roleId]) {
     return matrix[roleId];
   }
-  return worldService.getPlayerStatus(roleId) || [];
+  const globalMatrix = stateService.getGlobal('playerStatus');
+  if (Array.isArray(globalMatrix) && globalMatrix[roleId]) {
+    return globalMatrix[roleId];
+  }
+  return [];
 }
 
 export function getPlayerRolesSnapshot() {
@@ -373,10 +395,30 @@ export function getPlayerRoleWord(fieldIndex, roleId, fallback = 0) {
       return toUnsignedWord(buffer[offset], buffer[offset + 1]);
     }
   }
-  const fallbackValue = typeof worldService.getPlayerRoleWord === 'function'
-    ? worldService.getPlayerRoleWord(fieldIndex, roleId)
-    : fallback;
-  return typeof fallbackValue === 'number' ? fallbackValue : fallback;
+  return fallback;
+}
+
+export function getEquipmentEffect(partIndex) {
+  const matrix = getEquipmentMatrix();
+  if (Array.isArray(matrix)) {
+    return matrix[partIndex] || null;
+  }
+  return null;
+}
+
+export function findPlayerMagicSlot(roleId, magicId) {
+  if (!Number.isFinite(roleId) || !Number.isFinite(magicId)) {
+    return -1;
+  }
+  const slots = getPlayerMagicSlots(roleId);
+  if (Array.isArray(slots)) {
+    for (let index = 0; index < slots.length; index++) {
+      if (slots[index] === magicId) {
+        return index;
+      }
+    }
+  }
+  return -1;
 }
 
 export default {
@@ -412,5 +454,7 @@ export default {
   getPlayerDeathSound,
   getPlayerCoveredBy,
   getPlayerRoleWord,
-  getMaxPartyMemberIndex
+  getMaxPartyMemberIndex,
+  getEquipmentEffect,
+  findPlayerMagicSlot
 };

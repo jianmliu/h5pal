@@ -8,8 +8,25 @@ import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import {
   getPlayerRoleField,
-  getPlayerRoleFieldValue
+  getPlayerRoleFieldValue,
+  getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
 } from '../../services/player-state-adapter.js';
+import {
+  getViewportValue as getViewportSnapshot,
+  getPartyOffsetValue as getPartyOffsetSnapshot,
+  getPartyDirectionValue as getPartyDirectionSnapshot,
+  shouldFadeIn,
+  getPaletteIdValue as getPaletteIdSnapshot,
+  isNightPaletteEnabled,
+  getScreenWaveValue as getScreenWaveSnapshot,
+  getLayerValue as getLayerSnapshot,
+  getWaveProgressionValue as getWaveProgressionSnapshot
+} from '../../services/environment-adapter.js';
+import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.js';
+import {
+  getSceneEntry as getSceneEntrySnapshot,
+  getSceneEventObjectRange as getSceneEventObjectRangeSnapshot
+} from '../../services/scene-data-adapter.js';
 
 log.trace('scene module load');
 
@@ -141,8 +158,8 @@ scene.init = function*(surf) {
 };
 
 scene.makeScene = function*() {
-  var sceneId = worldService.getSceneId() || 0;
-  var activeScene = sceneId ? worldService.getSceneEntry(sceneId) : null;
+  var sceneId = getSceneIdSnapshot() || 0;
+  var activeScene = sceneId ? getSceneEntrySnapshot(sceneId) : null;
   if (!activeScene) return;
   if (scene.currentSceneId !== sceneId) {
     scene.currentSceneId = sceneId;
@@ -162,7 +179,7 @@ scene.getPlayerSprite = function(i) {
   }
   var playerID = player.playerRole;
   var spriteNum;
-  var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+  var maxPartyMemberIndex = getMaxPartyMemberIndexValue();
   var followerCount = getCachedFollowerCount();
   if (i > maxPartyMemberIndex && followerCount > 0) {
     // 如果是跟随者，那么spriteNum就是它的ID
@@ -189,8 +206,8 @@ scene.getPlayerSprite = function(i) {
 scene.updateParty = function() {
   ensurePartyTrailSubscription();
   //log.trace('[Scene] updateParty');
-  var viewport = worldService.getViewport();
-  var partyOffset = worldService.getPartyOffset();
+  var viewport = getViewportSnapshot();
+  var partyOffset = getPartyOffsetSnapshot();
 
   if (input.dir !== Direction.Unknown) {
     var xOffset = ((input.dir === Direction.West || input.dir === Direction.South) ? -16 : 16);
@@ -240,10 +257,10 @@ scene.updatePartyGestures = function(walking) {
   var party = getCachedPartyState();
   var trail = getCachedTrailState();
   var walkFrames = getPlayerRoleField('walkFrames');
-  var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
-  var viewport = worldService.getViewport();
-  var partyOffset = worldService.getPartyOffset();
-  var partyDirection = worldService.getPartyDirection();
+  var maxPartyMemberIndex = getMaxPartyMemberIndexValue();
+  var viewport = getViewportSnapshot();
+  var partyOffset = getPartyOffsetSnapshot();
+  var partyDirection = getPartyDirectionSnapshot();
   var followerCount = getCachedFollowerCount();
   function resolveWalkFrame(roleId, fallback) {
     if (Array.isArray(walkFrames) && typeof walkFrames[roleId] === 'number') {
@@ -378,8 +395,8 @@ function legacyCheckObstacle(pos, checkEventObjects, selfObject) {
     }
   }
 
-  var numScene = worldService.getSceneId() || 0;
-  var sc = numScene ? worldService.getSceneEntry(numScene) : null;
+  var numScene = getSceneIdSnapshot() || 0;
+  var sc = numScene ? getSceneEntrySnapshot(numScene) : null;
   if (!sc || typeof sc.getMap !== 'function') {
     return true;
   }
@@ -440,8 +457,8 @@ scene.checkObstacle = function(pos, checkEventObjects, selfObject) {
 
 scene.applyWave = function(buffer) {
   var wave = new Array(32);
-  worldService.adjustScreenWave(worldService.getWaveProgression());
-  var screenWave = worldService.getScreenWave();
+  worldService.adjustScreenWave(getWaveProgressionSnapshot());
+  var screenWave = getScreenWaveSnapshot();
   var buf = new Uint8Array(320);
   if (screenWave === 0 || screenWave >= 256) {
     // No need to wave the screen
@@ -523,14 +540,14 @@ utils.extend(Scene.prototype, {
       this.loadEventObjectSpites(version);
     }
 
-    var range = typeof worldService.getSceneEventObjectRange === 'function'
-      ? worldService.getSceneEventObjectRange()
-      : { start: 0, end: 0 };
+    var eventRange = getSceneEventObjectRangeSnapshot();
+    var rangeStart = eventRange && Number.isFinite(eventRange.start) ? eventRange.start : 0;
+    var rangeEnd = eventRange && Number.isFinite(eventRange.end) ? eventRange.end : rangeStart;
     var targetIndex = eventObjectID - 1;
-    if (targetIndex < range.start || targetIndex >= range.end) {
+    if (targetIndex < rangeStart || targetIndex >= rangeEnd) {
       return null;
     }
-    var localIndex = targetIndex - range.start;
+    var localIndex = targetIndex - rangeStart;
     if (localIndex < 0 || localIndex >= this.eventObjectSprite.length) {
       return null;
     }
@@ -574,7 +591,7 @@ utils.extend(Scene.prototype, {
     return obj;
   },
   calcCoverTiles: function(spriteToDraw){
-    var viewport = worldService.getViewport();
+  var viewport = getViewportSnapshot();
     var viewportX = PAL_X(viewport);
     var viewportY = PAL_Y(viewport);
     var sx = viewportX + PAL_X(spriteToDraw.pos),
@@ -682,16 +699,16 @@ utils.extend(Scene.prototype, {
       viewportComponent: worldService.getViewportComponent(),
       sceneEventObjects: sceneEventAdapter.getEventObjects()
     });
-    var viewport = worldService.getViewport();
+    var viewport = getViewportSnapshot();
     var viewportX = PAL_X(viewport);
     var viewportY = PAL_Y(viewport);
     var party = getCachedPartyState();
     var drawList = this.drawList || (this.drawList = []);
-    var maxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+    var maxPartyMemberIndex = getMaxPartyMemberIndexValue();
     var followerCount = getCachedFollowerCount();
 
     // Players
-    var layer = worldService.getLayer();
+    var layer = getLayerSnapshot();
     for (var i = 0; i <= maxPartyMemberIndex + followerCount; ++i) {
       var player = party[i];
       if (!player) {
@@ -757,10 +774,10 @@ utils.extend(Scene.prototype, {
     //surface.__debugClear(0, 0, 320, 200);
     this.renderSprites();
     // Check if we need to fade in.
-    var needToFadeIn = worldService.getNeedToFadeIn();
+    var needToFadeIn = shouldFadeIn();
     if (needToFadeIn) {
-      var paletteId = worldService.getPaletteId();
-      var useNightPalette = worldService.getNightPaletteFlag();
+      var paletteId = getPaletteIdSnapshot();
+      var useNightPalette = isNightPaletteEnabled();
       //surface.refresh();
       yield surface.fadeIn(paletteId, useNightPalette, 1);
       worldService.setNeedToFadeIn(false);

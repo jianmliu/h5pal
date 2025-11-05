@@ -1,6 +1,10 @@
 import utils from './utils';
 import Palette from './palette';
 import worldService from '../../services/world-service.js';
+import {
+  getPaletteIdValue as getPaletteIdSnapshot,
+  isNightPaletteEnabled
+} from '../../services/environment-adapter.js';
 
 log.trace('surface module load');
 
@@ -656,7 +660,7 @@ utils.extend(Surface.prototype, {
   colorFade: function*(delay, color, from) {
     log.debug(['[VIDEO] colorFade', delay, color, from].join(' '));
     var me = this;
-    var palette = Palette.get(worldService.getPaletteId(), worldService.getNightPaletteFlag());
+    var palette = Palette.get(getPaletteIdSnapshot(), isNightPaletteEnabled());
     var newPalette = [];
     var i;
     delay *= 5; // 10;

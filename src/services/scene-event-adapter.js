@@ -1,6 +1,7 @@
 import worldService from './world-service.js';
 import stateService from './state-service.js';
 import { sceneEventSignals } from '../state/slices/scene-events.js';
+import { getSceneEventObjectRange as getSceneEventObjectRangeSnapshot } from './scene-data-adapter.js';
 
 const listeners = new Set();
 let subscriptions = [];
@@ -231,9 +232,7 @@ function getEventObjectIdForRelativeIndex(relativeIndex) {
   if (!Number.isFinite(relativeIndex)) {
     return null;
   }
-  const range = typeof worldService.getSceneEventObjectRange === 'function'
-    ? worldService.getSceneEventObjectRange()
-    : null;
+  const range = getSceneEventObjectRangeSnapshot();
   if (!range || typeof range.start !== 'number') {
     return null;
   }

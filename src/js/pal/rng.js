@@ -1,6 +1,11 @@
 import yj_1 from './yj_1';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
+import {
+  shouldFadeIn,
+  getPaletteIdValue as getPaletteIdSnapshot,
+  isNightPaletteEnabled
+} from '../../services/environment-adapter.js';
 
 log.trace('rng module load');
 
@@ -299,10 +304,10 @@ rng.play = function*(rngNum, startFrame, endFrame, speed) {
     surface.updateScreen();
 
     // Fade in the screen if needed
-    if (worldService.getNeedToFadeIn()) {
+    if (shouldFadeIn()) {
       yield surface.fadeIn(
-        worldService.getPaletteId() || 0,
-        !!worldService.getNightPaletteFlag(),
+        getPaletteIdSnapshot(),
+        !!isNightPaletteEnabled(),
         1
       );
       worldService.setNeedToFadeIn(false);

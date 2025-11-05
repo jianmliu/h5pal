@@ -71,6 +71,7 @@ import {
   getEventObjectsValue,
   getCollisionStateValue
 } from '../state/slices/scene-events.js';
+import { updateSceneTableValue } from '../state/slices/scene-table.js';
 import {
   updateMusicTrackValue,
   updateBattleMusicTrackValue,
@@ -435,6 +436,7 @@ class WorldService extends EventBus {
     this.syncObjectStores();
     this.syncBattleFormation();
     this.syncPlayerRoles();
+    this.syncStatusMatrices();
     this.syncEquipmentEffects();
     this._ensureMoveQueue();
     this.syncReactiveGlobals();
@@ -950,6 +952,20 @@ class WorldService extends EventBus {
     updatePlayerRolesValue(store && store.playerRoles ? store.playerRoles : null, { source: 'worldService:syncPlayerRoles' });
   }
 
+  syncStatusMatrices() {
+    this._ensureInitialised();
+    const playerStatusGlobal = stateService.getGlobal('playerStatus');
+    const poisonStatusGlobal = stateService.getGlobal('poisonStatus');
+    const playerResolved = Array.isArray(playerStatusGlobal)
+      ? playerStatusGlobal
+      : this.getPlayerStatusMatrix();
+    const poisonResolved = Array.isArray(poisonStatusGlobal)
+      ? poisonStatusGlobal
+      : this.getPoisonStatusMatrix();
+    updatePlayerStatusMatrix(Array.isArray(playerResolved) ? playerResolved : [], { source: 'worldService:syncStatusMatrices' });
+    updatePoisonStatusMatrix(Array.isArray(poisonResolved) ? poisonResolved : [], { source: 'worldService:syncStatusMatrices' });
+  }
+
   syncEquipmentEffects() {
     this._ensureInitialised();
     updateEquipmentEffectValue(this._getEquipmentEffects() || [], { source: 'worldService:syncEquipmentEffects' });
@@ -1206,8 +1222,22 @@ class WorldService extends EventBus {
       updateMaxPartyIndexValue(value, { emitEvent: false, source: 'worldService:get' });
       return value;
     }
+    const legacyGlobal = getGlobalObject('Global');
+    if (legacyGlobal && typeof legacyGlobal.maxPartyMemberIndex === 'number') {
+      const legacyValue = legacyGlobal.maxPartyMemberIndex;
+      updateMaxPartyIndexValue(legacyValue, { emitEvent: false, source: 'worldService:get' });
+      return legacyValue;
+    }
     const party = this.getParty();
-    const fallback = party.length > 0 ? party.length - 1 : -1;
+    let fallback = -1;
+    if (Array.isArray(party)) {
+      for (let index = 0; index < party.length; index++) {
+        const member = party[index];
+        if (member && typeof member.playerRole === 'number' && member.playerRole >= 0) {
+          fallback = index;
+        }
+      }
+    }
     updateMaxPartyIndexValue(fallback, { emitEvent: false, source: 'worldService:get' });
     return fallback;
   }
@@ -3025,6 +3055,10 @@ class WorldService extends EventBus {
         break;
       case 'chaseSpeedChangeCycles':
         updateChaseSpeedCyclesValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        break;
+      case 'playerStatus':
+      case 'poisonStatus':
+        this.syncStatusMatrices();
         break;
       case 'objectDesc':
         updateObjectDescValue(typeof payload.value === 'undefined' ? null : payload.value, { source: 'worldService:legacyGlobal' });

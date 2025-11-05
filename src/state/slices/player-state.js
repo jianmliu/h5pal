@@ -38,8 +38,17 @@ function cloneObject(value) {
     return value;
   }
   const clone = {};
-  Object.keys(value).forEach((key) => {
-    const entry = value[key];
+  Reflect.ownKeys(value).forEach((rawKey) => {
+    if (typeof rawKey !== 'string') {
+      return;
+    }
+    let entry;
+    try {
+      entry = value[rawKey];
+    } catch (err) {
+      return;
+    }
+    const key = rawKey;
     if (Array.isArray(entry) || (ArrayBuffer.isView(entry) && typeof entry.slice === 'function')) {
       clone[key] = cloneArrayLike(entry);
     } else if (entry && typeof entry === 'object') {
@@ -48,6 +57,31 @@ function cloneObject(value) {
       clone[key] = entry;
     }
   });
+  const proto = Object.getPrototypeOf(value);
+  if (proto && proto !== Object.prototype) {
+    Object.getOwnPropertyNames(proto).forEach((key) => {
+      if (key === 'constructor' || Object.prototype.hasOwnProperty.call(clone, key)) {
+        return;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(proto, key);
+      if (!descriptor || typeof descriptor.get !== 'function' || typeof descriptor.set === 'function') {
+        return;
+      }
+      let derived;
+      try {
+        derived = value[key];
+      } catch (err) {
+        return;
+      }
+      if (Array.isArray(derived) || (ArrayBuffer.isView(derived) && typeof derived.slice === 'function')) {
+        clone[key] = cloneArrayLike(derived);
+      } else if (derived && typeof derived === 'object') {
+        clone[key] = { ...derived };
+      } else {
+        clone[key] = derived;
+      }
+    });
+  }
   return clone;
 }
 

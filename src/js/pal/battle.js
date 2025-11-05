@@ -15,7 +15,15 @@ import createBattleSystemManager from '../../services/battle-systems.js';
 import worldService from '../../services/world-service.js';
 import gameDataAdapter from '../../services/game-data-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
+import { getSceneEventObjectRange as getSceneEventObjectRangeSnapshot } from '../../services/scene-data-adapter.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import {
+  shouldFadeIn,
+  getPaletteIdValue as getPaletteIdSnapshot,
+  isNightPaletteEnabled,
+  getScreenWaveValue as getScreenWaveSnapshot,
+  getWaveProgressionValue as getWaveProgressionSnapshot
+} from '../../services/environment-adapter.js';
 import {
   getEquipmentEffectsMatrix,
   getEquipmentEffectAt,
@@ -64,13 +72,12 @@ function resolveEnemyEventObjectId(index) {
       return mapped;
     }
   }
-  const range = typeof worldService.getSceneEventObjectRange === 'function'
-    ? worldService.getSceneEventObjectRange()
-    : null;
-  if (!range || typeof range.start !== 'number') {
+  const range = getSceneEventObjectRangeSnapshot();
+  const rangeStart = range && Number.isFinite(range.start) ? Math.trunc(range.start) : null;
+  if (!Number.isFinite(rangeStart)) {
     return Math.trunc(index) + 1;
   }
-  return range.start + Math.trunc(index) + 1;
+  return rangeStart + Math.trunc(index) + 1;
 }
 
 function getParty() {
@@ -517,10 +524,10 @@ battle.main = function*() {
   music.play(getCachedBattleMusicTrack(), true, 0);
 
   // Fade in the screen when needed
-  if (worldService.getNeedToFadeIn()) {
+  if (shouldFadeIn()) {
     yield surface.fadeIn(
-      worldService.getPaletteId() || 0,
-      !!worldService.getNightPaletteFlag(),
+      getPaletteIdSnapshot(),
+      !!isNightPaletteEnabled(),
       1
     );
     worldService.setNeedToFadeIn(false);
@@ -1143,8 +1150,8 @@ battle.playerEscape = function*() {
 battle.start = function*(enemyTeam, isBoss) {
   log.debug(['[BATTLE] start', enemyTeam, isBoss].join(' '));
   // Set the screen waving effects
-  var prevWaveLevel = worldService.getScreenWave() || 0;
-  var prevWaveProgression = worldService.getWaveProgression() || 0;
+  var prevWaveLevel = getScreenWaveSnapshot() || 0;
+  var prevWaveProgression = getWaveProgressionSnapshot() || 0;
 
   worldService.setWaveProgression(0);
   var battleFieldIndex = getCachedBattleFieldId() || 0;

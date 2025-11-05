@@ -2,8 +2,17 @@ import EventBus from './event-bus.js';
 import scriptService from './script-service.js';
 import worldService from './world-service.js';
 import sceneEventAdapter from './scene-event-adapter.js';
-import { getPlayerStatusRow as getPlayerStatusRowSnapshot } from './player-state-adapter.js';
-import { getBattleStateSnapshot } from './battle-state-adapter.js';
+import partyTrailAdapter from './party-trail-adapter.js';
+import {
+  getPlayerStatusRow as getPlayerStatusRowSnapshot,
+  getMaxPartyMemberIndex as getMaxPartyMemberIndexSnapshot,
+  getPoisonStatusMatrix
+} from './player-state-adapter.js';
+import {
+  getBattleStateSnapshot,
+  isAutoBattleEnabled
+} from './battle-state-adapter.js';
+import { getBattleSpeed } from './game-flags-adapter.js';
 import {
   BattleComponents,
   createQueueEntryComponent
@@ -147,7 +156,7 @@ function getStatusCount() {
 }
 
 function getPartyList() {
-  var party = worldService.getParty();
+  var party = partyTrailAdapter.getPartyState();
   if (!Array.isArray(party)) {
     return [];
   }
@@ -208,7 +217,7 @@ export function recomputeTimeChargingUnit(context) {
     baseDexterity = 1;
   }
   var unit = Math.pow(baseDexterity + 5, 0.3) / baseDexterity;
-  var battleSpeed = worldService.getBattleSpeed() || 1;
+  var battleSpeed = getBattleSpeed() || 1;
   if (battleSpeed > 1) {
     unit /= (1 + (battleSpeed - 1) * 0.5);
   } else {
@@ -268,7 +277,7 @@ function getTimeChargingSpeed(dexterity, uiState, now) {
     return 0;
   }
   var speed = ensureTimeChargingUnit() * dexterity;
-  if (worldService.getAutoBattle()) {
+  if (isAutoBattleEnabled()) {
     speed *= 3;
   }
   return speed;
@@ -316,7 +325,7 @@ export function timeChargeSystem(runtime) {
   var comState = typeof fighterStateEnum.Com === 'number' ? fighterStateEnum.Com : 1;
   var hidingTime = state.hidingTime || 0;
   var battleModule = runtime && runtime.battle;
-  var autoBattleEnabled = !!worldService.getAutoBattle();
+  var autoBattleEnabled = !!isAutoBattleEnabled();
 
   for (var i = 0; i < entities.length; i++) {
     var entityId = entities[i];
@@ -663,14 +672,11 @@ export function selectActionQueueSystem(runtime) {
 
   var party = getPartyList();
   var partyLength = party.length;
-  var rawMaxPartyIndex = worldService.getMaxPartyMemberIndex();
-  var maxPartyIndex = Math.max(
-    -1,
-    Math.min(
-      typeof rawMaxPartyIndex === 'number' ? rawMaxPartyIndex : (partyLength - 1),
-      partyLength - 1
-    )
-  );
+  var rawMaxPartyIndex = getMaxPartyMemberIndexSnapshot();
+  if (!Number.isFinite(rawMaxPartyIndex) || rawMaxPartyIndex < 0) {
+    rawMaxPartyIndex = partyLength - 1;
+  }
+  var maxPartyIndex = Math.max(-1, Math.min(rawMaxPartyIndex, partyLength - 1));
   if (maxPartyIndex < 0) {
     return;
   }
@@ -881,14 +887,11 @@ export function* performActionPhaseSystem(runtime) {
   }
 
   var partyEntries = getPartyList();
-  var rawMaxPartyIndexPerform = worldService.getMaxPartyMemberIndex();
-  var maxPartyMemberIndex = Math.max(
-    -1,
-    Math.min(
-      typeof rawMaxPartyIndexPerform === 'number' ? rawMaxPartyIndexPerform : (partyEntries.length - 1),
-      partyEntries.length - 1
-    )
-  );
+  var rawMaxPartyIndexPerform = getMaxPartyMemberIndexSnapshot();
+  if (!Number.isFinite(rawMaxPartyIndexPerform) || rawMaxPartyIndexPerform < 0) {
+    rawMaxPartyIndexPerform = partyEntries.length - 1;
+  }
+  var maxPartyMemberIndex = Math.max(-1, Math.min(rawMaxPartyIndexPerform, partyEntries.length - 1));
   var playerRolesData = (typeof GameData !== 'undefined' && GameData) ? GameData.playerRoles : null;
 
   var actionQueue = Array.isArray(state.actionQueue) ? state.actionQueue : [];
@@ -918,7 +921,7 @@ export function* performActionPhaseSystem(runtime) {
       }
       var partyRole = partyInfo.playerRole;
       for (var poisonSlot = 0; poisonSlot < Const.MAX_POISONS; poisonSlot++) {
-        var poisonMatrix = worldService.getPoisonStatusMatrix();
+        var poisonMatrix = getPoisonStatusMatrix();
         var poisonRow = poisonMatrix ? poisonMatrix[poisonSlot] : null;
         var poisonEntry = poisonRow ? poisonRow[partyIndex] : null;
         if (poisonEntry && poisonEntry.poisonID !== 0) {

@@ -9,14 +9,21 @@ console.trace('sprite module load');
  * @param  {Uint8Array} buf
  */
 var Sprite = function(buf) {
-  this.buf = buf;
+  if (buf && buf.uint8Array instanceof Uint8Array) {
+    buf = buf.uint8Array;
+  } else if (buf && !(buf instanceof Uint8Array) && buf.buffer instanceof ArrayBuffer) {
+    var byteOffset = buf.byteOffset || 0;
+    var byteLength = buf.byteLength || 0;
+    buf = new Uint8Array(buf.buffer, byteOffset, byteLength);
+  }
+  this.buf = buf instanceof Uint8Array ? buf : new Uint8Array(0);
   /**
    * 帧数
    * @name frameCount
    * @memberof Sprite
    * @type {int}
    */
-  this.reader = new BinaryReader(buf);
+  this.reader = this.buf.length >= 2 ? new BinaryReader(this.buf) : null;
   this.frameCount = this.getFrameCount();
   this.readAll();
 };
@@ -28,7 +35,14 @@ utils.extend(Sprite.prototype, {
    * @return {int}
    */
   getFrameCount: function() {
-    return (this.reader.getUint16(0) - 1);
+    if (!this.reader || this.buf.length < 2) {
+      return 0;
+    }
+    var frameTableCount = this.reader.getUint16(0);
+    if (!Number.isFinite(frameTableCount) || frameTableCount <= 0) {
+      return 0;
+    }
+    return frameTableCount - 1;
   },
   /**
    * 获取帧偏移量
@@ -37,11 +51,21 @@ utils.extend(Sprite.prototype, {
    * @return {int}
    */
   getFrameOffset: function(frameNum) {
+    if (!this.reader) {
+      return false;
+    }
     if (frameNum >= this.frameCount) {
       return false;
     }
-    frameNum <<= 1;
-    var offset = WORD(this.reader.getUint16(frameNum) << 1);
+    var tableOffset = frameNum << 1;
+    if (tableOffset < 0 || tableOffset + 2 > this.buf.length) {
+      return false;
+    }
+    var offsetWord = this.reader.getUint16(tableOffset);
+    var offset = WORD(offsetWord << 1);
+    if (!Number.isFinite(offset) || offset < 0 || offset >= this.buf.length) {
+      return false;
+    }
     return offset;
   },
   /**
@@ -54,6 +78,9 @@ utils.extend(Sprite.prototype, {
     var offset = this.getFrameOffset(frameNum);
     if (offset === false) return false;
 
+    if (offset >= this.buf.length) {
+      return false;
+    }
     var ret = this.buf.subarray(offset);
     //ret.width = PAL_RLEGetWidth(ret);
     //ret.height = PAL_RLEGetHeight(ret);
@@ -68,7 +95,7 @@ utils.extend(Sprite.prototype, {
   readAll: function() {
     if (this.frames) return this.frames;
     var count = this.frameCount;
-    if (count <= 0) {
+    if (!this.reader || count <= 0) {
       this.frames = [];
       return;
     }

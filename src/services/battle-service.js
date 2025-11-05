@@ -14,8 +14,11 @@ import {
   getPlayerDefense,
   getPlayerDexterity,
   getPlayerFleeRate,
-  getPlayerStatusRow
+  getPlayerStatusRow,
+  getMaxPartyMemberIndex
 } from './player-state-adapter.js';
+import partyTrailAdapter from './party-trail-adapter.js';
+import { getExpStateSnapshot } from './game-data-adapter.js';
 import {
   createEntityRegistry,
   BattleComponents,
@@ -50,7 +53,18 @@ function ensureGameGlobal() {
 }
 
 function getPartySnapshot() {
-  const party = worldService.getParty();
+  const fallback = worldService.getParty();
+  const party = partyTrailAdapter.getPartyState();
+  const globalParty = stateService.getGlobal('party');
+  if (Array.isArray(party) && party.length > 0 && party.length >= (Array.isArray(fallback) ? fallback.length : 0)) {
+    return party;
+  }
+  if (Array.isArray(fallback) && fallback.length > 0) {
+    return fallback;
+  }
+  if (Array.isArray(globalParty) && globalParty.length > 0) {
+    return globalParty;
+  }
   return Array.isArray(party) ? party : [];
 }
 
@@ -295,11 +309,13 @@ class BattleService extends EventBus {
     }
     const registry = this.ecs;
     const party = getPartySnapshot();
-    const rawMaxPartyMemberIndex = worldService.getMaxPartyMemberIndex();
+    const rawMaxPartyMemberIndex = getMaxPartyMemberIndex();
     const maxPartyMemberIndex = Math.max(
       -1,
       Math.min(
-        typeof rawMaxPartyMemberIndex === 'number' ? rawMaxPartyMemberIndex : party.length - 1,
+        (typeof rawMaxPartyMemberIndex === 'number' && rawMaxPartyMemberIndex >= 0)
+          ? rawMaxPartyMemberIndex
+          : party.length - 1,
         party.length - 1
       )
     );
@@ -980,7 +996,13 @@ class BattleService extends EventBus {
   }
 
   getExpState() {
-    return worldService.getExpState();
+    const snapshot = getExpStateSnapshot();
+    if (snapshot) {
+      return snapshot;
+    }
+    return typeof worldService.getExpState === 'function'
+      ? worldService.getExpState()
+      : null;
   }
 
   mutateExpState(mutator) {
@@ -1238,7 +1260,7 @@ class BattleService extends EventBus {
       roleId,
       before,
       after,
-      levelUp: after.level > before.level,
+      levelUp: levelUpOccurred,
       expApplied: expGained
     };
   }

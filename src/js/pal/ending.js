@@ -2,6 +2,11 @@ import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
 import Sprite from './sprite';
 import scene from './scene';
+import {
+  shouldFadeIn,
+  getPaletteIdValue as getPaletteIdSnapshot,
+  isNightPaletteEnabled
+} from '../../services/environment-adapter.js';
 
 log.trace('script module load');
 
@@ -178,10 +183,10 @@ ending.scrollFBP = function*(chunkNum, scrollSpeed, scrollDown) {
 
     surface.updateScreen(null);
 
-    if (worldService.getNeedToFadeIn()) {
+    if (shouldFadeIn()) {
       yield surface.fadeIn(
-        worldService.getPaletteId() || 0,
-        !!worldService.getNightPaletteFlag(),
+        getPaletteIdSnapshot(),
+        !!isNightPaletteEnabled(),
         1
       );
       worldService.setNeedToFadeIn(false);
@@ -254,10 +259,10 @@ ending.endingAnimation = function*() {
     // Update the screen
     surface.updateScreen(null);
 
-    if (worldService.getNeedToFadeIn()) {
+    if (shouldFadeIn()) {
       yield surface.fadeIn(
-        worldService.getPaletteId() || 0,
-        !!worldService.getNightPaletteFlag(),
+        getPaletteIdSnapshot(),
+        !!isNightPaletteEnabled(),
         1
       );
       worldService.setNeedToFadeIn(false);

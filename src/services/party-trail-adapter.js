@@ -126,6 +126,14 @@ function getTrailState() {
   return trailCache;
 }
 
+function getPartyMember(index) {
+  ensureInitialised();
+  if (!Array.isArray(partyCache)) {
+    return null;
+  }
+  return partyCache[index] || null;
+}
+
 function getFollowerCount() {
   ensureInitialised();
   return followerCountCache;
@@ -144,6 +152,7 @@ export default {
   subscribe,
   getPartyState,
   getTrailState,
+  getPartyMember,
   getFollowerCount,
   dispose
 };
