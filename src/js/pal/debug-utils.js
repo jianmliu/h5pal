@@ -3,9 +3,11 @@ import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import worldService from '../../services/world-service.js';
 import battleService from '../../services/battle-service.js';
 import reactiveContext from '../../state/reactive-context.js';
-import debugOverlay from './debug-overlay.js';
+import debugOverlay from './debug-overlay';
 import scene from './scene';
 import battle from './battle';
+import { SPRITE_STATS } from './sprite';
+import { RLE_STATS } from './rle';
 
 const reactiveTraceSessions = new Map();
 const perfHookRegistry = new Map();

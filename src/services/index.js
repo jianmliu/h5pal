@@ -5,6 +5,7 @@ import scriptService from './script-service.js';
 import battleService from './battle-service.js';
 import worldService from './world-service.js';
 import partyTrailAdapter from './party-trail-adapter.js';
+import playerStateAdapter from './player-state-adapter.js';
 import battleStateAdapter from './battle-state-adapter.js';
 import scriptObjectAdapter from './script-object-adapter.js';
 import sceneEventAdapter from './scene-event-adapter.js';
@@ -21,6 +22,7 @@ const services = {
   world: worldService,
   adapters: {
     partyTrail: partyTrailAdapter,
+    playerState: playerStateAdapter,
     battleState: battleStateAdapter,
     scriptObjects: scriptObjectAdapter,
     sceneEvents: sceneEventAdapter,
@@ -38,6 +40,7 @@ export {
   battleService,
   worldService,
   partyTrailAdapter,
+  playerStateAdapter,
   battleStateAdapter,
   scriptObjectAdapter,
   sceneEventAdapter,

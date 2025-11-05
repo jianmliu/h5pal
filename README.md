@@ -20,6 +20,20 @@ h5pal
 - 核心模块已完全接入响应式状态：通过 `environment-/scene-/save-data-adapter` 等读取切片，旧的 `worldService.get*Struct` 接口已经移除，并补充了对应适配器测试确保回归。
 - 新增调试辅助：`debugUtils.startReactiveTrace()` 可实时监听 slice 事件，`debugUtils.startRenderProfiling()` 可输出场景/战斗渲染耗时。
 
+## 架构概述
+
+- **ECS 内核**：`src/ecs` 定义实体、组件与系统。地图、队伍、战斗等运行态数据通过组件挂载在 `worldService.registry` 上，由 `world-systems.js` 在逐帧循环里维护。
+- **响应式状态切片**：游戏状态拆分为 `state/slices/*.js`，并通过服务适配器（如 `scene-data-adapter`、`player-state-adapter`、`save-data-adapter`）对外暴露读写接口。新逻辑优先使用适配器快照，旧的 `worldService` getter 仅作为兜底。
+- **服务总线**：`services/index.js` 统一导出运行期服务，可在 AMD 构建下通过 `require(['../services/index'], (module) => { const services = module.default; })` 直接访问 `services.adapters.*`。
+
+## 调试工具
+
+- 调试入口：`require(['js/pal/debug-utils'], (debugUtils) => { ... });`
+- **响应式追踪**：`debugUtils.startReactiveTrace('SceneTrace', { filter: ({ slice }) => slice === 'scene-events' });` 实时输出切片变更，`stopReactiveTrace('SceneTrace')` 结束。
+- **渲染性能**：`debugUtils.startRenderProfiling({ threshold: 8 })` 记录场景/战斗渲染耗时，`stopRenderProfiling()` 停止。
+- **调试覆盖层**：`debugUtils.debugOverlay.startOverlay();` 在页面右侧生成 HUD，展示 FPS、场景/战斗状态、Sprite/RLE 缓存统计；`stopOverlay()` 可关闭。
+- **资源检查**：`debugUtils.inspectSprite(spriteId)`、`debugUtils.inspectRLE(rleId)` 快速查看缓存内容与尺寸。
+
 # 如何搞起
 
 ## 环境
@@ -105,6 +119,8 @@ h5pal
 * ES6 and [babel](http://babeljs.io/)
 * ES6 [generator/yield](http://jimliu.net/2014/11/28/a-brief-look-at-es6-generator-function/) and [co](https://github.com/tj/co)
 * 逐步将 PAL 的运行时迁移到响应式状态管理。参见 `docs/reactive-migration-guide.md` 了解切片模式和示例。
+* ECS 组件、系统定义位于 `src/ecs/`，配合 `services/world-service.js` 管理实体生命周期。
+* 调试与性能分析工具集中在 `src/js/pal/debug-utils.js`，推荐在开发过程中开启 Overlay、Reactive Trace 及时捕获异常。
 
 ## License
 
@@ -155,6 +171,20 @@ GPL v3
 * Turn on _"Enable experimental JavaScript"_ in `chrome://flags`
 * Open [http://localhost:8005/h5pal.html](http://localhost:8005/h5pal.html) 
 * Enjoy
+
+# Architecture overview
+
+- **ECS core** – runtime data (map, party, battle) lives in the entity/component registry under `src/ecs`, managed by `worldService` and updated through `world-systems.js`.
+- **Reactive slices** – application state is split into `state/slices/*.js` and exposed via adapters such as `scene-data-adapter`, `player-state-adapter`, and `save-data-adapter`. New features should consume adapters first and treat legacy `worldService` getters as fallbacks only.
+- **Service hub** – `services/index.js` re-exports every service/adapter. In the AMD build invoke `require(['../services/index'], (module) => { const services = module.default; /* ... */ });` to reach `services.adapters.*`.
+
+# Debug utilities
+
+- Load helpers with `require(['js/pal/debug-utils'], (debugUtils) => { ... });`.
+- **Reactive tracing** – `debugUtils.startReactiveTrace('SceneTrace', { filter: ({ slice }) => slice === 'scene-events' });` streams slice mutations; call `stopReactiveTrace('SceneTrace')` to halt.
+- **Render profiling** – `debugUtils.startRenderProfiling({ threshold: 8 });` records scene/battle render cost. Use `stopRenderProfiling()` when done.
+- **Overlay HUD** – `debugUtils.debugOverlay.startOverlay();` spawns an on-page panel showing FPS, scene/battle snapshot, and sprite/RLE cache stats. `stopOverlay()` hides it.
+- **Sprite/RLE inspection** – `debugUtils.inspectSprite(spriteId)` / `debugUtils.inspectRLE(rleId)` dump cache metadata to help diagnose asset issues.
 
 # Etc.
 
