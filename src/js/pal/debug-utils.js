@@ -155,6 +155,44 @@ function listRenderProfiles() {
   return Array.from(renderProfileSessions.keys());
 }
 
+function getSceneSpriteCache(options = {}) {
+  const cache = scene && scene.playerSpriteCache ? scene.playerSpriteCache : null;
+  if (!cache) {
+    return [];
+  }
+  const entries = Object.keys(cache).map((key) => {
+    const sprite = cache[key];
+    return {
+      spriteNum: Number(key),
+      frameCount: sprite && typeof sprite.frameCount === 'number' ? sprite.frameCount : 0,
+      bufferLength: sprite && sprite.buf ? sprite.buf.length : 0
+    };
+  });
+  entries.sort((a, b) => (b.frameCount || 0) - (a.frameCount || 0));
+  const limit = Number.isFinite(options.limit) ? Math.max(0, options.limit) : entries.length;
+  return entries.slice(0, limit);
+}
+
+function getSpriteStats(options = {}) {
+  const cacheEntries = getSceneSpriteCache(options);
+  return {
+    stats: { ...SPRITE_STATS },
+    cacheSize: cacheEntries.length,
+    cache: cacheEntries
+  };
+}
+
+function getRLEStats() {
+  return {
+    calls: RLE_STATS.calls,
+    decorated: RLE_STATS.decorated,
+    reused: RLE_STATS.reused,
+    totalBytes: RLE_STATS.totalBytes,
+    histogram: { ...RLE_STATS.histogram },
+    last: RLE_STATS.last
+  };
+}
+
 function formatScriptEntry(entryId) {
   if (!Number.isFinite(entryId)) {
     return null;
@@ -253,7 +291,9 @@ export {
   startRenderProfiling,
   stopRenderProfiling,
   listRenderProfiles,
-  debugOverlay
+  debugOverlay,
+  getSpriteStats,
+  getRLEStats
 };
 
 export default {
@@ -269,5 +309,7 @@ export default {
   startRenderProfiling,
   stopRenderProfiling,
   listRenderProfiles,
-  debugOverlay
+  debugOverlay,
+  getSpriteStats,
+  getRLEStats
 };

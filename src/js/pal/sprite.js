@@ -3,12 +3,23 @@ import RLE from './rle';
 
 console.trace('sprite module load');
 
+const SPRITE_STATS = {
+  created: 0,
+  empty: 0,
+  totalFrames: 0,
+  totalBytes: 0,
+  decodedFrames: 0,
+  histogram: Object.create(null),
+  last: null
+};
+
 /**
  * 一组Sprite动画
  * @constructor
  * @param  {Uint8Array} buf
  */
 var Sprite = function(buf) {
+  const originalBuf = buf;
   if (buf && buf.uint8Array instanceof Uint8Array) {
     buf = buf.uint8Array;
   } else if (buf && !(buf instanceof Uint8Array) && buf.buffer instanceof ArrayBuffer) {
@@ -17,6 +28,8 @@ var Sprite = function(buf) {
     buf = new Uint8Array(buf.buffer, byteOffset, byteLength);
   }
   this.buf = buf instanceof Uint8Array ? buf : new Uint8Array(0);
+  SPRITE_STATS.created += 1;
+  SPRITE_STATS.totalBytes += this.buf.length || (originalBuf && originalBuf.length) || 0;
   /**
    * 帧数
    * @name frameCount
@@ -25,6 +38,17 @@ var Sprite = function(buf) {
    */
   this.reader = this.buf.length >= 2 ? new BinaryReader(this.buf) : null;
   this.frameCount = this.getFrameCount();
+  SPRITE_STATS.totalFrames += this.frameCount;
+  if (this.frameCount <= 0) {
+    SPRITE_STATS.empty += 1;
+  }
+  if (this.frameCount) {
+    SPRITE_STATS.histogram[this.frameCount] = (SPRITE_STATS.histogram[this.frameCount] || 0) + 1;
+  }
+  SPRITE_STATS.last = {
+    bufferLength: this.buf.length,
+    frameCount: this.frameCount
+  };
   this.readAll();
 };
 
@@ -102,6 +126,9 @@ utils.extend(Sprite.prototype, {
     this.frames = new Array(count);
     for (var i=0; i<count; ++i) {
       this.frames[i] = this.getFrame(i);
+      if (this.frames[i]) {
+        SPRITE_STATS.decodedFrames += 1;
+      }
     }
   }
 });
@@ -128,3 +155,4 @@ Sprite.fromMKF = function(mkf, decompress){
 };
 
 export default Sprite;
+export { SPRITE_STATS };
