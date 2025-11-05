@@ -17,6 +17,8 @@ h5pal
 - 系统菜单的存档/读档使用浏览器 localStorage，可选择 1~5 号槽位。
 - 构建产物可直接复制到 `xianjian.github.com/ultimate/`，包含运行所需资源。
 - 新增 `h5pal/scripts/import-rpg-save.mjs`，可将 DOS 版 `SAVEDATAxx.RPG` 转换成本项目使用的 localStorage 存档。
+- 核心模块已完全接入响应式状态：通过 `environment-/scene-/save-data-adapter` 等读取切片，旧的 `worldService.get*Struct` 接口已经移除，并补充了对应适配器测试确保回归。
+- 新增调试辅助：`debugUtils.startReactiveTrace()` 可实时监听 slice 事件，`debugUtils.startRenderProfiling()` 可输出场景/战斗渲染耗时。
 
 # 如何搞起
 

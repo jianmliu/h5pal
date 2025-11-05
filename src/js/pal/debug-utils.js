@@ -1,6 +1,159 @@
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import worldService from '../../services/world-service.js';
+import battleService from '../../services/battle-service.js';
+import reactiveContext from '../../state/reactive-context.js';
+import debugOverlay from './debug-overlay.js';
+import scene from './scene';
+import battle from './battle';
+
+const reactiveTraceSessions = new Map();
+const perfHookRegistry = new Map();
+const renderProfileSessions = new Map();
+
+function now() {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function startReactiveTrace(name = 'default', options = {}) {
+  const sessionKey = typeof name === 'string' && name.trim() ? name.trim() : 'default';
+  stopReactiveTrace(sessionKey);
+  const { filter, limit } = options || {};
+  let count = 0;
+  const start = typeof performance !== 'undefined' && typeof performance.now === 'function'
+    ? performance.now()
+    : Date.now();
+  const subscription = reactiveContext.rootEvent$.subscribe((event) => {
+    if (typeof filter === 'function' && !filter(event)) {
+      return;
+    }
+    count += 1;
+    const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
+    const payload = {
+      ...event,
+      session: sessionKey,
+      index: count,
+      elapsed: Math.round(now - start)
+    };
+    if (typeof console !== 'undefined' && console.debug) {
+      console.debug('[reactive.trace]', payload);
+    }
+    if (Number.isFinite(limit) && limit > 0 && count >= limit) {
+      subscription.unsubscribe();
+      reactiveTraceSessions.delete(sessionKey);
+    }
+  });
+  reactiveTraceSessions.set(sessionKey, { subscription, options: { ...options }, start, count: 0 });
+  return sessionKey;
+}
+
+function stopReactiveTrace(name = 'default') {
+  const sessionKey = typeof name === 'string' && name.trim() ? name.trim() : 'default';
+  const entry = reactiveTraceSessions.get(sessionKey);
+  if (entry && entry.subscription) {
+    entry.subscription.unsubscribe();
+  }
+  reactiveTraceSessions.delete(sessionKey);
+}
+
+function listReactiveTraces() {
+  return Array.from(reactiveTraceSessions.keys());
+}
+
+function profileMethod(target, methodName, label, options = {}) {
+  if (!target || typeof target[methodName] !== 'function') {
+    return null;
+  }
+  const hookKey = label || methodName;
+  if (perfHookRegistry.has(hookKey)) {
+    const entry = perfHookRegistry.get(hookKey);
+    entry.target[entry.methodName] = entry.original;
+    perfHookRegistry.delete(hookKey);
+  }
+  const original = target[methodName];
+  const threshold = Number.isFinite(options.threshold) ? options.threshold : 0;
+  const logArgs = !!options.logArgs;
+  const logResult = !!options.logResult;
+  const wrapper = function profiledMethod(...args) {
+    const start = now();
+    let result;
+    let threw = false;
+    try {
+      result = original.apply(this, args);
+    } catch (err) {
+      threw = true;
+      throw err;
+    } finally {
+      const duration = now() - start;
+      if (duration >= threshold && typeof console !== 'undefined' && console.debug) {
+        const payload = {
+          label: hookKey,
+          method: methodName,
+          duration: Number(duration.toFixed(3))
+        };
+        if (logArgs) {
+          payload.args = args;
+        }
+        if (!threw && logResult) {
+          payload.result = result;
+        }
+        console.debug('[perf.profile]', payload);
+      }
+    }
+    return result;
+  };
+  Object.defineProperty(wrapper, 'name', {
+    value: `${methodName}__profiled`,
+    configurable: true
+  });
+  target[methodName] = wrapper;
+  perfHookRegistry.set(hookKey, { target, methodName, original });
+  return () => {
+    if (perfHookRegistry.has(hookKey)) {
+      target[methodName] = original;
+      perfHookRegistry.delete(hookKey);
+    }
+  };
+}
+
+function startRenderProfiling(options = {}) {
+  const sessionName = typeof options.name === 'string' && options.name.trim() ? options.name.trim() : 'render';
+  stopRenderProfiling(sessionName);
+  const config = {
+    threshold: Number.isFinite(options.threshold) ? options.threshold : 0,
+    logArgs: !!options.logArgs,
+    logResult: !!options.logResult
+  };
+  const hooks = [
+    profileMethod(scene, 'renderMap', 'scene.renderMap', config),
+    profileMethod(scene, 'renderSprites', 'scene.renderSprites', config),
+    profileMethod(scene, 'updatePartyGestures', 'scene.updatePartyGestures', config),
+    profileMethod(battle, 'makeScene', 'battle.makeScene', config),
+    profileMethod(battleService, 'runSystems', 'battleService.runSystems', config)
+  ].filter(Boolean);
+  renderProfileSessions.set(sessionName, hooks);
+  return sessionName;
+}
+
+function stopRenderProfiling(name = 'render') {
+  const sessionName = typeof name === 'string' && name.trim() ? name.trim() : 'render';
+  const hooks = renderProfileSessions.get(sessionName) || [];
+  hooks.forEach((dispose) => {
+    if (typeof dispose === 'function') {
+      dispose();
+    }
+  });
+  renderProfileSessions.delete(sessionName);
+}
+
+function listRenderProfiles() {
+  return Array.from(renderProfileSessions.keys());
+}
 
 function formatScriptEntry(entryId) {
   if (!Number.isFinite(entryId)) {
@@ -93,7 +246,14 @@ export {
   listTriggerScripts,
   dumpSceneEventObjects,
   traceBattleLoop,
-  resolveScriptSequence
+  resolveScriptSequence,
+  startReactiveTrace,
+  stopReactiveTrace,
+  listReactiveTraces,
+  startRenderProfiling,
+  stopRenderProfiling,
+  listRenderProfiles,
+  debugOverlay
 };
 
 export default {
@@ -102,5 +262,12 @@ export default {
   listTriggerScripts,
   dumpSceneEventObjects,
   traceBattleLoop,
-  resolveScriptSequence
+  resolveScriptSequence,
+  startReactiveTrace,
+  stopReactiveTrace,
+  listReactiveTraces,
+  startRenderProfiling,
+  stopRenderProfiling,
+  listRenderProfiles,
+  debugOverlay
 };

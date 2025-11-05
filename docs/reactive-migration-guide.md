@@ -84,6 +84,9 @@ For every migrated slice add targeted coverage:
     (`_handleGlobalChanged` path).
 - Consumer tests that prove subscribers observe the change (see
   `test/battle-service.test.js` for UI `autoBattle` updates).
+- Adapter-facing tests (e.g. `test/environment-adapter.test.js`,
+  `test/scene-data-adapter.test.js`, `test/save-data-adapter.test.js`) lock the
+  snapshot/fallback behaviour once the old `worldService` getters are removed.
 
 These tests catch regressions early as more modules adopt the reactive layer.
 
@@ -155,7 +158,12 @@ Once these steps are complete you can safely remove ad-hoc proxy helpers
   in `game.js`, `magicmenu.js`, `script.js`, etc.). Tests asserting cash changes
   should read via `getCashValue()` rather than `worldService.getCash()`.
 
-## 6. Future work
+## 6. Debugging reactive flows
+
+- Use `debugUtils.startReactiveTrace(name?, { filter, limit })` to monitor slice mutations in real time. Each event is logged with a session label, index, and elapsed time.
+- Call `debugUtils.startRenderProfiling({ threshold, logArgs })` to wrap key scene/battle rendering methods (`scene.renderMap`, `scene.renderSprites`, `battle.makeScene`, `battleService.runSystems`) and print per-call timings. Stop with `debugUtils.stopRenderProfiling(name?)`.
+
+## 7. Future work
 
 - Expose helper adapters (e.g. `useSignal(signal)` hooks) for the forthcoming
   React/TypeScript UI.

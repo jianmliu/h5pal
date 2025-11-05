@@ -1,5 +1,7 @@
 console.trace('rle module load');
 
+const RLE_DECORATED = Symbol('rleDecorated');
+
 /**
  * RLE，对Uint8Array进行一次封装，封装了width/height/content属性
  * @param {Uint8Array} buf
@@ -33,9 +35,9 @@ var RLE = function(buf) {
 
   buf.tmp = tmp;
   buf.reader = new BinaryReader(tmp);
-  if (!buf.__rleDecorated__) {
+  if (!buf[RLE_DECORATED]) {
     Object.defineProperties(buf, RLEMixin);
-    Object.defineProperty(buf, '__rleDecorated__', {
+    Object.defineProperty(buf, RLE_DECORATED, {
       value: true,
       enumerable: false,
       configurable: true
