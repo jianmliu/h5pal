@@ -1177,11 +1177,6 @@ class WorldService extends EventBus {
     return result;
   }
 
-  getTrailStruct() {
-    this._ensureInitialised();
-    return stateService.getGlobal('trail') || null;
-  }
-
   setTrailStruct(struct) {
     const result = this._copyStructIntoGlobal('trail', struct, () => this.syncTrail());
     const trail = this.getTrail();
@@ -1208,11 +1203,6 @@ class WorldService extends EventBus {
       return party;
     }
     return [];
-  }
-
-  getPartyStruct() {
-    this._ensureInitialised();
-    return stateService.getGlobal('party') || null;
   }
 
   getMaxPartyMemberIndex() {
@@ -1267,16 +1257,6 @@ class WorldService extends EventBus {
     return resolved;
   }
 
-  getInventoryStruct() {
-    this._ensureInitialised();
-    const inventory = stateService.getGlobal('inventory');
-    const resolved = Array.isArray(inventory) ? inventory : (inventory || null);
-    if (resolved) {
-      updateInventoryValue(resolved, { emitEvent: false, source: 'worldService:get', capacity: this.getInventoryCapacity() });
-    }
-    return resolved;
-  }
-
   mutateInventory(mutator) {
     this._ensureInitialised();
     if (typeof mutator !== 'function') {
@@ -1320,16 +1300,6 @@ class WorldService extends EventBus {
     const status = stateService.getGlobal('playerStatus');
     const resolved = Array.isArray(status) ? status : [];
     updatePlayerStatusMatrix(resolved, { emitEvent: false, source: 'worldService:get' });
-    return resolved;
-  }
-
-  getPlayerStatusStruct() {
-    this._ensureInitialised();
-    const status = stateService.getGlobal('playerStatus');
-    const resolved = Array.isArray(status) ? status : (status || null);
-    if (resolved) {
-      updatePlayerStatusMatrix(resolved, { emitEvent: false, source: 'worldService:get' });
-    }
     return resolved;
   }
 

@@ -33,7 +33,14 @@ var RLE = function(buf) {
 
   buf.tmp = tmp;
   buf.reader = new BinaryReader(tmp);
-  Object.defineProperties(buf, RLEMixin);
+  if (!buf.__rleDecorated__) {
+    Object.defineProperties(buf, RLEMixin);
+    Object.defineProperty(buf, '__rleDecorated__', {
+      value: true,
+      enumerable: false,
+      configurable: true
+    });
+  }
 
   // Get the width and height of the bitmap.
   //buf.width = tmp[0] | (tmp[1] << 8);

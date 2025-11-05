@@ -1,52 +1,38 @@
 import stateService from './state-service.js';
 import worldService from './world-service.js';
 
-function getStructFromState(key, fallback) {
+function getStructFromState(key) {
   const struct = stateService.getGlobal(key);
   if (struct && typeof struct === 'object') {
     return struct;
   }
-  return typeof fallback === 'function' ? fallback() : null;
+  return null;
 }
 
 export function getPartyStructSnapshot() {
-  return getStructFromState('party', () => (
-    typeof worldService.getPartyStruct === 'function'
-      ? worldService.getPartyStruct()
-      : null
-  ));
+  return getStructFromState('party');
 }
 
 export function getTrailStructSnapshot() {
-  return getStructFromState('trail', () => (
-    typeof worldService.getTrailStruct === 'function'
-      ? worldService.getTrailStruct()
-      : null
-  ));
+  return getStructFromState('trail');
 }
 
 export function getExpStructSnapshot() {
-  return getStructFromState('exp', () => (
-    typeof worldService.getExpState === 'function'
-      ? worldService.getExpState()
-      : null
-  ));
+  const struct = stateService.getGlobal('exp');
+  if (struct && typeof struct === 'object') {
+    return struct;
+  }
+  return typeof worldService.getExpState === 'function'
+    ? worldService.getExpState()
+    : null;
 }
 
 export function getPoisonStructSnapshot() {
-  return getStructFromState('poisonStatus', () => (
-    typeof worldService.getPoisonStatusStruct === 'function'
-      ? worldService.getPoisonStatusStruct()
-      : null
-  ));
+  return getStructFromState('poisonStatus');
 }
 
 export function getInventoryStructSnapshot() {
-  return getStructFromState('inventory', () => (
-    typeof worldService.getInventoryStruct === 'function'
-      ? worldService.getInventoryStruct()
-      : null
-  ));
+  return getStructFromState('inventory');
 }
 
 export default {
@@ -56,4 +42,3 @@ export default {
   getPoisonStructSnapshot,
   getInventoryStructSnapshot
 };
-
