@@ -147,6 +147,7 @@ function refreshExpCache() {
     expStateCache = latest;
     return expStateCache;
   }
+  // TODO(rxjs-cleanup): remove worldService exp fallback once exp slice is always primed.
   const current = worldService.getExpState ? worldService.getExpState() : null;
   expStateCache = current || null;
   return expStateCache;
@@ -354,6 +355,7 @@ function getLevelUpExpValue(level) {
       return value;
     }
   }
+  // TODO(rxjs-cleanup): drop worldService level-up fallback once table seeding is guaranteed.
   if (worldService && typeof worldService.getLevelUpExp === 'function') {
     return worldService.getLevelUpExp(level) || 0;
   }

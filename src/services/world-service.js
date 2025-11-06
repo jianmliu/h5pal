@@ -187,6 +187,51 @@ const MAX_SPRITE_STATE_KEY = 'MAX_SPRITE_TO_DRAW';
 const LEGACY_SPRITE_LIMIT_KEY = '__PAL_LEGACY_MAX_SPRITE__';
 const DEFAULT_MAX_SPRITE_TO_DRAW = 2048;
 
+function setDefaultPartyStruct() {
+  const constRef = getGlobalObject('Const');
+  const maxMembers = constRef && typeof constRef.MAX_PARTY_MEMBERS === 'number'
+    ? constRef.MAX_PARTY_MEMBERS
+    : 5;
+
+  const existingParty = stateService.getGlobal('party');
+  const nextParty = new Array(maxMembers);
+  for (let idx = 0; idx < maxMembers; idx++) {
+    const source = Array.isArray(existingParty) ? existingParty[idx] : null;
+    if (source && typeof source.playerRole === 'number') {
+      nextParty[idx] = {
+        playerRole: source.playerRole,
+        x: Number.isFinite(source.x) ? source.x : 0,
+        y: Number.isFinite(source.y) ? source.y : 0,
+        frame: Number.isFinite(source.frame) ? source.frame : 0,
+        imageOffset: Number.isFinite(source.imageOffset) ? source.imageOffset : 0
+      };
+    } else {
+      nextParty[idx] = { playerRole: idx, x: 0, y: 0, frame: 0, imageOffset: 0 };
+    }
+  }
+  stateService.setGlobal('party', nextParty);
+
+  const existingTrail = stateService.getGlobal('trail');
+  const nextTrail = new Array(maxMembers);
+  for (let idx = 0; idx < maxMembers; idx++) {
+    const source = Array.isArray(existingTrail) ? existingTrail[idx] : null;
+    if (source && Number.isFinite(source.x) && Number.isFinite(source.y)) {
+      nextTrail[idx] = {
+        x: source.x,
+        y: source.y,
+        direction: Number.isFinite(source.direction) ? source.direction : Direction.South
+      };
+    } else {
+      nextTrail[idx] = { x: 0, y: 0, direction: Direction.South };
+    }
+  }
+  stateService.setGlobal('trail', nextTrail);
+
+  if (typeof stateService.getGlobal('numFollower') !== 'number') {
+    stateService.setGlobal('numFollower', 0);
+  }
+}
+
 const toSignedWord = getGlobalFunction('SHORT', function(value) {
   const result = value & 0xFFFF;
   return (result & 0x8000) ? result - 0x10000 : result;
@@ -251,6 +296,13 @@ class WorldService extends EventBus {
     stateService.on('globalChanged', this._handleGlobalChanged);
     stateService.on('gameDataChanged', this._handleGameDataChanged);
     this._initialised = true;
+    const globalStore = stateService.getGlobal();
+    const hasPartyStruct = globalStore && Array.isArray(globalStore.party) && globalStore.party.length > 0;
+    const hasTrailStruct = globalStore && Array.isArray(globalStore.trail) && globalStore.trail.length > 0;
+    const hasFollowerCount = globalStore && typeof globalStore.numFollower === 'number';
+    if (!hasPartyStruct || !hasTrailStruct || !hasFollowerCount) {
+      setDefaultPartyStruct();
+    }
     this._migrateLegacySpriteLimit();
     this.syncAll();
   }
@@ -3159,3 +3211,45 @@ const worldService = new WorldService();
 
 export { WorldService };
 export default worldService;
+    // Ensure legacy structs exist so adapters can read meaningful values.
+    const globalStore = getGlobalStore();
+    const maxPartyMembers = Const && typeof Const.MAX_PARTY_MEMBERS === 'number'
+      ? Const.MAX_PARTY_MEMBERS
+      : 5;
+    let seededParty = stateService.getGlobal('party');
+    if (!Array.isArray(seededParty)) {
+      seededParty = new Array(maxPartyMembers).fill(null).map((_, idx) => ({
+        playerRole: idx,
+        x: 0,
+        y: 0,
+        frame: 0,
+        imageOffset: 0
+      }));
+      stateService.setGlobal('party', seededParty);
+    } else {
+      const partyArray = seededParty;
+      const maxParty = Const && typeof Const.MAX_PARTY_MEMBERS === 'number' ? Const.MAX_PARTY_MEMBERS : partyArray.length;
+      for (let idx = 0; idx < maxParty; idx++) {
+        if (!partyArray[idx]) {
+          partyArray[idx] = { playerRole: idx, x: 0, y: 0, frame: 0, imageOffset: 0 };
+        }
+      }
+    }
+    let seededTrail = stateService.getGlobal('trail');
+    if (!Array.isArray(seededTrail)) {
+      seededTrail = new Array(maxPartyMembers).fill(null).map(() => ({
+        x: 0,
+        y: 0,
+        direction: Direction.South
+      }));
+      stateService.setGlobal('trail', seededTrail);
+    } else {
+      for (let idx = 0; idx < seededTrail.length; idx++) {
+        if (!seededTrail[idx]) {
+          seededTrail[idx] = { x: 0, y: 0, direction: Direction.South };
+        }
+      }
+    }
+    if (typeof stateService.getGlobal('numFollower') !== 'number') {
+      stateService.setGlobal('numFollower', 0);
+    }

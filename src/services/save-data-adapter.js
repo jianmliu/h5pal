@@ -22,6 +22,7 @@ export function getExpStructSnapshot() {
   if (struct && typeof struct === 'object') {
     return struct;
   }
+  // TODO(rxjs-cleanup): remove worldService exp fallback once save-data slice is authoritative.
   return typeof worldService.getExpState === 'function'
     ? worldService.getExpState()
     : null;

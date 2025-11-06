@@ -1182,14 +1182,29 @@ battle.start = function*(enemyTeam, isBoss) {
     }
 
     battleService.mutateExpState(function(exp) {
-      if (!exp) return exp;
-      exp.healthExp[roleIndex].count = 0;
-      exp.magicExp[roleIndex].count = 0;
-      exp.attackExp[roleIndex].count = 0;
-      exp.magicPowerExp[roleIndex].count = 0;
-      exp.defenseExp[roleIndex].count = 0;
-      exp.dexterityExp[roleIndex].count = 0;
-      exp.fleeExp[roleIndex].count = 0;
+      if (!exp || typeof roleIndex !== 'number') {
+        return exp;
+      }
+      var buckets = [
+        exp.healthExp,
+        exp.magicExp,
+        exp.attackExp,
+        exp.magicPowerExp,
+        exp.defenseExp,
+        exp.dexterityExp,
+        exp.fleeExp
+      ];
+      for (var bucketIdx = 0; bucketIdx < buckets.length; bucketIdx++) {
+        var bucket = buckets[bucketIdx];
+        if (!bucket || !bucket[roleIndex]) {
+          continue;
+        }
+        if (typeof bucket[roleIndex].count === 'number') {
+          bucket[roleIndex].count = 0;
+        } else {
+          bucket[roleIndex].count = 0;
+        }
+      }
       return exp;
     });
   }

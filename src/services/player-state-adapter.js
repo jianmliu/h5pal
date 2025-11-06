@@ -1,4 +1,3 @@
-import worldService from './world-service.js';
 import stateService from './state-service.js';
 import reactiveContext from '../state/reactive-context.js';
 import { playerStateSignals, updatePlayerRolesValue } from '../state/slices/player-state.js';
@@ -92,9 +91,6 @@ function getRolesSnapshot() {
   if (store && store.playerRoles) {
     updatePlayerRolesValue(store.playerRoles, { emitEvent: false, source: 'player-state-adapter:fallback-GameData' });
     return store.playerRoles;
-  }
-  if (worldService && typeof worldService.getPlayerRoles === 'function') {
-    return worldService.getPlayerRoles();
   }
   return null;
 }
@@ -198,11 +194,7 @@ export function getMaxPartyMemberIndex() {
   if (typeof globalMax === 'number' && globalMax >= 0) {
     return globalMax;
   }
-  const resolved = worldService.getMaxPartyMemberIndex();
-  if (typeof resolved === 'number' && resolved >= 0) {
-    return resolved;
-  }
-  return typeof resolved === 'number' ? resolved : -1;
+  return -1;
 }
 
 export function getPlayerHP(roleId) {

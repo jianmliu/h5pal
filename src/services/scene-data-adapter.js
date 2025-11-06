@@ -7,6 +7,7 @@ function resolveSceneId(sceneId) {
   if (typeof sceneId === 'number' && sceneId > 0) {
     return sceneId;
   }
+  // TODO(rxjs-cleanup): eliminate worldService sceneId fallback once slices guarantee hydration.
   if (worldService && typeof worldService.getSceneId === 'function') {
     const current = worldService.getSceneId();
     if (typeof current === 'number' && current > 0) {
@@ -31,6 +32,7 @@ export function getSceneEntry(sceneId) {
       }
     }
   }
+  // TODO(rxjs-cleanup): drop worldService sceneEntry fallback once scene table slice covers all cases.
   if (worldService && typeof worldService.getSceneEntry === 'function') {
     return worldService.getSceneEntry(resolvedId);
   }
@@ -70,6 +72,7 @@ export function getSceneEventObjectRange(sceneId) {
   }
 
   if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    // TODO(rxjs-cleanup): remove worldService scene range fallback once table metadata is complete.
     if (worldService && typeof worldService.getSceneEventObjectRange === 'function') {
       const fallback = worldService.getSceneEventObjectRange(resolvedId);
       if (!Number.isFinite(start) && fallback && Number.isFinite(fallback.start)) {
@@ -111,6 +114,7 @@ export function getSceneTable() {
   if (Array.isArray(table) && table.length > 0) {
     return table;
   }
+  // TODO(rxjs-cleanup): drop worldService sceneTable fallback once reactive store is authoritative.
   if (worldService && typeof worldService.getSceneTable === 'function') {
     const fallback = worldService.getSceneTable();
     return Array.isArray(fallback) ? fallback : [];

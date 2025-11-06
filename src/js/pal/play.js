@@ -37,6 +37,8 @@ play.init = function*(surf) {
   yield script.init(surf);
   yield battleService.init(surf);
   yield ending.init(surf);
+  scene.updatePartyGestures(false);
+  scene.updateParty();
 };
 
 /**
@@ -71,6 +73,7 @@ play.update = function*(trigger) {
       }
 
       input.clear();
+      scene.updatePartyGestures(false);
       yield scene.makeScene();
     }
 
@@ -141,10 +144,11 @@ play.update = function*(trigger) {
               obj = sceneEventAdapter.getEventObjectStateByIndex(eventIndex);
             }
 
-            scene.updatePartyGestures(false);
+      scene.updatePartyGestures(false);
+      scene.updateParty();
 
-            yield scene.makeScene();
-            surface.updateScreen(null);
+      yield scene.makeScene();
+      surface.updateScreen(null);
 
             viewportValue = getViewportSnapshot();
             partyOffsetValue = getPartyOffsetSnapshot();
@@ -373,7 +377,7 @@ play.search = function*() {
   var eventRange = getSceneEventObjectRangeSnapshot();
   var rangeStart = eventRange && Number.isFinite(eventRange.start) ? eventRange.start : 0;
   var rangeEnd = eventRange && Number.isFinite(eventRange.end) ? eventRange.end : rangeStart;
-  var partyMembers = partyTrailAdapter.getPartyState();
+  var partyMembers = worldService.getParty();
   for (i = 0; i < 13; i++) {
     // Convert to map location
     dh = ((PAL_X(poses[i]) % 32) ? 1 : 0);

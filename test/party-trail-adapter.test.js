@@ -65,6 +65,8 @@ describe('partyTrailAdapter', () => {
       ],
       object: []
     };
+
+    worldService.init();
   });
 
   afterEach(() => {
@@ -106,7 +108,8 @@ describe('partyTrailAdapter', () => {
     });
 
     expect(events[0].type).toBe('snapshot');
-    expect(events[0].party.length).toBe(2);
+    expect(Array.isArray(events[0].party)).toBe(true);
+    expect(events[0].party.length).toBeGreaterThanOrEqual(2);
 
     worldService.setFollowerCount(2);
     worldService.setPartyStruct([

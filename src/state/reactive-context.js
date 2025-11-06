@@ -6,6 +6,128 @@
 
 import { BehaviorSubject, Subject, Observable } from 'rxjs';
 
+function getTimestamp() {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
+function createDiagnosticsEntry(name, kind = 'stream') {
+  return {
+    name,
+    kind,
+    emissions: 0,
+    subscribers: 0,
+    lastEmission: null,
+    lastValue: undefined,
+    lastError: undefined,
+    completed: false
+  };
+}
+
+const streamDiagnostics = new Map();
+let anonymousStreamId = 0;
+
+function instrumentSubject(name, subject, kind = 'stream') {
+  if (!subject || typeof subject.subscribe !== 'function') {
+    return subject;
+  }
+  if (subject.__instrumented) {
+    return subject;
+  }
+  const label = name || `${kind}#${++anonymousStreamId}`;
+  const entry = streamDiagnostics.get(label) || createDiagnosticsEntry(label, kind);
+  entry.kind = kind;
+  streamDiagnostics.set(label, entry);
+
+  const originalSubscribe = subject.subscribe.bind(subject);
+  subject.subscribe = function instrumentedSubscribe(...args) {
+    entry.subscribers += 1;
+    const subscription = originalSubscribe(...args);
+    if (subscription && typeof subscription.unsubscribe === 'function') {
+      const originalUnsubscribe = subscription.unsubscribe.bind(subscription);
+      subscription.unsubscribe = function instrumentedUnsubscribe() {
+        if (entry.subscribers > 0) {
+          entry.subscribers -= 1;
+        }
+        originalUnsubscribe();
+      };
+      return subscription;
+    }
+    if (typeof subscription === 'function') {
+      const teardown = subscription;
+      return function instrumentedTeardown() {
+        if (entry.subscribers > 0) {
+          entry.subscribers -= 1;
+        }
+        teardown();
+      };
+    }
+    return subscription;
+  };
+
+  if (typeof subject.next === 'function') {
+    const originalNext = subject.next.bind(subject);
+    subject.next = function instrumentedNext(value) {
+      entry.emissions += 1;
+      entry.lastEmission = getTimestamp();
+      entry.lastValue = value;
+      return originalNext(value);
+    };
+  }
+
+  if (typeof subject.error === 'function') {
+    const originalError = subject.error.bind(subject);
+    subject.error = function instrumentedError(err) {
+      entry.lastError = err;
+      entry.lastEmission = getTimestamp();
+      return originalError(err);
+    };
+  }
+
+  if (typeof subject.complete === 'function') {
+    const originalComplete = subject.complete.bind(subject);
+    subject.complete = function instrumentedComplete(...args) {
+      entry.completed = true;
+      entry.lastEmission = getTimestamp();
+      entry.subscribers = 0;
+      return originalComplete(...args);
+    };
+  }
+
+  Object.defineProperty(subject, '__instrumented', {
+    value: true,
+    enumerable: false,
+    configurable: false
+  });
+  Object.defineProperty(subject, '__diagnosticsKey', {
+    value: label,
+    enumerable: false,
+    configurable: false
+  });
+  return subject;
+}
+
+function getDiagnosticsSnapshot() {
+  const nowTs = getTimestamp();
+  const streams = Array.from(streamDiagnostics.values()).map((entry) => ({
+    name: entry.name,
+    kind: entry.kind,
+    emissions: entry.emissions,
+    subscribers: entry.subscribers,
+    completed: entry.completed,
+    lastEmission: entry.lastEmission,
+    lastEmissionDelta: entry.lastEmission == null ? null : Number((nowTs - entry.lastEmission).toFixed(2)),
+    lastValue: entry.lastValue,
+    lastError: entry.lastError
+  }));
+  return {
+    timestamp: nowTs,
+    streams
+  };
+}
+
 class RxSignal {
   constructor(initialValue) {
     this._subject = new BehaviorSubject(initialValue);
@@ -95,12 +217,18 @@ const rootEvent$ = new Subject();
 const battleBus$ = new Subject();
 const sceneBus$ = new Subject();
 
+instrumentSubject('rootEvent$', rootEvent$, 'bus');
+instrumentSubject('battleBus$', battleBus$, 'bus');
+instrumentSubject('sceneBus$', sceneBus$, 'bus');
+
 const signalRegistry = new Map();
 const cleanupSubscriptions = new Set();
 
 function ensureSignal(key, initialValue) {
   if (!signalRegistry.has(key)) {
-    signalRegistry.set(key, signal(initialValue));
+    const instance = signal(initialValue);
+    instrumentSubject(`signal:${key}`, instance._subject, 'signal');
+    signalRegistry.set(key, instance);
   }
   return signalRegistry.get(key);
 }
@@ -161,8 +289,11 @@ function toSignalFromObservable(key, observable, options = {}) {
   };
 }
 
-function createBehaviorStream(initialValue) {
-  const subject = new BehaviorSubject(initialValue);
+function createBehaviorStream(initialValue, options = {}) {
+  const label = options && typeof options.name === 'string' && options.name.trim()
+    ? options.name.trim()
+    : `behavior#${++anonymousStreamId}`;
+  const subject = instrumentSubject(label, new BehaviorSubject(initialValue), 'behavior');
   cleanupSubscriptions.add({
     unsubscribe() {
       subject.complete();
@@ -235,7 +366,8 @@ const reactiveContext = {
   createBehaviorStream,
   signalToObservable,
   dispose,
-  resetSignals
+  resetSignals,
+  getDiagnostics: getDiagnosticsSnapshot
 };
 
 export default reactiveContext;

@@ -163,7 +163,73 @@ Once these steps are complete you can safely remove ad-hoc proxy helpers
 - Use `debugUtils.startReactiveTrace(name?, { filter, limit })` to monitor slice mutations in real time. Each event is logged with a session label, index, and elapsed time.
 - Call `debugUtils.startRenderProfiling({ threshold, logArgs })` to wrap key scene/battle rendering methods (`scene.renderMap`, `scene.renderSprites`, `battle.makeScene`, `battleService.runSystems`) and print per-call timings. Stop with `debugUtils.stopRenderProfiling(name?)`.
 
-## 7. Future work
+## 7. RxJS usage quick reference
+
+The reactive layer now exposes two complementary APIs:
+
+- **Signals** (`signal.value`): synchronous snapshots for synchronous code paths (menus, save/load serialization).
+- **Observables** (`something$()`): RxJS streams for code that wants push updates or to react asynchronously.
+
+### Subscribing to `$` streams
+
+```js
+import environmentAdapter from '../services/environment-adapter.js';
+
+const subscriptions = [];
+
+subscriptions.push(
+  environmentAdapter.paletteId$().subscribe((paletteId) => {
+    surface.applyPalette(paletteId);
+  })
+);
+
+subscriptions.push(
+  environmentAdapter.fadeIn$().subscribe((needsFadeIn) => {
+    if (needsFadeIn) {
+      transitionQueue.enqueue('fade-in');
+    }
+  })
+);
+
+// Later, when the owning module is torn down:
+subscriptions.forEach((dispose) => dispose?.());
+```
+
+Streams emit the current value immediately, so subscribers do not need to read `signal.value` first. When you only need a single value (for example in tests), rely on RxJS helpers:
+
+```js
+import { firstValueFrom } from 'rxjs';
+import battleStateAdapter from '../services/battle-state-adapter.js';
+
+const state = await firstValueFrom(battleStateAdapter.battleState$());
+```
+
+### When to read `.value`
+
+Prefer the synchronous getter when:
+
+- Rendering a snapshot (menus, save-game serialization).
+- Computing derived data during world-service sync.
+- Migrating legacy code that expects immediate values (you can refactor to streams later).
+
+Signals remain live, so UI widgets that poll `signal.value` inside their render loop will still see updates once they re-render.
+
+### Driving slices in tests
+
+Slice helpers accept optional `{ emitEvent, source }`. Passing `emitEvent: true` notifies both the signal and the root event bus, which makes assertions deterministic:
+
+```js
+import { updateWaveProgressionValue } from '../../state/slices/time-flags.js';
+import environmentAdapter from '../../services/environment-adapter.js';
+import { firstValueFrom } from 'rxjs';
+
+updateWaveProgressionValue(42, { emitEvent: true, source: 'test' });
+
+const next = await firstValueFrom(environmentAdapter.waveProgression$());
+expect(next).toBe(42);
+```
+
+## 8. Future work
 
 - Expose helper adapters (e.g. `useSignal(signal)` hooks) for the forthcoming
   React/TypeScript UI.

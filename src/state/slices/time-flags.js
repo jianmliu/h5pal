@@ -20,7 +20,7 @@ function ensureFrameSignal(initialValue = 0) {
 function ensureFrameSubject(initialValue = 0) {
   if (!frameCountSubject || frameCountSubject.closed || frameCountSubject.isStopped) {
     const signal = ensureFrameSignal(initialValue);
-    frameCountSubject = reactiveContext.createBehaviorStream(signal.value);
+    frameCountSubject = reactiveContext.createBehaviorStream(signal.value, { name: 'time.frameCount$' });
   }
   return frameCountSubject;
 }

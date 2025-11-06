@@ -53,6 +53,7 @@ function ensureGameGlobal() {
 }
 
 function getPartySnapshot() {
+  // TODO(rxjs-cleanup): remove worldService party fallback once party slice is authoritative.
   const fallback = worldService.getParty();
   const party = partyTrailAdapter.getPartyState();
   const globalParty = stateService.getGlobal('party');
@@ -1000,6 +1001,7 @@ class BattleService extends EventBus {
     if (snapshot) {
       return snapshot;
     }
+    // TODO(rxjs-cleanup): drop worldService exp fallback once adapter snapshot is guaranteed.
     return typeof worldService.getExpState === 'function'
       ? worldService.getExpState()
       : null;

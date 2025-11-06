@@ -7,7 +7,7 @@ let autoBattleSubject = null;
 function ensureAutoBattleSubject(initialValue = false) {
   if (!autoBattleSubject || autoBattleSubject.closed || autoBattleSubject.isStopped) {
     const signal = reactiveContext.ensureSignal(AUTO_BATTLE_SIGNAL_KEY, !!initialValue);
-    autoBattleSubject = reactiveContext.createBehaviorStream(signal.value);
+    autoBattleSubject = reactiveContext.createBehaviorStream(signal.value, { name: 'autoBattle$' });
   }
   return autoBattleSubject;
 }

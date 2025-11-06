@@ -1,4 +1,3 @@
-import worldService from './world-service.js';
 import reactiveContext from '../state/reactive-context.js';
 import { sceneEventSignals } from '../state/slices/scene-events.js';
 
@@ -9,7 +8,7 @@ export function getSceneIdValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return typeof worldService.getSceneId === 'function' ? worldService.getSceneId() : 0;
+  return 0;
 }
 
 export function sceneId$() {

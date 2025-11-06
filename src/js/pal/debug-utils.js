@@ -294,6 +294,20 @@ function traceBattleLoop(iterations = 1) {
   return history;
 }
 
+function getReactiveDiagnostics(options = {}) {
+  if (!reactiveContext || typeof reactiveContext.getDiagnostics !== 'function') {
+    return null;
+  }
+  try {
+    return reactiveContext.getDiagnostics(options);
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.error) {
+      console.error('[debug] reactive diagnostics error', err);
+    }
+  }
+  return null;
+}
+
 function resolveScriptSequence(startEntry, depth = 10) {
   const results = [];
   let current = Number.isFinite(startEntry) ? startEntry : null;
@@ -375,6 +389,7 @@ export {
   debugOverlay,
   getSpriteStats,
   getRLEStats,
+  getReactiveDiagnostics,
   startSceneEventLogging,
   stopSceneEventLogging
 };
@@ -395,6 +410,7 @@ export default {
   debugOverlay,
   getSpriteStats,
   getRLEStats,
+  getReactiveDiagnostics,
   startSceneEventLogging,
   stopSceneEventLogging
 };

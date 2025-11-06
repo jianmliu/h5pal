@@ -46,6 +46,7 @@ function refreshBattleStateCache(source) {
       return battleStateCache;
     }
   }
+  // TODO(rxjs-cleanup): remove worldService fallback once battle service always seeds the cache.
   if (worldService && typeof worldService.getBattleState === 'function') {
     const fallback = worldService.getBattleState();
     if (fallback) {

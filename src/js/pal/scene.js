@@ -179,7 +179,7 @@ scene.getPlayerSprite = function(i) {
   }
   var playerID = player.playerRole;
   var spriteNum;
-  var maxPartyMemberIndex = getMaxPartyMemberIndexValue();
+  var maxPartyMemberIndex = Math.max(0, getMaxPartyMemberIndexValue());
   var followerCount = getCachedFollowerCount();
   if (i > maxPartyMemberIndex && followerCount > 0) {
     // 如果是跟随者，那么spriteNum就是它的ID
@@ -257,7 +257,7 @@ scene.updatePartyGestures = function(walking) {
   var party = getCachedPartyState();
   var trail = getCachedTrailState();
   var walkFrames = getPlayerRoleField('walkFrames');
-  var maxPartyMemberIndex = getMaxPartyMemberIndexValue();
+  var maxPartyMemberIndex = Math.max(0, getMaxPartyMemberIndexValue());
   var viewport = getViewportSnapshot();
   var partyOffset = getPartyOffsetSnapshot();
   var partyDirection = getPartyDirectionSnapshot();
@@ -344,19 +344,36 @@ scene.updatePartyGestures = function(walking) {
       i = 3;
     }
     party[0].frame = partyDirection * i;
+    party[0].x = PAL_X(partyOffset);
+    party[0].y = PAL_Y(partyOffset);
 
     var idleTrail = trail[2] || leadTrail;
+    var firstTrailIdle = trail[1] || leadTrail;
     for (i = 1; i <= maxPartyMemberIndex && i < party.length; i++) {
       var f = resolveWalkFrame(party[i].playerRole, 3);
       if (f === 0) {
         f = 3;
       }
       party[i].frame = idleTrail.direction * f;
+
+      var baseTrail = i === 1 ? firstTrailIdle : (trail[1] || leadTrail);
+      party[i].x = baseTrail.x - PAL_X(viewport);
+      party[i].y = baseTrail.y - PAL_Y(viewport);
+
+      if (i === 2) {
+        party[i].x += (baseTrail.direction === Direction.East || baseTrail.direction === Direction.West) ? -16 : 16;
+        party[i].y += 8;
+      } else {
+        party[i].x += ((baseTrail.direction === Direction.West || baseTrail.direction === Direction.South) ? 16 : -16);
+        party[i].y += ((baseTrail.direction === Direction.West || baseTrail.direction === Direction.North) ? 8 : -8);
+      }
     }
 
     var idleFollowerTrail = trail[3] || idleTrail;
     if (followerCount > 0 && party.length > maxPartyMemberIndex + 1) {
        party[maxPartyMemberIndex + 1].frame = idleFollowerTrail.direction * 3;
+       party[maxPartyMemberIndex + 1].x = idleFollowerTrail.x - PAL_X(viewport);
+       party[maxPartyMemberIndex + 1].y = idleFollowerTrail.y - PAL_Y(viewport);
     }
 
     scene.thisStepFrame &= 2;
@@ -503,7 +520,7 @@ scene.applyWave = function(buffer) {
 };
 
 utils.extend(Scene.prototype, {
-  loadEventObjectSpites: function(version) {
+  loadEventObjectSprites: function(version) {
     var entries = sceneEventAdapter.getEventObjects();
     if (!entries || !entries.length) {
       this.eventObjectSprite = [];
@@ -524,9 +541,18 @@ utils.extend(Scene.prototype, {
       return;
     }
 
+    var party = this.getPartySpriteCache && this.getPartySpriteCache();
+    var self = this;
     entries.forEach(function(entry, localIndex) {
       var state = entry && entry.state ? entry.state : null;
       var spriteNum = state && typeof state.spriteNum === 'number' ? state.spriteNum : 0;
+      if (!spriteNum && state && state.playerRole != null && Array.isArray(party)) {
+        var partySpriteEntry = party[state.playerRole];
+        if (partySpriteEntry && partySpriteEntry.sprite) {
+          array[localIndex] = partySpriteEntry.sprite;
+          return;
+        }
+      }
       if (!spriteNum) {
         array[localIndex] = null;
         return;
@@ -548,7 +574,7 @@ utils.extend(Scene.prototype, {
   getEventObjectSprite: function(eventObjectID) {
     var version = sceneEventAdapter.getEventObjectsVersion();
     if (!this.eventObjectSprite || (version != null && this._eventSpriteVersion !== version)) {
-      this.loadEventObjectSpites(version);
+      this.loadEventObjectSprites(version);
     }
 
     var eventRange = getSceneEventObjectRangeSnapshot();
@@ -715,7 +741,10 @@ utils.extend(Scene.prototype, {
     var viewportY = PAL_Y(viewport);
     var party = getCachedPartyState();
     var drawList = this.drawList || (this.drawList = []);
-    var maxPartyMemberIndex = getMaxPartyMemberIndexValue();
+    var maxPartyMemberIndexSnapshot = getMaxPartyMemberIndexValue();
+    var maxPartyMemberIndex = Number.isFinite(maxPartyMemberIndexSnapshot) && maxPartyMemberIndexSnapshot >= 0
+      ? maxPartyMemberIndexSnapshot
+      : 0;
     var followerCount = getCachedFollowerCount();
 
     // Players
@@ -725,12 +754,26 @@ utils.extend(Scene.prototype, {
       if (!player) {
         continue;
       }
-      var sprite = scene.getPlayerSprite(i);
-      if (!sprite) {
+    var sprite = scene.getPlayerSprite(i);
+    if (!sprite) {
+      continue;
+    }
+    var frameIndex = Number.isFinite(player.frame) ? player.frame : 0;
+    var totalFrames = typeof sprite.frameCount === 'number' ? sprite.frameCount : 0;
+    if (totalFrames > 0) {
+      frameIndex = ((frameIndex % totalFrames) + totalFrames) % totalFrames;
+    } else {
+      frameIndex = 0;
+    }
+    var bitmap = sprite.getFrame(frameIndex);
+    if (!bitmap) {
+      bitmap = sprite.getFrame(0);
+      frameIndex = 0;
+      if (!bitmap) {
         continue;
       }
-      var bitmap = sprite.getFrame(player.frame);
-      if (!bitmap) continue;
+    }
+    player.frame = frameIndex;
 
       // Add it to our array
       var obj = this.addToDrawList(

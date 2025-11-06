@@ -71,7 +71,10 @@ var script_extras = {};
 var script = null;
 
 function getPartyIndexByRole(role) {
-  var party = partyTrailAdapter.getPartyState();
+  var party = worldService.getParty && worldService.getParty();
+  if (!Array.isArray(party) || party.length === 0) {
+    party = partyTrailAdapter.getPartyState();
+  }
   for (var i = 0; i < party.length; i++) {
     if (party[i] && party[i].playerRole === role) {
       return i;

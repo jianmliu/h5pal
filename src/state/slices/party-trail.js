@@ -68,7 +68,7 @@ function ensureFollowerSignal(initialValue = 0) {
 function ensurePartySubject(initialValue = []) {
   if (!partySubject || partySubject.closed || partySubject.isStopped) {
     const signal = ensurePartySignal(initialValue);
-    partySubject = reactiveContext.createBehaviorStream(signal.value);
+    partySubject = reactiveContext.createBehaviorStream(signal.value, { name: 'partyTrail.party$' });
   }
   return partySubject;
 }
@@ -76,7 +76,7 @@ function ensurePartySubject(initialValue = []) {
 function ensureTrailSubject(initialValue = []) {
   if (!trailSubject || trailSubject.closed || trailSubject.isStopped) {
     const signal = ensureTrailSignal(initialValue);
-    trailSubject = reactiveContext.createBehaviorStream(signal.value);
+    trailSubject = reactiveContext.createBehaviorStream(signal.value, { name: 'partyTrail.trail$' });
   }
   return trailSubject;
 }
@@ -84,7 +84,7 @@ function ensureTrailSubject(initialValue = []) {
 function ensureFollowerCountSubject(initialValue = 0) {
   if (!followerCountSubject || followerCountSubject.closed || followerCountSubject.isStopped) {
     const signal = ensureFollowerSignal(initialValue);
-    followerCountSubject = reactiveContext.createBehaviorStream(signal.value);
+    followerCountSubject = reactiveContext.createBehaviorStream(signal.value, { name: 'partyTrail.followers$' });
   }
   return followerCountSubject;
 }

@@ -126,6 +126,7 @@ function refreshEventObjects() {
   if (Array.isArray(latest) && latest.length > 0) {
     return setEventObjectsCache(latest);
   }
+  // TODO(rxjs-cleanup): drop worldService fallback once scene event slice guarantees hydration.
   if (worldService && typeof worldService.getEventObjectsInCurrentScene === 'function') {
     const fallback = worldService.getEventObjectsInCurrentScene();
     return setEventObjectsCache(fallback);

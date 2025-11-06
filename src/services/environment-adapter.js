@@ -1,14 +1,11 @@
-import worldService from './world-service.js';
 import reactiveContext from '../state/reactive-context.js';
 import { viewportSignals } from '../state/slices/viewport.js';
 import { audioResourceSignals } from '../state/slices/audio-resources.js';
 import { timeFlagSignals } from '../state/slices/time-flags.js';
-import { gameFlagSignals } from '../state/slices/game-flags.js';
 
 const viewportSlice = viewportSignals();
 const audioSlice = audioResourceSignals();
 const timeSlice = timeFlagSignals();
-const gameFlagSlice = gameFlagSignals();
 
 function createValueStream(signal, projector) {
   return reactiveContext.signalToObservable(signal, (value) => {
@@ -24,7 +21,7 @@ function getViewportValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return typeof worldService.getViewport === 'function' ? worldService.getViewport() : 0;
+  return 0;
 }
 
 function getPartyOffsetValue() {
@@ -32,7 +29,7 @@ function getPartyOffsetValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return typeof worldService.getPartyOffset === 'function' ? worldService.getPartyOffset() : 0;
+  return 0;
 }
 
 function getPartyDirectionValue() {
@@ -40,7 +37,7 @@ function getPartyDirectionValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return typeof worldService.getPartyDirection === 'function' ? worldService.getPartyDirection() : 0;
+  return 0;
 }
 
 function getCurrentSaveSlotValue() {
@@ -48,7 +45,7 @@ function getCurrentSaveSlotValue() {
   if (Number.isFinite(value) && value >= 1) {
     return value;
   }
-  return typeof worldService.getCurrentSaveSlot === 'function' ? worldService.getCurrentSaveSlot() : 1;
+  return 1;
 }
 
 function getPaletteIdValue() {
@@ -56,7 +53,7 @@ function getPaletteIdValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return typeof worldService.getPaletteId === 'function' ? worldService.getPaletteId() : 0;
+  return 0;
 }
 
 function getScreenWaveValue() {
@@ -64,7 +61,7 @@ function getScreenWaveValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return typeof worldService.getScreenWave === 'function' ? worldService.getScreenWave() : 0;
+  return 0;
 }
 
 function getLayerValue() {
@@ -72,7 +69,7 @@ function getLayerValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return typeof worldService.getLayer === 'function' ? worldService.getLayer() : 0;
+  return 0;
 }
 
 function isNightPaletteEnabled() {
@@ -80,7 +77,7 @@ function isNightPaletteEnabled() {
   if (typeof value === 'boolean') {
     return value;
   }
-  return typeof worldService.getNightPaletteFlag === 'function' ? !!worldService.getNightPaletteFlag() : false;
+  return false;
 }
 
 function shouldFadeIn() {
@@ -88,7 +85,7 @@ function shouldFadeIn() {
   if (typeof value === 'boolean') {
     return value;
   }
-  return typeof worldService.getNeedToFadeIn === 'function' ? !!worldService.getNeedToFadeIn() : false;
+  return false;
 }
 
 function getWaveProgressionValue() {
@@ -96,7 +93,7 @@ function getWaveProgressionValue() {
   if (Number.isFinite(value)) {
     return value;
   }
-  return typeof worldService.getWaveProgression === 'function' ? worldService.getWaveProgression() : 0;
+  return 0;
 }
 
 export function viewport$() {

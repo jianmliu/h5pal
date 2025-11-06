@@ -1,10 +1,14 @@
-import worldService from './world-service.js';
 import { Observable } from 'rxjs';
 import {
   partyStream,
   trailStream,
-  followerCountStream
+  followerCountStream,
+  getPartyValue,
+  getTrailValue,
+  getFollowerCountValue
 } from '../state/slices/party-trail.js';
+import stateService from './state-service.js';
+import worldService from './world-service.js';
 
 let initialised = false;
 let partyCache = [];
@@ -28,21 +32,100 @@ function teardown() {
   initialised = false;
 }
 
+function toPlainPartyMember(entry, index) {
+  if (!entry || typeof entry !== 'object') {
+    return {
+      playerRole: typeof index === 'number' ? index : 0,
+      x: 0,
+      y: 0,
+      frame: 0,
+      imageOffset: 0
+    };
+  }
+  return {
+    playerRole: Number.isFinite(entry.playerRole) ? entry.playerRole : (Number(entry.playerRole) || index || 0),
+    x: Number.isFinite(entry.x) ? entry.x : Number(entry.x) || 0,
+    y: Number.isFinite(entry.y) ? entry.y : Number(entry.y) || 0,
+    frame: Number.isFinite(entry.frame) ? entry.frame : Number(entry.frame) || 0,
+    imageOffset: Number.isFinite(entry.imageOffset) ? entry.imageOffset : Number(entry.imageOffset) || 0
+  };
+}
+
+function toPlainTrailEntry(entry) {
+  if (!entry || typeof entry !== 'object') {
+    return { x: 0, y: 0, direction: 0 };
+  }
+  return {
+    x: Number.isFinite(entry.x) ? entry.x : Number(entry.x) || 0,
+    y: Number.isFinite(entry.y) ? entry.y : Number(entry.y) || 0,
+    direction: Number.isFinite(entry.direction) ? entry.direction : Number(entry.direction) || 0
+  };
+}
+
 function refreshPartyCache() {
-  const latest = worldService.getParty();
-  partyCache = Array.isArray(latest) ? latest : [];
+  const sliceValue = getPartyValue([]);
+  if (Array.isArray(sliceValue) && sliceValue.length > 0) {
+    partyCache = sliceValue.map(toPlainPartyMember);
+    return partyCache;
+  }
+  const globalParty = stateService.getGlobal('party');
+  if (Array.isArray(globalParty) && globalParty.length > 0) {
+    partyCache = globalParty.map(toPlainPartyMember);
+    return partyCache;
+  }
+  if (worldService && typeof worldService.getParty === 'function') {
+    const fallback = worldService.getParty();
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      partyCache = fallback.map(toPlainPartyMember);
+      return partyCache;
+    }
+  }
+  partyCache = [];
   return partyCache;
 }
 
 function refreshTrailCache() {
-  const latest = worldService.getTrail();
-  trailCache = Array.isArray(latest) ? latest : [];
+  const sliceValue = getTrailValue([]);
+  if (Array.isArray(sliceValue) && sliceValue.length > 0) {
+    trailCache = sliceValue.map(toPlainTrailEntry);
+    return trailCache;
+  }
+  const globalTrail = stateService.getGlobal('trail');
+  if (Array.isArray(globalTrail) && globalTrail.length > 0) {
+    trailCache = globalTrail.map(toPlainTrailEntry);
+    return trailCache;
+  }
+  if (worldService && typeof worldService.getTrail === 'function') {
+    const fallback = worldService.getTrail();
+    if (Array.isArray(fallback) && fallback.length > 0) {
+      trailCache = fallback.map(toPlainTrailEntry);
+      return trailCache;
+    }
+  }
+  trailCache = [];
   return trailCache;
 }
 
 function refreshFollowerCountCache() {
-  const latest = worldService.getFollowerCount();
-  followerCountCache = Number.isFinite(latest) ? latest : 0;
+  const sliceValue = getFollowerCountValue(0);
+  if (Number.isFinite(sliceValue) && sliceValue >= 0) {
+    followerCountCache = sliceValue;
+    return followerCountCache;
+  }
+  const globalCount = stateService.getGlobal('numFollower');
+  if (Number.isFinite(globalCount) && globalCount >= 0) {
+    followerCountCache = Math.trunc(globalCount);
+    return followerCountCache;
+  }
+  // TODO(rxjs-cleanup): drop worldService fallback once follower slice is always hydrated early.
+  if (worldService && typeof worldService.getFollowerCount === 'function') {
+    const fallback = worldService.getFollowerCount();
+    if (Number.isFinite(fallback) && fallback >= 0) {
+      followerCountCache = Math.trunc(fallback);
+      return followerCountCache;
+    }
+  }
+  followerCountCache = Math.max(0, Math.trunc(sliceValue || 0));
   return followerCountCache;
 }
 
@@ -68,6 +151,11 @@ function ensureInitialised() {
   if (initialised) {
     return;
   }
+
+  if (worldService && typeof worldService.isInitialised === 'function' && !worldService.isInitialised()) {
+    worldService.init();
+  }
+
   refreshPartyCache();
   refreshTrailCache();
   refreshFollowerCountCache();
