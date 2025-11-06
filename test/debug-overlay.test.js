@@ -18,15 +18,19 @@ describe('debug-overlay module', () => {
       return rafCallbacks.length;
     });
     global.cancelAnimationFrame = vi.fn();
-    overlay = await import('../src/js/pal/debug-overlay.js');
+    const module = await import('../src/js/pal/debug-overlay.js');
+    overlay = module.default || module;
   });
 
   afterEach(() => {
-    overlay.stopOverlay?.();
+    if (overlay && typeof overlay.stopOverlay === 'function') {
+      overlay.stopOverlay();
+    }
     document.getElementById(OVERLAY_ID)?.remove();
     global.requestAnimationFrame = originalRequestAnimationFrame;
     global.cancelAnimationFrame = originalCancelAnimationFrame;
     vi.resetModules();
+    overlay = undefined;
   });
 
   it('starts overlay loop and renders summary', () => {

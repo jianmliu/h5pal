@@ -1,5 +1,7 @@
 import worldService from './world-service.js';
 import stateService from './state-service.js';
+import reactiveContext from '../state/reactive-context.js';
+import { Observable } from 'rxjs';
 import { sceneEventSignals } from '../state/slices/scene-events.js';
 import { getSceneEventObjectRange as getSceneEventObjectRangeSnapshot } from './scene-data-adapter.js';
 
@@ -11,6 +13,38 @@ let sceneIdCache = 0;
 let eventObjectsCache = [];
 let eventObjectsVersion = 0;
 let collisionStateCache = null;
+
+const sceneSignals = sceneEventSignals();
+
+const sceneIdStream = reactiveContext.signalToObservable(sceneSignals.sceneId, () => getSceneId());
+const eventObjectsStream = reactiveContext.signalToObservable(
+  sceneSignals.eventObjects,
+  () => getEventObjects()
+);
+const collisionStateStream = reactiveContext.signalToObservable(
+  sceneSignals.collisionState,
+  () => getCollisionState()
+);
+const eventVersionStream = new Observable((subscriber) => {
+  ensureInitialised();
+  subscriber.next(eventObjectsVersion);
+  const unsubscribe = subscribe((event) => {
+    if (!event) {
+      return;
+    }
+    if (event.type === 'eventObjects') {
+      subscriber.next(eventObjectsVersion);
+    }
+    if (event.type === 'disposed') {
+      subscriber.complete();
+    }
+  });
+  return () => {
+    if (typeof unsubscribe === 'function') {
+      unsubscribe();
+    }
+  };
+});
 
 function normalizeEventEntry(entry) {
   if (!entry) {
@@ -318,6 +352,26 @@ function getCollisionState() {
   return collisionStateCache;
 }
 
+export function sceneId$() {
+  ensureInitialised();
+  return sceneIdStream;
+}
+
+export function sceneEventObjects$() {
+  ensureInitialised();
+  return eventObjectsStream;
+}
+
+export function collisionState$() {
+  ensureInitialised();
+  return collisionStateStream;
+}
+
+export function sceneEventVersion$() {
+  ensureInitialised();
+  return eventVersionStream;
+}
+
 function getListenerCount() {
   return listeners.size;
 }
@@ -345,5 +399,9 @@ export default {
   getEventObjectStateByIndex,
   getCollisionState,
   getListenerCount,
+  sceneId$,
+  sceneEventObjects$,
+  collisionState$,
+  sceneEventVersion$,
   dispose
 };

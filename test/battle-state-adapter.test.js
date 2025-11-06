@@ -9,6 +9,11 @@ import {
 import worldService from '../src/services/world-service.js';
 import reactiveContext from '../src/state/reactive-context.js';
 import stateService from '../src/services/state-service.js';
+import {
+  updateEnemyTeamValue,
+  updateEnemyPositionValue,
+  updateBattleFieldValue
+} from '../src/state/slices/battle-formation.js';
 
 function createTrailEntry() {
   return { x: 0, y: 0, direction: 0 };
@@ -109,9 +114,19 @@ describe('battle-state-adapter', () => {
 
   it('provides battle formation data and survives reactive resets', () => {
     worldService.init();
+    updateEnemyTeamValue([{ enemy: [1, 2, 3] }], { emitEvent: true, source: 'test' });
+    updateEnemyPositionValue({
+      pos: [
+        [
+          { x: 120, y: 170 },
+          { x: 140, y: 200 }
+        ]
+      ]
+    }, { emitEvent: true, source: 'test' });
+    updateBattleFieldValue([{ backgroundId: 7 }], { emitEvent: true, source: 'test' });
 
     expect(getEnemyTeamEntry(0).enemy).toEqual([1, 2, 3]);
-    expect(getEnemyFormationPosition(0, 1)).toEqual({ x: 120, y: 170 });
+    expect(getEnemyFormationPosition(0, 1)).toEqual({ x: 140, y: 200 });
     expect(getBattleFieldEntry(0)).toEqual({ backgroundId: 7 });
     expect(getBattleFieldId()).toBe(0);
     expect(isAutoBattleEnabled()).toBe(false);

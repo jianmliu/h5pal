@@ -1,5 +1,6 @@
 import worldService from './world-service.js';
 import stateService from './state-service.js';
+import reactiveContext from '../state/reactive-context.js';
 import { playerStateSignals, updatePlayerRolesValue } from '../state/slices/player-state.js';
 import { statusSignals } from '../state/slices/status-matrices.js';
 import { viewportSignals } from '../state/slices/viewport.js';
@@ -13,6 +14,24 @@ const playerStatusSignal = statusSlice.player;
 
 const viewportSlice = viewportSignals();
 const maxPartyIndexSignal = viewportSlice.maxPartyIndex;
+
+const playerRolesStream = reactiveContext.signalToObservable(rolesSignal, () => getRolesSnapshot());
+const equipmentEffectsStream = reactiveContext.signalToObservable(
+  equipmentEffectSignal,
+  () => getEquipmentMatrix()
+);
+const playerStatusStream = reactiveContext.signalToObservable(
+  playerStatusSignal,
+  () => getPlayerStatusMatrix()
+);
+const poisonStatusStream = reactiveContext.signalToObservable(
+  statusSlice.poison,
+  () => getPoisonStatusMatrix()
+);
+const maxPartyIndexStream = reactiveContext.signalToObservable(
+  maxPartyIndexSignal,
+  () => getMaxPartyMemberIndex()
+);
 
 function ensureArray(value) {
   if (Array.isArray(value)) {
@@ -200,6 +219,26 @@ export function getPlayerMP(roleId) {
 
 export function getPlayerMaxMP(roleId) {
   return getRoleArrayValue('maxMP', roleId, 0);
+}
+
+export function playerRoles$() {
+  return playerRolesStream;
+}
+
+export function equipmentEffects$() {
+  return equipmentEffectsStream;
+}
+
+export function playerStatus$() {
+  return playerStatusStream;
+}
+
+export function poisonStatus$() {
+  return poisonStatusStream;
+}
+
+export function maxPartyIndex$() {
+  return maxPartyIndexStream;
 }
 
 export function getPlayerLevel(roleId) {
@@ -456,5 +495,10 @@ export default {
   getPlayerRoleWord,
   getMaxPartyMemberIndex,
   getEquipmentEffect,
-  findPlayerMagicSlot
+  findPlayerMagicSlot,
+  playerRoles$,
+  equipmentEffects$,
+  playerStatus$,
+  poisonStatus$,
+  maxPartyIndex$
 };

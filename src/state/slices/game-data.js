@@ -121,7 +121,7 @@ function setSignalValue(key, ensureFn, cloneFn, value, options = {}) {
   const signal = ensureFn(previous);
   const changed = JSON.stringify(signal.value) !== JSON.stringify(resolved);
   if (changed) {
-    reactiveContext.setSignal(key, resolved);
+    signal.value = resolved;
     if (options.emitEvent !== false) {
       reactiveContext.rootEvent$.next({
         type: `world/gameData/${key}/changed`,
@@ -208,11 +208,11 @@ export function getExpStateValue() {
 }
 
 export function resetGameDataSlice() {
-  reactiveContext.setSignal(MAGIC_TABLE_KEY, []);
-  reactiveContext.setSignal(STORE_TABLE_KEY, []);
-  reactiveContext.setSignal(ENEMY_TABLE_KEY, []);
-  reactiveContext.setSignal(BATTLE_EFFECT_TABLE_KEY, []);
-  reactiveContext.setSignal(LEVEL_UP_MAGIC_TABLE_KEY, []);
-  reactiveContext.setSignal(LEVEL_UP_EXP_TABLE_KEY, []);
-  reactiveContext.setSignal(EXP_STATE_KEY, null);
+  ensureMagicSignal([]).value = [];
+  ensureStoreSignal([]).value = [];
+  ensureEnemySignal([]).value = [];
+  ensureBattleEffectSignal([]).value = [];
+  ensureLevelUpMagicSignal([]).value = [];
+  ensureLevelUpExpSignal([]).value = [];
+  ensureExpSignal(null).value = null;
 }

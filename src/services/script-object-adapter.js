@@ -1,4 +1,5 @@
 import worldService from './world-service.js';
+import reactiveContext from '../state/reactive-context.js';
 import { scriptObjectSignals } from '../state/slices/script-objects.js';
 
 const listeners = new Set();
@@ -8,6 +9,29 @@ let initialised = false;
 let scriptEntriesCache = [];
 let objectTableCache = [];
 let objectDescCache = null;
+
+const scriptSignals = scriptObjectSignals();
+const scriptEntriesStream = reactiveContext.signalToObservable(
+  scriptSignals.scriptEntries,
+  () => {
+    refreshScriptEntriesCache();
+    return scriptEntriesCache;
+  }
+);
+const objectTableStream = reactiveContext.signalToObservable(
+  scriptSignals.objectTable,
+  () => {
+    refreshObjectTableCache();
+    return objectTableCache;
+  }
+);
+const objectDescStream = reactiveContext.signalToObservable(
+  scriptSignals.objectDesc,
+  () => {
+    refreshObjectDescCache();
+    return objectDescCache;
+  }
+);
 
 function teardown() {
   subscriptions.forEach((subscription) => {
@@ -25,7 +49,7 @@ function teardown() {
 }
 
 function refreshScriptEntriesCache() {
-  const latest = scriptObjectSignals().scriptEntries.value;
+  const latest = scriptSignals.scriptEntries.value;
   if (Array.isArray(latest) && latest.length > 0) {
     scriptEntriesCache = latest;
     return scriptEntriesCache;
@@ -33,19 +57,18 @@ function refreshScriptEntriesCache() {
   if (worldService && typeof worldService.syncScriptRegisters === 'function') {
     worldService.syncScriptRegisters();
   }
-  const refreshed = scriptObjectSignals().scriptEntries.value;
+  const refreshed = scriptSignals.scriptEntries.value;
   scriptEntriesCache = Array.isArray(refreshed) ? refreshed : [];
   return scriptEntriesCache;
 }
 
 function refreshObjectTableCache() {
-  const signals = scriptObjectSignals();
-  let latest = signals.objectTable.value;
+  let latest = scriptSignals.objectTable.value;
   if (!Array.isArray(latest) || latest.length === 0) {
     if (worldService && typeof worldService.syncObjectStores === 'function') {
       worldService.syncObjectStores();
     }
-    latest = signals.objectTable.value;
+    latest = scriptSignals.objectTable.value;
   }
   if (Array.isArray(latest)) {
     objectTableCache = latest;
@@ -56,7 +79,7 @@ function refreshObjectTableCache() {
 }
 
 function refreshObjectDescCache() {
-  const latest = scriptObjectSignals().objectDesc.value;
+  const latest = scriptSignals.objectDesc.value;
   if (typeof latest !== 'undefined') {
     objectDescCache = latest;
     return objectDescCache;
@@ -64,7 +87,7 @@ function refreshObjectDescCache() {
   if (worldService && typeof worldService.syncObjectStores === 'function') {
     worldService.syncObjectStores();
   }
-  const refreshed = scriptObjectSignals().objectDesc.value;
+  const refreshed = scriptSignals.objectDesc.value;
   objectDescCache = typeof refreshed === 'undefined' ? null : refreshed;
   return objectDescCache;
 }
@@ -188,6 +211,21 @@ function getObjectDescEntry(id) {
   return null;
 }
 
+export function scriptEntries$() {
+  ensureInitialised();
+  return scriptEntriesStream;
+}
+
+export function objectTable$() {
+  ensureInitialised();
+  return objectTableStream;
+}
+
+export function objectDesc$() {
+  ensureInitialised();
+  return objectDescStream;
+}
+
 function dispose() {
   notify({ type: 'disposed' });
   teardown();
@@ -205,5 +243,8 @@ export default {
   getObjectEntry,
   getObjectDesc,
   getObjectDescEntry,
+  scriptEntries$,
+  objectTable$,
+  objectDesc$,
   dispose
 };

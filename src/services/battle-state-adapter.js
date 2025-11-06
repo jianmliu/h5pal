@@ -1,12 +1,27 @@
 import { battleFormationSignals } from '../state/slices/battle-formation.js';
 import { audioResourceSignals } from '../state/slices/audio-resources.js';
 import { autoBattleSignal } from '../state/slices/auto-battle.js';
+import { Observable } from 'rxjs';
 import battleService from './battle-service.js';
 import worldService from './world-service.js';
 
 const stateListeners = new Set();
 let stateSubscriptions = [];
 let battleStateCache = null;
+
+const battleStateStream = new Observable((subscriber) => {
+  subscriber.next(getBattleStateSnapshot());
+  const unsubscribe = subscribeBattleState((event) => {
+    if (event && (event.type === 'snapshot' || event.type === 'stateChanged' || event.type === 'stateMutated')) {
+      subscriber.next(getBattleStateSnapshot());
+    }
+  });
+  return () => {
+    if (typeof unsubscribe === 'function') {
+      unsubscribe();
+    }
+  };
+});
 
 function notifyState(event) {
   stateListeners.forEach((listener) => {
@@ -89,17 +104,45 @@ function teardownBattleStateSubscription() {
 }
 
 function getBattleFormationSignal(key) {
-  const signals = battleFormationSignals();
-  return signals[key];
+  const slice = battleFormationSignals();
+  return slice ? slice[key] : null;
 }
 
 function getAudioSignal(key) {
-  const signals = audioResourceSignals();
-  return signals[key];
+  const slice = audioResourceSignals();
+  return slice ? slice[key] : null;
 }
 
 function getAutoBattleFlagSignal() {
   return autoBattleSignal();
+}
+
+function observeSignal(getSignal, projector) {
+  return new Observable((subscriber) => {
+    let signal;
+    try {
+      signal = typeof getSignal === 'function' ? getSignal() : null;
+    } catch (err) {
+      subscriber.error(err);
+      return;
+    }
+    if (!signal || typeof signal.subscribe !== 'function') {
+      subscriber.error(new Error('[battleStateAdapter] signal unavailable'));
+      return;
+    }
+    const cleanup = signal.subscribe((value) => {
+      try {
+        subscriber.next(typeof projector === 'function' ? projector(value) : value);
+      } catch (err) {
+        subscriber.error(err);
+      }
+    });
+    return () => {
+      if (typeof cleanup === 'function') {
+        cleanup();
+      }
+    };
+  });
 }
 
 export function getEnemyTeamEntry(teamId) {
@@ -150,6 +193,52 @@ export function isAutoBattleEnabled() {
   return !!(signal && signal.value);
 }
 
+export function enemyTeam$() {
+  return observeSignal(
+    () => getBattleFormationSignal('enemyTeam'),
+    (value) => (Array.isArray(value) ? value : [])
+  );
+}
+
+export function battleFields$() {
+  return observeSignal(
+    () => getBattleFormationSignal('battleFields'),
+    (value) => (Array.isArray(value) ? value : [])
+  );
+}
+
+export function battleFieldId$() {
+  return observeSignal(
+    () => getAudioSignal('battleFieldId'),
+    () => getBattleFieldId()
+  );
+}
+
+export function battleMusicTrack$() {
+  return observeSignal(
+    () => getAudioSignal('battleMusicTrack'),
+    () => getBattleMusicTrack()
+  );
+}
+
+export function musicTrack$() {
+  return observeSignal(
+    () => getAudioSignal('musicTrack'),
+    () => getMusicTrack()
+  );
+}
+
+export function autoBattle$() {
+  return observeSignal(
+    () => getAutoBattleFlagSignal(),
+    (value) => !!value
+  );
+}
+
+export function battleState$() {
+  return battleStateStream;
+}
+
 export function getEnemyTeamSignal() {
   return getBattleFormationSignal('enemyTeam');
 }
@@ -180,3 +269,24 @@ export function subscribeBattleState(listener) {
     }
   };
 }
+
+export default {
+  getEnemyTeamEntry,
+  getEnemyFormationPosition,
+  getBattleFieldEntry,
+  getBattleFieldId,
+  getBattleMusicTrack,
+  getMusicTrack,
+  isAutoBattleEnabled,
+  getEnemyTeamSignal,
+  getBattleFieldsSignal,
+  getBattleStateSnapshot,
+  subscribeBattleState,
+  enemyTeam$,
+  battleFields$,
+  battleFieldId$,
+  battleMusicTrack$,
+  musicTrack$,
+  autoBattle$,
+  battleState$
+};

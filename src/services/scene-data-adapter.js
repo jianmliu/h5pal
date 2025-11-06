@@ -1,6 +1,7 @@
 import worldService from './world-service.js';
 import stateService from './state-service.js';
-import { getSceneTableValue } from '../state/slices/scene-table.js';
+import reactiveContext from '../state/reactive-context.js';
+import { getSceneTableValue, sceneTableSignal } from '../state/slices/scene-table.js';
 
 function resolveSceneId(sceneId) {
   if (typeof sceneId === 'number' && sceneId > 0) {
@@ -117,8 +118,15 @@ export function getSceneTable() {
   return [];
 }
 
+const sceneTableStream = reactiveContext.signalToObservable(sceneTableSignal([]), () => getSceneTable());
+
+export function sceneTable$() {
+  return sceneTableStream;
+}
+
 export default {
   getSceneEntry,
   getSceneEventObjectRange,
-  getSceneTable
+  getSceneTable,
+  sceneTable$
 };

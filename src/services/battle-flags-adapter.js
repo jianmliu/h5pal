@@ -1,4 +1,5 @@
 import { battleFlagSignals } from '../state/slices/battle-flags.js';
+import { Observable } from 'rxjs';
 
 const listeners = new Set();
 let subscriptions = [];
@@ -125,9 +126,33 @@ function subscribe(listener) {
   };
 }
 
+const flagsStream = new Observable((subscriber) => {
+  const emit = () => subscriber.next({ ...flagsCache });
+  emit();
+  const unsubscribe = subscribe((event) => {
+    if (!event) {
+      return;
+    }
+    if (event.type === 'flags') {
+      emit();
+    }
+    if (event.type === 'disposed') {
+      subscriber.complete();
+    }
+  });
+  return () => {
+    unsubscribe();
+  };
+});
+
 function getFlags() {
   ensureInitialised();
   return { ...flagsCache };
+}
+
+export function flags$() {
+  ensureInitialised();
+  return flagsStream;
 }
 
 function dispose() {
@@ -146,5 +171,6 @@ function dispose() {
 export default {
   subscribe,
   getFlags,
+  flags$,
   dispose
 };

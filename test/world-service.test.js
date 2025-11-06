@@ -48,6 +48,18 @@ function createTrailEntry() {
   return { x: 0, y: 0, direction: 0 };
 }
 
+function toRootEventObservable() {
+  return typeof reactiveContext.rootEvent$.asObservable === 'function'
+    ? reactiveContext.rootEvent$.asObservable()
+    : reactiveContext.rootEvent$;
+}
+
+function flushMicrotasks() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
 describe('world service', () => {
   beforeEach(() => {
     reactiveContext.dispose();
@@ -471,10 +483,10 @@ describe('world service', () => {
     expect(noSound.value).toBe(true);
   });
 
-  it('emits player HP/MP change events', () => {
+  it('emits player HP/MP change events', async () => {
     worldService.init();
     const events = [];
-    const subscription = reactiveContext.rootEvent$.subscribe((event) => {
+    const subscription = toRootEventObservable().subscribe((event) => {
       if (!event) return;
       if (event.type === 'world/player/hpChanged' || event.type === 'world/player/mpChanged') {
         events.push(event);
@@ -488,6 +500,8 @@ describe('world service', () => {
     worldService.setPlayerMP(0, initialMp + 8);
     worldService.adjustPlayerHP(0, 5);
     worldService.adjustPlayerMP(0, -3);
+
+    await flushMicrotasks();
 
     const hpEvents = events.filter((event) => event.type === 'world/player/hpChanged');
     const mpEvents = events.filter((event) => event.type === 'world/player/mpChanged');
@@ -740,10 +754,10 @@ describe('world service', () => {
     expect(lastUnequipped.value).toBe(7);
   });
 
-  it('emits hp/mp change events via player-state slice', () => {
+  it('emits hp/mp change events via player-state slice', async () => {
     worldService.init();
     const captured = [];
-    const subscription = reactiveContext.rootEvent$.subscribe((event) => {
+    const subscription = toRootEventObservable().subscribe((event) => {
       if (!event || typeof event !== 'object') {
         return;
       }
@@ -754,6 +768,8 @@ describe('world service', () => {
 
     worldService.setPlayerHP(0, 28);
     worldService.adjustPlayerMP(1, -5);
+
+    await flushMicrotasks();
 
     expect(captured).toEqual([
       expect.objectContaining({

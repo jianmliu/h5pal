@@ -1,147 +1,56 @@
 /**
- * Shared reactive context wiring lightweight Subject/Signal primitives.
- * The implementation mirrors a subset of RxJS/Signals behaviours so we can
- * run in the browser without bundling additional libraries.
+ * Shared reactive context using RxJS primitives. Signals are thin wrappers
+ * around BehaviorSubject so existing `.value` accessors continue to work while
+ * we transition the rest of the codebase.
  */
 
-class SimpleSubscription {
-  constructor(unsubscribe) {
-    this.closed = false;
-    this._unsubscribe = typeof unsubscribe === 'function' ? unsubscribe : null;
-  }
+import { BehaviorSubject, Subject, Observable } from 'rxjs';
 
-  unsubscribe() {
-    if (this.closed) {
-      return;
-    }
-    this.closed = true;
-    if (this._unsubscribe) {
-      this._unsubscribe();
-    }
-  }
-}
-
-class SimpleSubject {
-  constructor() {
-    this._observers = new Set();
-    this.closed = false;
-  }
-
-  subscribe(observer) {
-    if (typeof observer !== 'function') {
-      return new SimpleSubscription();
-    }
-    if (this.closed) {
-      try {
-        observer();
-      } catch (err) {
-        if (typeof console !== 'undefined' && console.error) {
-          console.error('[reactive] subject observer error', err);
-        }
-      }
-      return new SimpleSubscription();
-    }
-    this._observers.add(observer);
-    return new SimpleSubscription(() => {
-      this._observers.delete(observer);
-    });
-  }
-
-  next(value) {
-    if (this.closed) {
-      return;
-    }
-    const snapshot = Array.from(this._observers);
-    for (let i = 0; i < snapshot.length; i++) {
-      try {
-        snapshot[i](value);
-      } catch (err) {
-        if (typeof console !== 'undefined' && console.error) {
-          console.error('[reactive] subject handler error', err);
-        }
-      }
-    }
-  }
-
-  complete() {
-    if (this.closed) {
-      return;
-    }
-    this.closed = true;
-    this._observers.clear();
-  }
-}
-
-class SimpleBehaviorSubject extends SimpleSubject {
+class RxSignal {
   constructor(initialValue) {
-    super();
-    this._value = initialValue;
-  }
-
-  subscribe(observer) {
-    const subscription = super.subscribe(observer);
-    if (!subscription.closed) {
-      try {
-        observer(this._value);
-      } catch (err) {
-        if (typeof console !== 'undefined' && console.error) {
-          console.error('[reactive] behavior subject observer error', err);
-        }
-      }
-    }
-    return subscription;
-  }
-
-  next(value) {
-    this._value = value;
-    super.next(value);
-  }
-
-  getValue() {
-    return this._value;
-  }
-}
-
-class SimpleSignal {
-  constructor(initialValue) {
-    this._value = initialValue;
-    this._listeners = new Set();
+    this._subject = new BehaviorSubject(initialValue);
   }
 
   get value() {
-    return this._value;
+    return this._subject.getValue();
   }
 
   set value(next) {
-    if (this._value === next) {
+    const current = this._subject.getValue();
+    if (Object.is(current, next)) {
       return;
     }
-    this._value = next;
-    const listeners = Array.from(this._listeners);
-    for (let i = 0; i < listeners.length; i++) {
-      try {
-        listeners[i](next);
-      } catch (err) {
-        if (typeof console !== 'undefined' && console.error) {
-          console.error('[reactive] signal listener error', err);
-        }
-      }
-    }
+    this._subject.next(next);
   }
 
   subscribe(listener) {
     if (typeof listener !== 'function') {
       return () => {};
     }
-    this._listeners.add(listener);
+    const subscription = this._subject.subscribe({
+      next: listener,
+      error(err) {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[reactive] signal listener error', err);
+        }
+      }
+    });
     return () => {
-      this._listeners.delete(listener);
+      subscription.unsubscribe();
     };
+  }
+
+  asObservable() {
+    return this._subject.asObservable();
+  }
+
+  complete() {
+    this._subject.complete();
   }
 }
 
 function signal(initialValue) {
-  return new SimpleSignal(initialValue);
+  return new RxSignal(initialValue);
 }
 
 function computed(fn) {
@@ -182,9 +91,9 @@ class QueryClient {
 }
 
 const queryClient = new QueryClient();
-const rootEvent$ = new SimpleSubject();
-const battleBus$ = new SimpleSubject();
-const sceneBus$ = new SimpleSubject();
+const rootEvent$ = new Subject();
+const battleBus$ = new Subject();
+const sceneBus$ = new Subject();
 
 const signalRegistry = new Map();
 const cleanupSubscriptions = new Set();
@@ -225,12 +134,23 @@ function getSignalValue(key, fallback) {
 function toSignalFromObservable(key, observable, options = {}) {
   const { initialValue, transform } = options;
   const target = ensureSignal(key, initialValue);
-  const subscription = observable.subscribe((value) => {
+  const onNext = (value) => {
     const nextValue = typeof transform === 'function' ? transform(value, target.value) : value;
     batch(() => {
       target.value = nextValue;
     });
-  });
+  };
+  let subscription;
+  try {
+    subscription = observable.subscribe(onNext);
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.error) {
+      console.error('[reactive] observable signal subscribe error', err);
+    }
+    subscription = {
+      unsubscribe() {}
+    };
+  }
   cleanupSubscriptions.add(subscription);
   return {
     signal: target,
@@ -242,7 +162,7 @@ function toSignalFromObservable(key, observable, options = {}) {
 }
 
 function createBehaviorStream(initialValue) {
-  const subject = new SimpleBehaviorSubject(initialValue);
+  const subject = new BehaviorSubject(initialValue);
   cleanupSubscriptions.add({
     unsubscribe() {
       subject.complete();
@@ -251,7 +171,44 @@ function createBehaviorStream(initialValue) {
   return subject;
 }
 
+function signalToObservable(signal, projector) {
+  if (!signal || typeof signal.asObservable !== 'function') {
+    return new Observable((subscriber) => {
+      subscriber.error(new Error('[reactive] invalid signal'));
+    });
+  }
+  const source = signal.asObservable();
+  if (typeof projector !== 'function') {
+    return source;
+  }
+  return new Observable((subscriber) => {
+    const subscription = source.subscribe({
+      next(value) {
+        try {
+          subscriber.next(projector(value));
+        } catch (err) {
+          subscriber.error(err);
+        }
+      },
+      error(err) {
+        subscriber.error(err);
+      },
+      complete() {
+        subscriber.complete();
+      }
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  });
+}
+
 function resetSignals() {
+  signalRegistry.forEach((sig) => {
+    if (sig && typeof sig.complete === 'function') {
+      sig.complete();
+    }
+  });
   signalRegistry.clear();
 }
 
@@ -276,6 +233,7 @@ const reactiveContext = {
   computed,
   effect,
   createBehaviorStream,
+  signalToObservable,
   dispose,
   resetSignals
 };

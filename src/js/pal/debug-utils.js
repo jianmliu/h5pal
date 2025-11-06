@@ -8,6 +8,7 @@ import scene from './scene';
 import battle from './battle';
 import { SPRITE_STATS } from './sprite';
 import { RLE_STATS } from './rle';
+import { filter as rxFilter, tap as rxTap, take as rxTake } from 'rxjs/operators';
 
 const reactiveTraceSessions = new Map();
 const perfHookRegistry = new Map();
@@ -24,34 +25,66 @@ function now() {
 function startReactiveTrace(name = 'default', options = {}) {
   const sessionKey = typeof name === 'string' && name.trim() ? name.trim() : 'default';
   stopReactiveTrace(sessionKey);
-  const { filter, limit } = options || {};
+  const { filter: matcher, limit } = options || {};
   let count = 0;
   const start = typeof performance !== 'undefined' && typeof performance.now === 'function'
     ? performance.now()
     : Date.now();
-  const subscription = reactiveContext.rootEvent$.subscribe((event) => {
-    if (typeof filter === 'function' && !filter(event)) {
-      return;
-    }
+  const rootEvent$ = typeof reactiveContext.rootEvent$.asObservable === 'function'
+    ? reactiveContext.rootEvent$.asObservable()
+    : reactiveContext.rootEvent$;
+  let stream$ = rootEvent$;
+  if (typeof matcher === 'function') {
+    stream$ = stream$.pipe(rxFilter((event) => {
+      try {
+        return matcher(event);
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[reactive.trace] filter error', err);
+        }
+        return false;
+      }
+    }));
+  }
+  stream$ = stream$.pipe(rxTap((event) => {
     count += 1;
-    const now = typeof performance !== 'undefined' && typeof performance.now === 'function'
+    const end = typeof performance !== 'undefined' && typeof performance.now === 'function'
       ? performance.now()
       : Date.now();
     const payload = {
       ...event,
       session: sessionKey,
       index: count,
-      elapsed: Math.round(now - start)
+      elapsed: Math.round(end - start)
     };
     if (typeof console !== 'undefined' && console.debug) {
       console.debug('[reactive.trace]', payload);
     }
-    if (Number.isFinite(limit) && limit > 0 && count >= limit) {
-      subscription.unsubscribe();
+  }));
+  if (Number.isFinite(limit) && limit > 0) {
+    stream$ = stream$.pipe(rxTake(limit));
+  }
+  const session = {
+    subscription: null,
+    options: { ...options },
+    start,
+    get count() {
+      return count;
+    }
+  };
+  const subscription = stream$.subscribe({
+    complete() {
+      reactiveTraceSessions.delete(sessionKey);
+    },
+    error(err) {
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('[reactive.trace] subscription error', err);
+      }
       reactiveTraceSessions.delete(sessionKey);
     }
   });
-  reactiveTraceSessions.set(sessionKey, { subscription, options: { ...options }, start, count: 0 });
+  session.subscription = subscription;
+  reactiveTraceSessions.set(sessionKey, session);
   return sessionKey;
 }
 

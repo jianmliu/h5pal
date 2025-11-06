@@ -1,4 +1,5 @@
 import worldService from './world-service.js';
+import { Observable } from 'rxjs';
 import {
   partyStream,
   trailStream,
@@ -116,6 +117,67 @@ function subscribe(listener) {
   };
 }
 
+function createEventStream(extractor) {
+  return new Observable((subscriber) => {
+    ensureInitialised();
+    const snapshot = extractor({
+      type: 'snapshot',
+      party: partyCache,
+      trail: trailCache,
+      followerCount: followerCountCache
+    });
+    if (typeof snapshot !== 'undefined') {
+      subscriber.next(snapshot);
+    }
+    const unsubscribe = subscribe((event) => {
+      if (!event) {
+        return;
+      }
+      if (event.type === 'disposed') {
+        subscriber.complete();
+        return;
+      }
+      const value = extractor(event);
+      if (typeof value !== 'undefined') {
+        subscriber.next(value);
+      }
+    });
+    return () => {
+      unsubscribe();
+    };
+  });
+}
+
+const partyObservable = createEventStream((event) => {
+  if (event.type === 'snapshot') {
+    return Array.isArray(event.party) ? event.party : partyCache;
+  }
+  if (event.type === 'party') {
+    return Array.isArray(event.value) ? event.value : partyCache;
+  }
+  return undefined;
+});
+
+const trailObservable = createEventStream((event) => {
+  if (event.type === 'snapshot') {
+    return Array.isArray(event.trail) ? event.trail : trailCache;
+  }
+  if (event.type === 'trail') {
+    return Array.isArray(event.value) ? event.value : trailCache;
+  }
+  return undefined;
+});
+
+const followerCountObservable = createEventStream((event) => {
+  if (event.type === 'snapshot') {
+    return Number.isFinite(event.followerCount) ? event.followerCount : followerCountCache;
+  }
+  if (event.type === 'followerCount') {
+    return Number.isFinite(event.value) ? event.value : followerCountCache;
+  }
+  return undefined;
+});
+
 function getPartyState() {
   ensureInitialised();
   return partyCache;
@@ -139,6 +201,21 @@ function getFollowerCount() {
   return followerCountCache;
 }
 
+export function party$() {
+  ensureInitialised();
+  return partyObservable;
+}
+
+export function trail$() {
+  ensureInitialised();
+  return trailObservable;
+}
+
+export function followerCount$() {
+  ensureInitialised();
+  return followerCountObservable;
+}
+
 function dispose() {
   notify({ type: 'disposed' });
   teardown();
@@ -154,5 +231,8 @@ export default {
   getTrailState,
   getPartyMember,
   getFollowerCount,
+  party$,
+  trail$,
+  followerCount$,
   dispose
 };

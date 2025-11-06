@@ -80,7 +80,14 @@ async function buildLib() {
     });
   });
 
-  await Promise.all(tasks);
+  const customRxjs = new Promise((resolve, reject) => {
+    gulp.src(['lib/rxjs/**/*.js', 'lib/rxjs/**/*.map'], { allowEmpty: true })
+      .pipe(gulp.dest('dist/lib/rxjs'))
+      .on('end', resolve)
+      .on('error', reject);
+  });
+
+  await Promise.all([...tasks, customRxjs]);
 }
 
 // Serve files
