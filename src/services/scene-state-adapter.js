@@ -1,5 +1,5 @@
-import reactiveContext from '../state/reactive-context.js';
 import { sceneEventSignals } from '../state/slices/scene-events.js';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 const sceneSignals = sceneEventSignals();
 
@@ -11,9 +11,11 @@ export function getSceneIdValue() {
   return 0;
 }
 
-export function sceneId$() {
-  return reactiveContext.signalToObservable(sceneSignals.sceneId, () => getSceneIdValue());
-}
+export const sceneId$ = createAdapterObservable({
+  name: 'scene.state.id',
+  signal: sceneSignals.sceneId,
+  getValue: getSceneIdValue
+});
 
 export default {
   getSceneIdValue,

@@ -4,6 +4,7 @@ import { autoBattleSignal } from '../state/slices/auto-battle.js';
 import { Observable } from 'rxjs';
 import battleService from './battle-service.js';
 import worldService from './world-service.js';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 const stateListeners = new Set();
 let stateSubscriptions = [];
@@ -194,51 +195,89 @@ export function isAutoBattleEnabled() {
   return !!(signal && signal.value);
 }
 
-export function enemyTeam$() {
-  return observeSignal(
-    () => getBattleFormationSignal('enemyTeam'),
-    (value) => (Array.isArray(value) ? value : [])
-  );
+export function getEnemyTeamValue() {
+  const signal = getBattleFormationSignal('enemyTeam');
+  const value = signal && signal.value;
+  return Array.isArray(value) ? value : [];
 }
 
-export function battleFields$() {
-  return observeSignal(
-    () => getBattleFormationSignal('battleFields'),
-    (value) => (Array.isArray(value) ? value : [])
-  );
+export function getBattleFieldsValue() {
+  const signal = getBattleFormationSignal('battleFields');
+  const value = signal && signal.value;
+  return Array.isArray(value) ? value : [];
 }
 
-export function battleFieldId$() {
-  return observeSignal(
-    () => getAudioSignal('battleFieldId'),
-    () => getBattleFieldId()
-  );
-}
+const enemyTeamStream = observeSignal(
+  () => getBattleFormationSignal('enemyTeam'),
+  (value) => (Array.isArray(value) ? value : [])
+);
 
-export function battleMusicTrack$() {
-  return observeSignal(
-    () => getAudioSignal('battleMusicTrack'),
-    () => getBattleMusicTrack()
-  );
-}
+const battleFieldsStream = observeSignal(
+  () => getBattleFormationSignal('battleFields'),
+  (value) => (Array.isArray(value) ? value : [])
+);
 
-export function musicTrack$() {
-  return observeSignal(
-    () => getAudioSignal('musicTrack'),
-    () => getMusicTrack()
-  );
-}
+const battleFieldIdStream = observeSignal(
+  () => getAudioSignal('battleFieldId'),
+  () => getBattleFieldId()
+);
 
-export function autoBattle$() {
-  return observeSignal(
-    () => getAutoBattleFlagSignal(),
-    (value) => !!value
-  );
-}
+const battleMusicTrackStream = observeSignal(
+  () => getAudioSignal('battleMusicTrack'),
+  () => getBattleMusicTrack()
+);
 
-export function battleState$() {
-  return battleStateStream;
-}
+const musicTrackStream = observeSignal(
+  () => getAudioSignal('musicTrack'),
+  () => getMusicTrack()
+);
+
+const autoBattleStreamRef = observeSignal(
+  () => getAutoBattleFlagSignal(),
+  () => isAutoBattleEnabled()
+);
+
+export const enemyTeam$ = createAdapterObservable({
+  name: 'battleState.enemyTeam',
+  observe: () => enemyTeamStream,
+  getValue: getEnemyTeamValue
+});
+
+export const battleFields$ = createAdapterObservable({
+  name: 'battleState.battleFields',
+  observe: () => battleFieldsStream,
+  getValue: getBattleFieldsValue
+});
+
+export const battleFieldId$ = createAdapterObservable({
+  name: 'battleState.fieldId',
+  observe: () => battleFieldIdStream,
+  getValue: getBattleFieldId
+});
+
+export const battleMusicTrack$ = createAdapterObservable({
+  name: 'battleState.battleMusic',
+  observe: () => battleMusicTrackStream,
+  getValue: getBattleMusicTrack
+});
+
+export const musicTrack$ = createAdapterObservable({
+  name: 'battleState.musicTrack',
+  observe: () => musicTrackStream,
+  getValue: getMusicTrack
+});
+
+export const autoBattle$ = createAdapterObservable({
+  name: 'battleState.autoBattle',
+  observe: () => autoBattleStreamRef,
+  getValue: isAutoBattleEnabled
+});
+
+export const battleState$ = createAdapterObservable({
+  name: 'battleState.state',
+  observe: () => battleStateStream,
+  getValue: getBattleStateSnapshot
+});
 
 export function getEnemyTeamSignal() {
   return getBattleFormationSignal('enemyTeam');
@@ -278,6 +317,8 @@ export default {
   getBattleFieldId,
   getBattleMusicTrack,
   getMusicTrack,
+  getEnemyTeamValue,
+  getBattleFieldsValue,
   isAutoBattleEnabled,
   getEnemyTeamSignal,
   getBattleFieldsSignal,

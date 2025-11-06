@@ -1,14 +1,10 @@
 import { gameFlagSignals } from '../state/slices/game-flags.js';
-import reactiveContext from '../state/reactive-context.js';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 const flagSignals = gameFlagSignals();
 
 function normaliseNumber(value, fallback = 0) {
   return Number.isFinite(value) ? Math.trunc(value) : fallback;
-}
-
-function createFlagStream(signal, resolver) {
-  return reactiveContext.signalToObservable(signal, () => resolver());
 }
 
 export function getCollectValue() {
@@ -27,21 +23,29 @@ export function getBattleSpeed() {
   return normaliseNumber(flagSignals.battleSpeed.value, 2);
 }
 
-export function collect$() {
-  return createFlagStream(flagSignals.collect, getCollectValue);
-}
+export const collect$ = createAdapterObservable({
+  name: 'gameFlags.collect',
+  signal: flagSignals.collect,
+  getValue: getCollectValue
+});
 
-export function chaseRange$() {
-  return createFlagStream(flagSignals.chaseRange, getChaseRange);
-}
+export const chaseRange$ = createAdapterObservable({
+  name: 'gameFlags.chaseRange',
+  signal: flagSignals.chaseRange,
+  getValue: getChaseRange
+});
 
-export function chaseSpeedChangeCycles$() {
-  return createFlagStream(flagSignals.chaseSpeedChangeCycles, getChaseSpeedChangeCycles);
-}
+export const chaseSpeedChangeCycles$ = createAdapterObservable({
+  name: 'gameFlags.chaseSpeedCycles',
+  signal: flagSignals.chaseSpeedChangeCycles,
+  getValue: getChaseSpeedChangeCycles
+});
 
-export function battleSpeed$() {
-  return createFlagStream(flagSignals.battleSpeed, getBattleSpeed);
-}
+export const battleSpeed$ = createAdapterObservable({
+  name: 'gameFlags.battleSpeed',
+  signal: flagSignals.battleSpeed,
+  getValue: getBattleSpeed
+});
 
 export default {
   getCollectValue,

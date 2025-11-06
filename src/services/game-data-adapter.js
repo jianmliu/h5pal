@@ -7,6 +7,7 @@ import {
   updateLevelUpExpTableValue,
   updateLevelUpMagicTableValue
 } from '../state/slices/game-data.js';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 const listeners = new Set();
 let subscriptions = [];
@@ -313,12 +314,22 @@ function getMagicEntry(id) {
   return magicTableCache[id] || null;
 }
 
+export function getMagicTableValue() {
+  ensureInitialised();
+  return Array.isArray(magicTableCache) ? magicTableCache.slice() : [];
+}
+
 function getStoreEntry(id) {
   ensureInitialised();
   if (typeof id !== 'number' || id < 0) {
     return null;
   }
   return storeTableCache[id] || null;
+}
+
+export function getStoreTableValue() {
+  ensureInitialised();
+  return Array.isArray(storeTableCache) ? storeTableCache.slice() : [];
 }
 
 function getEnemyEntry(id) {
@@ -329,12 +340,22 @@ function getEnemyEntry(id) {
   return enemyTableCache[id] || null;
 }
 
+export function getEnemyTableValue() {
+  ensureInitialised();
+  return Array.isArray(enemyTableCache) ? enemyTableCache.slice() : [];
+}
+
 function getBattleEffectIndexRow(id) {
   ensureInitialised();
   if (typeof id !== 'number' || id < 0) {
     return null;
   }
   return battleEffectTableCache[id] || null;
+}
+
+export function getBattleEffectsValue() {
+  ensureInitialised();
+  return Array.isArray(battleEffectTableCache) ? battleEffectTableCache.slice() : [];
 }
 
 export function getExpStateSnapshot() {
@@ -398,47 +419,79 @@ function getLevelUpMagicEntry(index) {
   return entry ? clone(entry) : null;
 }
 
-export function magicTable$() {
-  ensureInitialised();
-  return magicTableStream;
-}
+export const magicTable$ = createAdapterObservable({
+  name: 'gameData.magicTable',
+  observe: () => {
+    ensureInitialised();
+    return magicTableStream;
+  },
+  getValue: getMagicTableValue
+});
 
-export function storeTable$() {
-  ensureInitialised();
-  return storeTableStream;
-}
+export const storeTable$ = createAdapterObservable({
+  name: 'gameData.storeTable',
+  observe: () => {
+    ensureInitialised();
+    return storeTableStream;
+  },
+  getValue: getStoreTableValue
+});
 
-export function enemyTable$() {
-  ensureInitialised();
-  return enemyTableStream;
-}
+export const enemyTable$ = createAdapterObservable({
+  name: 'gameData.enemyTable',
+  observe: () => {
+    ensureInitialised();
+    return enemyTableStream;
+  },
+  getValue: getEnemyTableValue
+});
 
-export function battleEffects$() {
-  ensureInitialised();
-  return battleEffectsStream;
-}
+export const battleEffects$ = createAdapterObservable({
+  name: 'gameData.battleEffects',
+  observe: () => {
+    ensureInitialised();
+    return battleEffectsStream;
+  },
+  getValue: getBattleEffectsValue
+});
 
-export function expState$() {
-  ensureInitialised();
-  return expStateStream;
-}
+export const expState$ = createAdapterObservable({
+  name: 'gameData.expState',
+  observe: () => {
+    ensureInitialised();
+    return expStateStream;
+  },
+  getValue: getExpStateSnapshot
+});
 
-export function levelUpExp$() {
-  ensureInitialised();
-  return levelUpExpStream;
-}
+export const levelUpExp$ = createAdapterObservable({
+  name: 'gameData.levelUpExp',
+  observe: () => {
+    ensureInitialised();
+    return levelUpExpStream;
+  },
+  getValue: getLevelUpExpTable
+});
 
-export function levelUpMagic$() {
-  ensureInitialised();
-  return levelUpMagicStream;
-}
+export const levelUpMagic$ = createAdapterObservable({
+  name: 'gameData.levelUpMagic',
+  observe: () => {
+    ensureInitialised();
+    return levelUpMagicStream;
+  },
+  getValue: getLevelUpMagicTable
+});
 
 export default {
   subscribe,
   getMagicEntry,
+  getMagicTableValue,
   getStoreEntry,
+  getStoreTableValue,
   getEnemyEntry,
+  getEnemyTableValue,
   getBattleEffectIndexRow,
+  getBattleEffectsValue,
   getExpStateSnapshot,
   getLevelUpExpValue,
   getLevelUpExpTable,

@@ -9,6 +9,7 @@ import {
 } from '../state/slices/party-trail.js';
 import stateService from './state-service.js';
 import worldService from './world-service.js';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 let initialised = false;
 let partyCache = [];
@@ -289,20 +290,32 @@ function getFollowerCount() {
   return followerCountCache;
 }
 
-export function party$() {
-  ensureInitialised();
-  return partyObservable;
-}
+export const party$ = createAdapterObservable({
+  name: 'partyTrail.party',
+  observe: () => {
+    ensureInitialised();
+    return partyObservable;
+  },
+  getValue: getPartyState
+});
 
-export function trail$() {
-  ensureInitialised();
-  return trailObservable;
-}
+export const trail$ = createAdapterObservable({
+  name: 'partyTrail.trail',
+  observe: () => {
+    ensureInitialised();
+    return trailObservable;
+  },
+  getValue: getTrailState
+});
 
-export function followerCount$() {
-  ensureInitialised();
-  return followerCountObservable;
-}
+export const followerCount$ = createAdapterObservable({
+  name: 'partyTrail.followers',
+  observe: () => {
+    ensureInitialised();
+    return followerCountObservable;
+  },
+  getValue: getFollowerCount
+});
 
 function dispose() {
   notify({ type: 'disposed' });
@@ -323,4 +336,10 @@ export default {
   trail$,
   followerCount$,
   dispose
+};
+
+export {
+  getPartyState as getPartyStateValue,
+  getTrailState as getTrailStateValue,
+  getFollowerCount as getFollowerCountValue
 };

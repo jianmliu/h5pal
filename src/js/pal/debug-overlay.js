@@ -265,6 +265,49 @@ function gatherReactiveStats() {
   return { buses, signals };
 }
 
+function gatherAdapterStats(limit = 3) {
+  const services = window.services;
+  const manifest = services && services.adapterManifest;
+  if (!manifest) {
+    return null;
+  }
+  const entries = Object.keys(manifest).map((key) => manifest[key]).filter(Boolean);
+  if (!entries.length) {
+    return null;
+  }
+  const withStreams = [];
+  const legacyOnly = [];
+  entries.forEach((entry) => {
+    const streamCount = Array.isArray(entry.streams) ? entry.streams.length : 0;
+    if (streamCount > 0) {
+      withStreams.push({
+        id: entry.id,
+        primary: entry.primaryStream || entry.streams[0],
+        streamCount
+      });
+    } else {
+      legacyOnly.push({
+        id: entry.id,
+        description: entry.description || ''
+      });
+    }
+  });
+  const pick = (list) => {
+    if (!list.length) {
+      return [];
+    }
+    return list.slice(0, Math.max(0, limit));
+  };
+  return {
+    withStreams,
+    legacyOnly,
+    preview: {
+      withStreams: pick(withStreams),
+      legacyOnly: pick(legacyOnly)
+    }
+  };
+}
+
 function renderSummary(scope, context) {
   const lines = [];
   if (context.fps != null) {
@@ -287,6 +330,16 @@ function renderSummary(scope, context) {
       lines.push(
         `  ${label} subs:${entry.subscribers} last:${formatDelta(entry.lastEmissionDelta)}${suffix}`
       );
+    });
+  }
+  const adapterStats = gatherAdapterStats();
+  if (adapterStats) {
+    lines.push(`Adapters: streams=${adapterStats.withStreams.length} legacy=${adapterStats.legacyOnly.length}`);
+    adapterStats.preview.withStreams.forEach((entry) => {
+      lines.push(`  ✓ ${entry.id} (${entry.streamCount}) → ${entry.primary || '-'}`);
+    });
+    adapterStats.preview.legacyOnly.forEach((entry) => {
+      lines.push(`  ! ${entry.id} legacy${entry.description ? ` – ${entry.description}` : ''}`);
     });
   }
   if (!scope || scope === 'scene') {

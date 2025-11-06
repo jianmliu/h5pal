@@ -1,6 +1,7 @@
 import worldService from './world-service.js';
 import reactiveContext from '../state/reactive-context.js';
 import { scriptObjectSignals } from '../state/slices/script-objects.js';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 const listeners = new Set();
 let subscriptions = [];
@@ -211,20 +212,32 @@ function getObjectDescEntry(id) {
   return null;
 }
 
-export function scriptEntries$() {
-  ensureInitialised();
-  return scriptEntriesStream;
-}
+export const scriptEntries$ = createAdapterObservable({
+  name: 'scriptObjects.entries',
+  observe: () => {
+    ensureInitialised();
+    return scriptEntriesStream;
+  },
+  getValue: getScriptEntries
+});
 
-export function objectTable$() {
-  ensureInitialised();
-  return objectTableStream;
-}
+export const objectTable$ = createAdapterObservable({
+  name: 'scriptObjects.objectTable',
+  observe: () => {
+    ensureInitialised();
+    return objectTableStream;
+  },
+  getValue: getObjectTable
+});
 
-export function objectDesc$() {
-  ensureInitialised();
-  return objectDescStream;
-}
+export const objectDesc$ = createAdapterObservable({
+  name: 'scriptObjects.objectDesc',
+  observe: () => {
+    ensureInitialised();
+    return objectDescStream;
+  },
+  getValue: getObjectDesc
+});
 
 function dispose() {
   notify({ type: 'disposed' });
@@ -247,4 +260,10 @@ export default {
   objectTable$,
   objectDesc$,
   dispose
+};
+
+export {
+  getScriptEntries as getScriptEntriesValue,
+  getObjectTable as getObjectTableValue,
+  getObjectDesc as getObjectDescValue
 };

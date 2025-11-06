@@ -1,20 +1,11 @@
-import reactiveContext from '../state/reactive-context.js';
 import { viewportSignals } from '../state/slices/viewport.js';
 import { audioResourceSignals } from '../state/slices/audio-resources.js';
 import { timeFlagSignals } from '../state/slices/time-flags.js';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 const viewportSlice = viewportSignals();
 const audioSlice = audioResourceSignals();
 const timeSlice = timeFlagSignals();
-
-function createValueStream(signal, projector) {
-  return reactiveContext.signalToObservable(signal, (value) => {
-    if (typeof projector === 'function') {
-      return projector(value);
-    }
-    return value;
-  });
-}
 
 function getViewportValue() {
   const value = viewportSlice.viewport.value;
@@ -96,45 +87,67 @@ function getWaveProgressionValue() {
   return 0;
 }
 
-export function viewport$() {
-  return createValueStream(viewportSlice.viewport, () => getViewportValue());
-}
+export const viewport$ = createAdapterObservable({
+  name: 'environment.viewport',
+  signal: viewportSlice.viewport,
+  getValue: getViewportValue
+});
 
-export function partyOffset$() {
-  return createValueStream(viewportSlice.partyOffset, () => getPartyOffsetValue());
-}
+export const partyOffset$ = createAdapterObservable({
+  name: 'environment.partyOffset',
+  signal: viewportSlice.partyOffset,
+  getValue: getPartyOffsetValue
+});
 
-export function partyDirection$() {
-  return createValueStream(viewportSlice.partyDirection, () => getPartyDirectionValue());
-}
+export const partyDirection$ = createAdapterObservable({
+  name: 'environment.partyDirection',
+  signal: viewportSlice.partyDirection,
+  getValue: getPartyDirectionValue
+});
 
-export function currentSaveSlot$() {
-  return createValueStream(viewportSlice.currentSaveSlot, () => getCurrentSaveSlotValue());
-}
+export const currentSaveSlot$ = createAdapterObservable({
+  name: 'environment.currentSaveSlot',
+  signal: viewportSlice.currentSaveSlot,
+  getValue: getCurrentSaveSlotValue
+});
 
-export function paletteId$() {
-  return createValueStream(audioSlice.paletteId, () => getPaletteIdValue());
-}
+export const paletteId$ = createAdapterObservable({
+  name: 'environment.paletteId',
+  signal: audioSlice.paletteId,
+  getValue: getPaletteIdValue
+});
 
-export function screenWave$() {
-  return createValueStream(audioSlice.screenWave, () => getScreenWaveValue());
-}
+export const screenWave$ = createAdapterObservable({
+  name: 'environment.screenWave',
+  signal: audioSlice.screenWave,
+  getValue: getScreenWaveValue
+});
 
-export function layer$() {
-  return createValueStream(audioSlice.layer, () => getLayerValue());
-}
+export const layer$ = createAdapterObservable({
+  name: 'environment.layer',
+  signal: audioSlice.layer,
+  getValue: getLayerValue
+});
 
-export function nightPalette$() {
-  return createValueStream(audioSlice.nightPalette, () => isNightPaletteEnabled());
-}
+export const nightPalette$ = createAdapterObservable({
+  name: 'environment.nightPalette',
+  signal: audioSlice.nightPalette,
+  getValue: isNightPaletteEnabled,
+  projector: (value) => !!value
+});
 
-export function fadeIn$() {
-  return createValueStream(timeSlice.needToFadeIn, () => shouldFadeIn());
-}
+export const fadeIn$ = createAdapterObservable({
+  name: 'environment.needToFadeIn',
+  signal: timeSlice.needToFadeIn,
+  getValue: shouldFadeIn,
+  projector: (value) => !!value
+});
 
-export function waveProgression$() {
-  return createValueStream(timeSlice.waveProgression, () => getWaveProgressionValue());
-}
+export const waveProgression$ = createAdapterObservable({
+  name: 'environment.waveProgression',
+  signal: timeSlice.waveProgression,
+  getValue: getWaveProgressionValue
+});
 
 export {
   getViewportValue,

@@ -4,6 +4,7 @@ import reactiveContext from '../state/reactive-context.js';
 import { Observable } from 'rxjs';
 import { sceneEventSignals } from '../state/slices/scene-events.js';
 import { getSceneEventObjectRange as getSceneEventObjectRangeSnapshot } from './scene-data-adapter.js';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 const listeners = new Set();
 let subscriptions = [];
@@ -405,4 +406,10 @@ export default {
   collisionState$,
   sceneEventVersion$,
   dispose
+};
+
+export {
+  getSceneId as getSceneIdValue,
+  getEventObjects as getEventObjectsValue,
+  getCollisionState as getCollisionStateValue
 };

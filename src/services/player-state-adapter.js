@@ -3,6 +3,7 @@ import reactiveContext from '../state/reactive-context.js';
 import { playerStateSignals, updatePlayerRolesValue } from '../state/slices/player-state.js';
 import { statusSignals } from '../state/slices/status-matrices.js';
 import { viewportSignals } from '../state/slices/viewport.js';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 const playerStateSlice = playerStateSignals();
 const rolesSignal = playerStateSlice.roles;
@@ -213,25 +214,35 @@ export function getPlayerMaxMP(roleId) {
   return getRoleArrayValue('maxMP', roleId, 0);
 }
 
-export function playerRoles$() {
-  return playerRolesStream;
-}
+export const playerRoles$ = createAdapterObservable({
+  name: 'playerState.roles',
+  observe: () => playerRolesStream,
+  getValue: getPlayerRolesSnapshot
+});
 
-export function equipmentEffects$() {
-  return equipmentEffectsStream;
-}
+export const equipmentEffects$ = createAdapterObservable({
+  name: 'playerState.equipmentEffects',
+  observe: () => equipmentEffectsStream,
+  getValue: getEquipmentEffectsMatrix
+});
 
-export function playerStatus$() {
-  return playerStatusStream;
-}
+export const playerStatus$ = createAdapterObservable({
+  name: 'playerState.status',
+  observe: () => playerStatusStream,
+  getValue: getPlayerStatusMatrix
+});
 
-export function poisonStatus$() {
-  return poisonStatusStream;
-}
+export const poisonStatus$ = createAdapterObservable({
+  name: 'playerState.poisonStatus',
+  observe: () => poisonStatusStream,
+  getValue: getPoisonStatusMatrix
+});
 
-export function maxPartyIndex$() {
-  return maxPartyIndexStream;
-}
+export const maxPartyIndex$ = createAdapterObservable({
+  name: 'playerState.maxPartyIndex',
+  observe: () => maxPartyIndexStream,
+  getValue: getMaxPartyMemberIndex
+});
 
 export function getPlayerLevel(roleId) {
   return getRoleArrayValue('level', roleId, 0);

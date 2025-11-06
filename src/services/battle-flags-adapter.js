@@ -1,5 +1,6 @@
 import { battleFlagSignals } from '../state/slices/battle-flags.js';
 import { Observable } from 'rxjs';
+import { createAdapterObservable } from './adapter-helpers.js';
 
 const listeners = new Set();
 let subscriptions = [];
@@ -150,10 +151,18 @@ function getFlags() {
   return { ...flagsCache };
 }
 
-export function flags$() {
-  ensureInitialised();
-  return flagsStream;
+export function getFlagsValue() {
+  return getFlags();
 }
+
+export const flags$ = createAdapterObservable({
+  name: 'battleFlags.state',
+  observe: () => {
+    ensureInitialised();
+    return flagsStream;
+  },
+  getValue: getFlagsValue
+});
 
 function dispose() {
   notify({ type: 'disposed' });
@@ -171,6 +180,7 @@ function dispose() {
 export default {
   subscribe,
   getFlags,
+  getFlagsValue,
   flags$,
   dispose
 };

@@ -280,10 +280,24 @@ function setter(size, offset){
 */
 
 function sizeToArray(Type, view, length, offset) {
-  var arraybuffer = view.buffer;
-  var ret = new Type(arraybuffer, view.byteOffset + offset, length);
-  ret.uint8Array = view.subarray(offset, offset + Type.BYTES_PER_ELEMENT * length);
-  return ret;
+  var byteOffset = view.byteOffset + offset;
+  var byteLength = Type.BYTES_PER_ELEMENT * length;
+  var aligned = (byteOffset % Type.BYTES_PER_ELEMENT) === 0;
+  var typed;
+  if (aligned) {
+    typed = new Type(view.buffer, byteOffset, length);
+  } else {
+    // Fallback for misaligned segments: copy into a fresh buffer.
+    var slice = view.subarray(offset, offset + byteLength);
+    var buffer = new ArrayBuffer(byteLength);
+    var copy = new Uint8Array(buffer);
+    copy.set(slice);
+    typed = new Type(buffer);
+    typed.uint8Array = copy;
+    return typed;
+  }
+  typed.uint8Array = view.subarray(offset, offset + byteLength);
+  return typed;
 }
 
 function arrayGetter(type, length, offset, name) {
