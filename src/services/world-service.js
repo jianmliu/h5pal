@@ -1,6 +1,7 @@
 import EventBus from './event-bus.js';
 import stateService from './state-service.js';
 import reactiveContext from '../state/reactive-context.js';
+import co from '../js/pal/co.js';
 import {
   createEntityRegistry,
   WorldComponents,
@@ -186,6 +187,61 @@ const MAX_POISONS = getConstValue('MAX_POISONS', 0);
 const MAX_SPRITE_STATE_KEY = 'MAX_SPRITE_TO_DRAW';
 const LEGACY_SPRITE_LIMIT_KEY = '__PAL_LEGACY_MAX_SPRITE__';
 const DEFAULT_MAX_SPRITE_TO_DRAW = 2048;
+
+const serviceModuleCache = Object.create(null);
+
+function getGlobalServices() {
+  if (typeof globalThis !== 'undefined' && globalThis.services) {
+    return globalThis.services;
+  }
+  if (typeof global !== 'undefined' && global.services) {
+    return global.services;
+  }
+  return null;
+}
+
+function loadServiceModule(name, path) {
+  if (serviceModuleCache[name]) {
+    return Promise.resolve(serviceModuleCache[name]);
+  }
+  const services = getGlobalServices();
+  if (services) {
+    const direct = services[name];
+    if (direct) {
+      serviceModuleCache[name] = direct;
+      return Promise.resolve(direct);
+    }
+    const adapter = services.adapters && services.adapters[name];
+    if (adapter) {
+      serviceModuleCache[name] = adapter;
+      return Promise.resolve(adapter);
+    }
+  }
+  return import(path).then((mod) => {
+    const resolved = mod && mod.default ? mod.default : mod;
+    serviceModuleCache[name] = resolved;
+    return resolved;
+  }).catch((err) => {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn(`[world-service] failed to load module '${name}'`, err);
+    }
+    throw err;
+  });
+}
+
+function getItemFlags() {
+  const flags = getGlobalObject('ItemFlag');
+  if (flags) {
+    return flags;
+  }
+  return {
+    Usable: 1,
+    Equipable: 2,
+    Throwable: 4,
+    Consuming: 8,
+    ApplyToAll: 16
+  };
+}
 
 function setDefaultPartyStruct() {
   const constRef = getGlobalObject('Const');
@@ -1364,6 +1420,89 @@ class WorldService extends EventBus {
       : fallback;
     updateInventoryCapacityValue(capacity, { emitEvent: false, source: 'worldService:get' });
     return capacity;
+  }
+
+  useInventoryItem(itemId, targetIndex) {
+    const world = this;
+    return co(function* () {
+      if (!Number.isFinite(itemId) || itemId <= 0) {
+        return false;
+      }
+
+      let scriptSvc = null;
+      try {
+        scriptSvc = yield loadServiceModule('script', './script-service.js');
+      } catch (err) {
+        return false;
+      }
+      if (!scriptSvc || typeof scriptSvc.runTriggerScript !== 'function') {
+        return false;
+      }
+
+      let objectEntry = null;
+      try {
+        const scriptObjects = yield loadServiceModule('scriptObjects', './script-object-adapter.js');
+        if (scriptObjects && typeof scriptObjects.getObjectEntry === 'function') {
+          objectEntry = scriptObjects.getObjectEntry(itemId);
+        }
+      } catch (err) {
+        objectEntry = null;
+      }
+      if (!objectEntry) {
+        const gameData = stateService.getGameData('object');
+        if (gameData && typeof gameData === 'object') {
+          objectEntry = gameData[itemId] || null;
+        }
+      }
+      if (!objectEntry || !objectEntry.item) {
+        return false;
+      }
+
+      const scriptEntry = objectEntry.item.scriptOnUse;
+      if (!Number.isFinite(scriptEntry) || scriptEntry <= 0) {
+        return false;
+      }
+
+      const itemFlags = getItemFlags();
+      const flags = Number(objectEntry.item.flags) || 0;
+      const applyAll = !!(flags & itemFlags.ApplyToAll);
+      const consuming = !!(flags & itemFlags.Consuming);
+
+      let targetRole = 0xFFFF;
+      if (!applyAll) {
+        const party = world.getParty();
+        let targetMember = null;
+        if (Number.isFinite(targetIndex) && targetIndex >= 0 && targetIndex < party.length) {
+          targetMember = party[targetIndex] || null;
+        }
+        if (!targetMember) {
+          targetMember = party.find((member) => member && typeof member.playerRole === 'number');
+        }
+        if (!targetMember || typeof targetMember.playerRole !== 'number') {
+          return false;
+        }
+        targetRole = targetMember.playerRole;
+      }
+
+      try {
+        const nextScript = yield scriptSvc.runTriggerScript(scriptEntry, targetRole);
+        world.mutateObjectEntry(itemId, (entry) => {
+          if (entry && entry.item) {
+            entry.item.scriptOnUse = nextScript;
+          }
+          return entry;
+        });
+        if (consuming && typeof scriptSvc.addItemToInventory === 'function') {
+          scriptSvc.addItemToInventory(itemId, -1);
+        }
+        return !!scriptSvc.scriptSuccess;
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[world-service] useInventoryItem failed', err);
+        }
+        return false;
+      }
+    });
   }
 
   getPlayerStatusMatrix() {

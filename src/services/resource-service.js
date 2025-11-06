@@ -9,6 +9,7 @@ class ResourceService {
     this.descCache = new Map();
     this.fileCache = new Map();
     this.generatedGameDataCache = new Map();
+    this._gameModulePromise = null;
   }
 
   async loadMKF(...names) {
@@ -153,6 +154,37 @@ class ResourceService {
     this.descCache.clear();
     this.fileCache.clear();
     this.generatedGameDataCache.clear();
+  }
+
+  async _resolveGameModule() {
+    if (this._gameModulePromise) {
+      return this._gameModulePromise;
+    }
+    const loader = import('../js/pal/game.js')
+      .then((mod) => (mod && mod.default ? mod.default : mod))
+      .catch((err) => {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[resource-service] failed to load game module for saveGame', err);
+        }
+        throw err;
+      });
+    this._gameModulePromise = loader;
+    return loader;
+  }
+
+  async saveGame(slot) {
+    try {
+      const gameModule = await this._resolveGameModule();
+      if (!gameModule || typeof gameModule.saveGame !== 'function') {
+        throw new Error('game module missing saveGame');
+      }
+      return gameModule.saveGame(slot);
+    } catch (err) {
+      if (typeof console !== 'undefined' && console.error) {
+        console.error('[resource-service] saveGame failed', err);
+      }
+      return false;
+    }
   }
 }
 

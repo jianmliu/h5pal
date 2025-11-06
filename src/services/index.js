@@ -194,6 +194,7 @@ const adapterManifest = Object.freeze({
     streams: [
       'scene.events.id',
       'scene.events.objects',
+      'sceneEventObjects$',
       'scene.events.collision',
       'scene.events.version'
     ],

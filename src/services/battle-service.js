@@ -2,6 +2,7 @@ import EventBus from './event-bus.js';
 import stateService from './state-service.js';
 import worldService from './world-service.js';
 import scriptService from './script-service.js';
+import co from '../js/pal/co.js';
 import {
   getPlayerRolesSnapshot,
   getPlayerHP,
@@ -36,6 +37,19 @@ import {
 } from '../ecs/index.js';
 import { autoBattleStream, getAutoBattleValue } from '../state/slices/auto-battle.js';
 import { updateBattleFlagsFromState, resetBattleFlagsSlice } from '../state/slices/battle-flags.js';
+
+function getBattleActionEnum() {
+  if (typeof BattleActionType !== 'undefined' && BattleActionType) {
+    return BattleActionType;
+  }
+  if (typeof globalThis !== 'undefined' && globalThis.BattleActionType) {
+    return globalThis.BattleActionType;
+  }
+  if (typeof global !== 'undefined' && global.BattleActionType) {
+    return global.BattleActionType;
+  }
+  return null;
+}
 
 function ensureGameGlobal() {
   let store = stateService.getGlobal();
@@ -92,6 +106,7 @@ class BattleService extends EventBus {
     this._autoBattleSubscription = null;
     this._ensureAutoBattleSubscription();
     resetBattleFlagsSlice();
+    this._activeBattleTask = null;
   }
 
   bindModule(moduleRef) {
@@ -692,6 +707,26 @@ class BattleService extends EventBus {
     return yield* this._wrapGeneratorCall('start', (team, boss) => ({ enemyTeam: team, isBoss: boss }), enemyTeam, isBoss);
   }
 
+  startBattle(formationId, options = {}) {
+    const enemyTeam = Number.isFinite(formationId) ? Math.trunc(formationId) : 0;
+    const bossFlag = options && typeof options.isBoss === 'boolean' ? options.isBoss : !!(options && options.boss);
+    if (this._activeBattleTask) {
+      return this._activeBattleTask;
+    }
+    const task = co(this.start.bind(this, enemyTeam, bossFlag))
+      .catch((err) => {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[battle-service] startBattle failed', err);
+        }
+        throw err;
+      })
+      .finally(() => {
+        this._activeBattleTask = null;
+      });
+    this._activeBattleTask = task;
+    return task;
+  }
+
   *won(...args) {
     return yield* this._wrapGeneratorCall('won', (...params) => ({ args: params }), ...args);
   }
@@ -702,6 +737,36 @@ class BattleService extends EventBus {
 
   *enemyEscape(...args) {
     return yield* this._wrapGeneratorCall('enemyEscape', (...params) => ({ args: params }), ...args);
+  }
+
+  castMagic(options = {}) {
+    const { magicId, casterIndex, targetIndex } = options || {};
+    const state = this.getState();
+    if (!state || !Array.isArray(state.player)) {
+      return false;
+    }
+    const actionEnum = getBattleActionEnum();
+    const magicAction = actionEnum && typeof actionEnum.Magic === 'number' ? actionEnum.Magic : 3;
+    const playerIndex = Number.isFinite(casterIndex) ? Math.trunc(casterIndex) : 0;
+    if (playerIndex < 0 || playerIndex >= state.player.length) {
+      return false;
+    }
+    const resolvedMagic = Number.isFinite(magicId) ? Math.trunc(magicId) : 0;
+    const resolvedTarget = Number.isFinite(targetIndex) ? Math.trunc(targetIndex) : -1;
+    this.updatePlayer(playerIndex, (player) => {
+      if (!player) {
+        return player;
+      }
+      if (!player.action) {
+        player.action = { actionType: magicAction, actionID: resolvedMagic, target: resolvedTarget, remainingTime: 0 };
+        return player;
+      }
+      player.action.actionType = magicAction;
+      player.action.actionID = resolvedMagic;
+      player.action.target = resolvedTarget;
+      return player;
+    });
+    return true;
   }
 
   _syncBattleFlags(source, emitEvent = true) {
