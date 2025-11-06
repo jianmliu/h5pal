@@ -12,9 +12,9 @@ var slice = Array.prototype.slice;
  */
 global.DEBUG = {
   Timing: true,
-  ShowSpriteRect: true,
-  ShowSpritePos:  true,
-  ShowSpriteSize: true,
+  ShowSpriteRect: false,
+  ShowSpritePos:  false,
+  ShowSpriteSize: false,
 };
 
 var log = global.log = {

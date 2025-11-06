@@ -147,7 +147,17 @@ function getSceneId() {
 
 function getEventObjects() {
   ensureInitialised();
-  return eventObjectsCache;
+  if (!Array.isArray(eventObjectsCache) || eventObjectsCache.length === 0) {
+    return [];
+  }
+  const results = [];
+  for (let i = 0; i < eventObjectsCache.length; i++) {
+    const entry = eventObjectsCache[i];
+    if (entry && entry.state) {
+      results.push(entry);
+    }
+  }
+  return results;
 }
 
 function getEventObjectsVersion() {

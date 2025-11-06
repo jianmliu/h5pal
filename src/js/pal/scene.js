@@ -510,8 +510,19 @@ utils.extend(Scene.prototype, {
       this._eventSpriteVersion = version;
       return;
     }
-    var MGO = Files.MGO;
+    var MGO = Files.MGO || (resourceService && typeof resourceService.getMKF === 'function'
+      ? resourceService.getMKF('MGO')
+      : null);
     var array = this.eventObjectSprite = new Array(entries.length);
+
+    if (!MGO || typeof MGO.decompressChunk !== 'function') {
+      log.warn('[scene] MGO archive unavailable; skipping event object sprites');
+      entries.forEach(function(_, i) {
+        array[i] = null;
+      });
+      this._eventSpriteVersion = version;
+      return;
+    }
 
     entries.forEach(function(entry, localIndex) {
       var state = entry && entry.state ? entry.state : null;

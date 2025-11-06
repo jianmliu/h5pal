@@ -168,6 +168,9 @@ play.update = function*(trigger) {
           } else {
             obj = sceneEventAdapter.getEventObjectStateByIndex(eventIndex);
           }
+          if (!obj) {
+            continue;
+          }
 
           input.clear();
 
@@ -185,12 +188,12 @@ play.update = function*(trigger) {
 
   for (var index = 0; index < sceneObjects.length; index++) {
     var currentEntry = sceneObjects[index];
+    if (!currentEntry || !currentEntry.state) {
+      continue;
+    }
     var currentIdx = currentEntry.index;
     var currentEventId = currentEntry.id;
     var currentObj = currentEntry.state;
-    if (!currentObj) {
-      continue;
-    }
 
     if (currentObj.state > 0 && currentObj.vanishTime === 0) {
       var autoScriptEntry = currentObj.autoScript;
@@ -207,6 +210,9 @@ play.update = function*(trigger) {
           currentObj = updatedAutoScript;
         } else {
           currentObj = sceneEventAdapter.getEventObjectStateByIndex(currentIdx);
+        }
+        if (!currentObj) {
+          continue;
         }
         if (worldService.isEnteringScene() || worldService.isGameStart()) {
           return;
