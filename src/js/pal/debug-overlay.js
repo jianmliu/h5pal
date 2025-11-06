@@ -1,3 +1,5 @@
+import sceneEventAdapter from '../../services/scene-event-adapter.js';
+
 const OVERLAY_ID = 'pal-debug-overlay';
 
 function createOverlayElement() {
@@ -93,7 +95,13 @@ function gatherSceneStats() {
   const adapters = window.services && window.services.adapters;
   const sceneId = adapters && adapters.sceneData ? adapters.sceneData.getSceneIdValue?.() : null;
   const eventCount = adapters && adapters.sceneEvents ? adapters.sceneEvents.getEventObjects?.()?.length : null;
-  return { viewport, sceneId, eventCount };
+  let eventVersion = null;
+  try {
+    eventVersion = sceneEventAdapter.getEventObjectsVersion();
+  } catch (err) {
+    eventVersion = null;
+  }
+  return { viewport, sceneId, eventCount, eventVersion };
 }
 
 function gatherBattleStats() {
@@ -135,7 +143,8 @@ function renderSummary(scope, context) {
         lines.push(formatLine('Viewport', `0x${sceneStats.viewport.toString(16)}`));
       }
       if (sceneStats.eventCount != null) {
-        lines.push(formatLine('Events', sceneStats.eventCount));
+        const suffix = sceneStats.eventVersion != null ? ` v${sceneStats.eventVersion}` : '';
+        lines.push(formatLine('Events', `${sceneStats.eventCount}${suffix}`));
       }
     }
     const spriteStats = gatherSpriteStats();

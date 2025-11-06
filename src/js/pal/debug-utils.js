@@ -12,6 +12,7 @@ import { RLE_STATS } from './rle';
 const reactiveTraceSessions = new Map();
 const perfHookRegistry = new Map();
 const renderProfileSessions = new Map();
+let sceneEventSession = null;
 
 function now() {
   if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
@@ -280,6 +281,51 @@ function resolveScriptSequence(startEntry, depth = 10) {
   return results;
 }
 
+function startSceneEventLogging(options = {}) {
+  stopSceneEventLogging();
+  if (!sceneEventAdapter || typeof sceneEventAdapter.subscribe !== 'function') {
+    return () => {};
+  }
+  const logger = typeof options.logger === 'function'
+    ? options.logger
+    : (typeof console !== 'undefined' && console.debug ? console.debug.bind(console) : null);
+  const includeSnapshot = options.includeSnapshot === true;
+  const subscription = sceneEventAdapter.subscribe((event) => {
+    if (!logger) {
+      return;
+    }
+    const payload = {
+      type: event.type,
+      sceneId: sceneEventAdapter.getSceneId(),
+      version: sceneEventAdapter.getEventObjectsVersion(),
+      timestamp: new Date().toISOString()
+    };
+    if (event.type === 'eventObjects') {
+      const next = Array.isArray(event.value) ? event.value.filter((entry) => entry && entry.state) : [];
+      const previous = Array.isArray(event.previous) ? event.previous.filter((entry) => entry && entry.state) : [];
+      payload.size = next.length;
+      payload.previousSize = previous.length;
+      if (includeSnapshot) {
+        payload.snapshot = sceneEventAdapter.getEventObjects();
+      }
+    }
+    logger('[scene.events]', payload);
+  });
+
+  sceneEventSession = {
+    unsubscribe: subscription,
+    options: { ...options }
+  };
+  return stopSceneEventLogging;
+}
+
+function stopSceneEventLogging() {
+  if (sceneEventSession && typeof sceneEventSession.unsubscribe === 'function') {
+    sceneEventSession.unsubscribe();
+  }
+  sceneEventSession = null;
+}
+
 export {
   formatScriptEntry,
   inspectEventObject,
@@ -295,7 +341,9 @@ export {
   listRenderProfiles,
   debugOverlay,
   getSpriteStats,
-  getRLEStats
+  getRLEStats,
+  startSceneEventLogging,
+  stopSceneEventLogging
 };
 
 export default {
@@ -313,5 +361,7 @@ export default {
   listRenderProfiles,
   debugOverlay,
   getSpriteStats,
-  getRLEStats
+  getRLEStats,
+  startSceneEventLogging,
+  stopSceneEventLogging
 };

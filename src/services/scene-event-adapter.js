@@ -12,6 +12,52 @@ let eventObjectsCache = [];
 let eventObjectsVersion = 0;
 let collisionStateCache = null;
 
+function normalizeEventEntry(entry) {
+  if (!entry) {
+    return null;
+  }
+  const index = Number.isFinite(entry.index) ? Math.trunc(entry.index) : null;
+  const id = Number.isFinite(entry.id) ? Math.trunc(entry.id) : null;
+  return {
+    index,
+    id,
+    state: entry.state || null
+  };
+}
+
+function normalizeEventEntries(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+  return entries.map((entry) => normalizeEventEntry(entry));
+}
+
+function entriesEqual(left, right) {
+  if (left === right) {
+    return true;
+  }
+  if (!Array.isArray(left) || !Array.isArray(right)) {
+    return false;
+  }
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let i = 0; i < left.length; i++) {
+    const a = left[i];
+    const b = right[i];
+    if (!a && !b) {
+      continue;
+    }
+    if (!a || !b) {
+      return false;
+    }
+    if (a.id !== b.id || a.index !== b.index || a.state !== b.state) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function teardown() {
   subscriptions.forEach((subscription) => {
     if (!subscription) {
@@ -28,9 +74,9 @@ function teardown() {
 }
 
 function setEventObjectsCache(nextValue) {
-  const resolved = Array.isArray(nextValue) ? nextValue : [];
-  if (resolved !== eventObjectsCache) {
-    eventObjectsCache = resolved;
+  const normalized = normalizeEventEntries(nextValue);
+  if (!entriesEqual(eventObjectsCache, normalized)) {
+    eventObjectsCache = normalized;
     eventObjectsVersion++;
   }
   return eventObjectsCache;
@@ -145,6 +191,12 @@ function getSceneId() {
   return sceneIdCache;
 }
 
+function cloneForConsumer(entry) {
+  return entry
+    ? { index: entry.index, id: entry.id, state: entry.state }
+    : null;
+}
+
 function getEventObjects() {
   ensureInitialised();
   if (!Array.isArray(eventObjectsCache) || eventObjectsCache.length === 0) {
@@ -154,7 +206,7 @@ function getEventObjects() {
   for (let i = 0; i < eventObjectsCache.length; i++) {
     const entry = eventObjectsCache[i];
     if (entry && entry.state) {
-      results.push(entry);
+      results.push(cloneForConsumer(entry));
     }
   }
   return results;

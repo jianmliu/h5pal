@@ -3,6 +3,10 @@ import sceneEventAdapter from '../src/services/scene-event-adapter.js';
 import worldService from '../src/services/world-service.js';
 import reactiveContext from '../src/state/reactive-context.js';
 import stateService from '../src/services/state-service.js';
+import {
+  getEventObjectsValue as getEventObjectsSliceValue,
+  updateEventObjectsValue as updateEventObjectsSlice
+} from '../src/state/slices/scene-events.js';
 
 describe('sceneEventAdapter', () => {
   beforeEach(() => {
@@ -112,5 +116,71 @@ describe('sceneEventAdapter', () => {
     expect(entry).toBeTruthy();
     expect(entry && entry.id).toBe(2);
     expect(entry && entry.state && entry.state.triggerScript).toBe(456);
+  });
+
+  it('returns filtered snapshot clones and ignores external mutations', () => {
+    const snapshot = sceneEventAdapter.getEventObjects();
+    const initialLength = snapshot.length;
+    const initialVersion = sceneEventAdapter.getEventObjectsVersion();
+
+    expect(initialLength).toBeGreaterThan(0);
+
+    snapshot.push({ id: 999, index: 999, state: {} });
+    snapshot[0].id = 4242;
+
+    const freshSnapshot = sceneEventAdapter.getEventObjects();
+    expect(freshSnapshot.length).toBe(initialLength);
+    expect(freshSnapshot[0].id).not.toBe(4242);
+    expect(sceneEventAdapter.getEventObjectsVersion()).toBe(initialVersion);
+  });
+
+  it('does not bump version on structurally identical slice updates', () => {
+    const beforeVersion = sceneEventAdapter.getEventObjectsVersion();
+    const currentSlice = getEventObjectsSliceValue();
+
+    updateEventObjectsSlice(currentSlice, { source: 'test' });
+
+    expect(sceneEventAdapter.getEventObjectsVersion()).toBe(beforeVersion);
+  });
+
+  it('filters null entries and bumps version when event table changes', () => {
+    const originalTable = [...globalThis.GameData.eventObject];
+    const beforeVersion = sceneEventAdapter.getEventObjectsVersion();
+
+    const mutatedTable = [...globalThis.GameData.eventObject];
+    mutatedTable[0] = null;
+    worldService.setEventObjectTable(mutatedTable);
+
+    const snapshot = sceneEventAdapter.getEventObjects();
+    expect(snapshot.every((entry) => entry && entry.state)).toBe(true);
+    expect(snapshot.find((entry) => entry && entry.id === 1)).toBeUndefined();
+    expect(sceneEventAdapter.getEventObjectsVersion()).toBeGreaterThan(beforeVersion);
+
+    worldService.setEventObjectTable(originalTable);
+  });
+
+  it('reinitialises cleanly after dispose and reflects latest data', () => {
+    const firstSnapshot = sceneEventAdapter.getEventObjects();
+    expect(firstSnapshot.length).toBeGreaterThan(0);
+
+    sceneEventAdapter.dispose();
+    expect(sceneEventAdapter.getListenerCount()).toBe(0);
+
+    worldService.setEventObjectTable([
+      { state: 10, triggerMode: 0, autoScript: 0, x: 5, y: 5, layer: 0, direction: 0, currentFrameNum: 0, vanishTime: 0 },
+      null
+    ]);
+
+    const versionAfterDispose = sceneEventAdapter.getEventObjectsVersion();
+    expect(versionAfterDispose).toBeGreaterThan(0);
+
+    const secondSnapshot = sceneEventAdapter.getEventObjects();
+    expect(secondSnapshot.length).toBe(1);
+    expect(secondSnapshot[0]).toEqual({
+      id: 1,
+      index: 0,
+      state: expect.objectContaining({ state: 10 })
+    });
+    expect(secondSnapshot).not.toBe(firstSnapshot);
   });
 });

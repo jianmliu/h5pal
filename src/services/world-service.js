@@ -816,6 +816,9 @@ class WorldService extends EventBus {
     const visited = new Set();
     for (let i = 0; i < eventObjects.length; i++) {
       const eventObject = eventObjects[i];
+      if (!eventObject) {
+        continue;
+      }
       this._syncEventObjectEntity(i, eventObject, sceneId);
       visited.add(i);
     }
@@ -840,6 +843,10 @@ class WorldService extends EventBus {
 
   _syncEventObjectEntity(index, eventObject, sceneId = stateService.getGlobal('numScene')) {
     this._ensureInitialised();
+    if (!eventObject) {
+      this._teardownEventObjectEntity(index);
+      return null;
+    }
     const registry = this.registry;
     let entityId = this.entityMaps.eventObject.get(index);
     if (!entityId) {
@@ -893,6 +900,18 @@ class WorldService extends EventBus {
     }
 
     return entityId;
+  }
+
+  _teardownEventObjectEntity(index) {
+    const registry = this.registry;
+    const entityId = this.entityMaps.eventObject.get(index);
+    if (!entityId) {
+      return;
+    }
+    this.entityMaps.eventObject.delete(index);
+    if (registry.hasEntity(entityId)) {
+      registry.destroyEntity(entityId);
+    }
   }
 
   syncScriptRegisters() {

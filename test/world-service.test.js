@@ -773,4 +773,76 @@ describe('world service', () => {
     subscription.unsubscribe();
   });
 
+  it('tears down ECS entities when event objects are removed', () => {
+    worldService.init();
+
+    worldService.setEventObjectTable([
+      { state: 1, triggerMode: 0, autoScript: 0, x: 1, y: 1, layer: 0, direction: 0, currentFrameNum: 0, vanishTime: 0 },
+      { state: 2, triggerMode: 0, autoScript: 0, x: 2, y: 2, layer: 0, direction: 0, currentFrameNum: 0, vanishTime: 0 }
+    ]);
+    worldService.syncEventObjects();
+
+    expect(worldService.getEventObjectsInCurrentScene().length).toBe(2);
+    expect(worldService.entityMaps.eventObject.has(0)).toBe(true);
+    const previousVersion = worldService._eventObjectsVersion;
+
+    worldService.setEventObjectTable([
+      null,
+      { state: 3, triggerMode: 0, autoScript: 0, x: 3, y: 3, layer: 1, direction: 1, currentFrameNum: 0, vanishTime: 0 }
+    ]);
+
+    const currentSceneObjects = worldService.getEventObjectsInCurrentScene();
+    expect(currentSceneObjects.length).toBe(1);
+    expect(currentSceneObjects[0].id).toBe(2);
+    expect(worldService.entityMaps.eventObject.has(0)).toBe(false);
+    expect(worldService._eventObjectsVersion).toBeGreaterThan(previousVersion);
+  });
+
+  it('handles event object removal mid-snapshot without crashes', () => {
+    worldService.init();
+    sceneEventAdapter.dispose();
+    worldService.setEventObjectTable([
+      {
+        state: 1,
+        triggerMode: 0,
+        autoScript: 999,
+        x: 10,
+        y: 20,
+        layer: 0,
+        direction: 0,
+        currentFrameNum: 0,
+        vanishTime: 0,
+        spriteNum: 10
+      },
+      {
+        state: 2,
+        triggerMode: 0,
+        autoScript: 0,
+        x: 30,
+        y: 40,
+        layer: 0,
+        direction: 1,
+        currentFrameNum: 0,
+        vanishTime: 0,
+        spriteNum: 11
+      }
+    ]);
+    worldService.syncEventObjects();
+
+    const sceneObjects = sceneEventAdapter.getEventObjects();
+    expect(sceneObjects.length).toBe(2);
+
+    const firstEntry = sceneObjects[0];
+    expect(() => {
+      worldService.mutateEventObjectById(firstEntry.id, () => null);
+      const snapshot = sceneEventAdapter.getEventObjects();
+      snapshot.forEach((entry) => {
+        if (!entry || !entry.state) {
+          return;
+        }
+        sceneEventAdapter.getEventObjectStateByIndex(entry.index);
+      });
+    }).not.toThrow();
+  });
+
 });
