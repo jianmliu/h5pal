@@ -1,5 +1,6 @@
 import aiGateway, { ensureAdaptersLoaded } from './ai-gateway.js';
 import { ReplayRecorder } from './ai-replay.js';
+import { runQwen } from './qwen-client.js';
 
 const DEFAULT_ADAPTERS = ['environment', 'partyTrail', 'sceneEvents', 'battleState'];
 
@@ -20,6 +21,9 @@ export class AIController {
     this.timer = null;
     this.recorder = new ReplayRecorder({ adapters: this.adapters });
     this.ticks = 0;
+    this.llmModel = options.llmModel || 'qwen:7b';
+    this.useLLM = typeof options.useLLM === 'boolean' ? options.useLLM : detectLLMFlag();
+    this._tickPending = false;
   }
 
   async start() {
@@ -74,20 +78,40 @@ export class AIController {
   }
 
   _tick() {
-    this.ticks += 1;
-    const snapshot = this._summarise();
-    const action = this._decide(snapshot);
-    if (!action) {
+    if (this._tickPending) {
       return;
     }
-    try {
-      aiGateway.dispatch(action);
-      this.recorder.recordAction(action);
-    } catch (err) {
-      if (typeof console !== 'undefined' && console.error) {
-        console.error('[ai-controller] dispatch failed', err);
+    this._tickPending = true;
+    (async () => {
+      this.ticks += 1;
+      const snapshot = this._summarise();
+      let action = null;
+      if (this.useLLM) {
+        action = await this._decideWithLLM(snapshot);
       }
-    }
+      if (!action) {
+        action = this._decideRuleBased(snapshot);
+      }
+      if (!action) {
+        return;
+      }
+      try {
+        aiGateway.dispatch(action);
+        this.recorder.recordAction(action);
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[ai-controller] dispatch failed', err);
+        }
+      }
+    })()
+      .catch((err) => {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[ai-controller] tick error', err);
+        }
+      })
+      .finally(() => {
+        this._tickPending = false;
+      });
   }
 
   _summarise() {
@@ -103,7 +127,7 @@ export class AIController {
     return summary;
   }
 
-  _decide(summary) {
+  _decideRuleBased(summary) {
     if (!summary) {
       return null;
     }
@@ -149,6 +173,111 @@ export class AIController {
     }
     return null;
   }
+
+  async _decideWithLLM(summary) {
+    if (!summary) {
+      return null;
+    }
+    try {
+      const prompt = this._buildLLMPrompt(summary);
+      const raw = await runQwen({ prompt, model: this.llmModel });
+      const parsed = parseLLMResponse(raw);
+      return this._normaliseLLMAction(parsed);
+    } catch (err) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[ai-controller] LLM decision failed', err);
+      }
+      return null;
+    }
+  }
+
+  _normaliseLLMAction(candidate) {
+    if (!candidate || typeof candidate !== 'object') {
+      return null;
+    }
+    const allowed = new Set(['move', 'interact', 'startBattle', 'useItem', 'castMagic', 'openMenu', 'saveGame']);
+    const type = typeof candidate.action === 'string'
+      ? candidate.action
+      : (typeof candidate.type === 'string' ? candidate.type : null);
+    if (!type || !allowed.has(type)) {
+      return null;
+    }
+    const payload = candidate.payload && typeof candidate.payload === 'object' ? { ...candidate.payload } : {};
+    const cooldown = Number(candidate.cooldownMs);
+    if (Number.isFinite(cooldown)) {
+      payload.cooldownMs = cooldown;
+    }
+    if (type === 'move') {
+      const dir = Number(payload.direction);
+      payload.direction = Number.isFinite(dir) ? ((dir % 4) + 4) % 4 : 0;
+    }
+    if (type === 'interact') {
+      const eventId = Number(payload.eventId);
+      if (!Number.isFinite(eventId)) {
+        return null;
+      }
+      payload.eventId = eventId;
+    }
+    return { type, payload };
+  }
+
+  _buildLLMPrompt(summary) {
+    const leader = (summary.party || [])[0] || {};
+    const events = (summary.sceneEvents || []).slice(0, 5).map((entry) => {
+      if (!entry || !entry.state) {
+        return null;
+      }
+      const dx = (entry.state.x || 0) - (leader.x || 0);
+      const dy = (entry.state.y || 0) - (leader.y || 0);
+      return `- Event ${entry.id} at (${entry.state.x}, ${entry.state.y}) dx=${dx} dy=${dy} trigger=${entry.state.triggerScript || 0}`;
+    }).filter(Boolean).join('\n') || '- None within sample window';
+
+    const battle = summary.battle;
+    let battleSection = 'Battle: none';
+    if (battle) {
+      const playerStatus = (battle.player || []).slice(0, 3).map((p, idx) => {
+        if (!p) return null;
+        return `P${idx} hp=${p.hp}/${p.maxHp} mp=${p.mp}/${p.maxMp}`;
+      }).filter(Boolean).join('; ');
+      const enemyStatus = (battle.enemy || []).slice(0, 3).map((e, idx) => {
+        if (!e) return null;
+        return `E${idx} hp=${e.hp || e.prevHP || 0}`;
+      }).filter(Boolean).join('; ');
+      battleSection = `Battle stateId=${battle.stateId}, field=${battle.fieldId}, players:[${playerStatus || 'n/a'}], enemies:[${enemyStatus || 'n/a'}]`;
+    }
+
+    return [
+      'You control the hero party in a retro RPG. Decide the next action.',
+      'Allowed actions and payloads:',
+      '- move -> {\"direction\": number} (0=N,1=E,2=S,3=W).',
+      '- interact -> {\"eventId\": number}.',
+      '- startBattle -> {\"formationId\": number}.',
+      '- useItem -> {\"itemId\": number, \"targetIndex\": number}.',
+      '- castMagic -> {\"magicId\": number, \"casterIndex\": number, \"targetIndex\": number}.',
+      '- openMenu -> {\"menu\": string}.',
+      '- saveGame -> {\"slot\": number}.',
+      'Output STRICT JSON like {\"action\":\"move\",\"payload\":{\"direction\":1,\"cooldownMs\":300}} with no explanation.',
+      '',
+      `Tick: ${summary.ticks}`,
+      `Leader: (${leader.x || 0}, ${leader.y || 0}) facing ${leader.direction || 0}`,
+      `Followers: ${summary.followers}`,
+      'Nearby events:',
+      events,
+      battleSection
+    ].join('\n');
+  }
+}
+
+function detectLLMFlag() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('llm') === 'qwen';
+  } catch (err) {
+    return false;
+  }
 }
 
 let controllerInstance = null;
@@ -171,4 +300,19 @@ export function shutdownAI() {
   }
   controllerInstance.stop();
   controllerInstance = null;
+}
+
+function parseLLMResponse(rawText) {
+  if (!rawText) {
+    return null;
+  }
+  let trimmed = rawText.trim();
+  if (trimmed.startsWith('```')) {
+    trimmed = trimmed.replace(/^```json/i, '').replace(/^```/, '').replace(/```$/, '').trim();
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch (err) {
+    return null;
+  }
 }

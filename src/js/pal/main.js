@@ -10,6 +10,7 @@ import co from './co';
 import services from '../../services/index.js';
 import worldService from '../../services/world-service.js';
 import { bootstrapAI } from '../../ai/ai-controller.js';
+import '../../tools/storygraph-export.js';
 
 console.trace('main module load');
 
