@@ -24,42 +24,71 @@ utils.extend(ajax, utils.Events);
  * @param  {String} path
  * @return {Promise}
  */
-var loadBinaryFile = ajax.loadBinaryFile = function(path) {
+function requestWithCandidates(path, candidates, options) {
+  var urls = candidates && candidates.length ? candidates : [config.resolveAssetPath(path)];
   return new Promise(function(resolve, reject) {
-    var xhr = new XMLHttpRequest();
-    xhr.onload = function(e) {
-      var xhr = e.target;
-      if (xhr.status >= 200 && xhr.status < 300 || xhr.status == 304) {
-        var data = xhr.response,
-            buf = data; //new Uint8Array(data);
-        resolve(buf);
-      } else if (xhr.status === 404) {
-        console.warn('[ajax] loadBinaryFile missing', path, xhr.status);
-        resolve(new ArrayBuffer(0));
-      } else {
-        reject(xhr.status);
+    function tryNext(index) {
+      if (index >= urls.length) {
+        if (options && typeof options.onMissing === 'function') {
+          resolve(options.onMissing());
+        } else {
+          resolve(new ArrayBuffer(0));
+        }
+        return;
       }
-    };
-    xhr.onerror = function(e) {
-      reject(e);
-    };
-    xhr.onprogress = function(e) {
-      if (e.lengthComputable) {
-        var percent = e.loaded / e.total * 100;
-        //console.log(name, e.loaded, e.total, percent.toFixed(2));
-        ajax.fire('progress', {
-          path: path,
-          percent: percent,
-          loaded: e.loaded,
-          total: e.total
-        });
+      var xhr = new XMLHttpRequest();
+      xhr.onload = function(e) {
+        var target = e.target;
+        if (target.status >= 200 && target.status < 300 || target.status == 304) {
+          resolve(target.response);
+        } else if (target.status === 404) {
+          console.warn('[ajax] missing', path, target.status, urls[index]);
+          tryNext(index + 1);
+        } else {
+          reject(target.status);
+        }
+      };
+      xhr.onerror = function(err) {
+        if (index + 1 < urls.length) {
+          tryNext(index + 1);
+        } else {
+          reject(err);
+        }
+      };
+      xhr.onprogress = function(e) {
+        if (e.lengthComputable) {
+          var percent = e.loaded / e.total * 100;
+          ajax.fire('progress', {
+            path: path,
+            percent: percent,
+            loaded: e.loaded,
+            total: e.total
+          });
+        }
+      };
+      xhr.open('GET', urls[index], true);
+      if (options && options.responseType) {
+        xhr.responseType = options.responseType;
       }
-    };
+      if (options && options.mimeType) {
+        xhr.overrideMimeType(options.mimeType);
+      }
+      xhr.send(null);
+    }
+    tryNext(0);
+  });
+}
 
-    xhr.open('GET', config.resolveAssetPath(path), true);
-    xhr.responseType = 'arraybuffer';
-    xhr.overrideMimeType('text/plain; charset=x-user-defined');
-    xhr.send(null);
+var loadBinaryFile = ajax.loadBinaryFile = function(path) {
+  var candidates = typeof config.resolveAssetPathCandidates === 'function'
+    ? config.resolveAssetPathCandidates(path)
+    : [config.resolveAssetPath(path)];
+  return requestWithCandidates(path, candidates, {
+    responseType: 'arraybuffer',
+    mimeType: 'text/plain; charset=x-user-defined',
+    onMissing: function() {
+      return new ArrayBuffer(0);
+    }
   });
 };
 
@@ -71,36 +100,14 @@ var loadBinaryFile = ajax.loadBinaryFile = function(path) {
  * @return {Promise}
  */
 var loadBig5File = ajax.loadBig5File = function(path) {
-  return new Promise(function(resolve, reject) {
-    var xhr = new XMLHttpRequest();
-    xhr.onload = function(e) {
-      var xhr = e.target;
-      if (xhr.status >= 200 && xhr.status < 300 || xhr.status == 304) {
-        resolve(e.target.response);
-      } else {
-        reject(xhr.status);
-      }
-    };
-    xhr.onerror = function(e) {
-      reject(e);
-    };
-    xhr.onprogress = function(e) {
-      if (e.lengthComputable) {
-        var percent = e.loaded / e.total * 100;
-        //console.log(name, e.loaded, e.total, percent.toFixed(2));
-        ajax.fire('progress', {
-          path: path,
-          percent: percent,
-          loaded: e.loaded,
-          total: e.total
-        });
-      }
-    };
-
-    xhr.open('GET', config.resolveAssetPath(path), true);
-    //xhr.responseType = 'arraybuffer';
-    xhr.overrideMimeType('text/plain; charset=big5');
-    xhr.send(null);
+  var candidates = typeof config.resolveAssetPathCandidates === 'function'
+    ? config.resolveAssetPathCandidates(path)
+    : [config.resolveAssetPath(path)];
+  return requestWithCandidates(path, candidates, {
+    mimeType: 'text/plain; charset=big5',
+    onMissing: function() {
+      return '';
+    }
   });
 };
 
@@ -149,7 +156,7 @@ var loadMKF = ajax.loadMKF = function(mkfList) {
         try {
           if (buffer && buffer.byteLength >= 8) {
             var view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-            mkf = new MKF(view);
+            mkf = new MKF(view, { name: name });
           } else {
             console.warn('[ajax] MKF', name, 'missing or empty, continuing with fallback');
           }

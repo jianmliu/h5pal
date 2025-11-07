@@ -22,12 +22,15 @@
     "fancy-log": "^2.0.0",
     "gulp-babel": "^8.0.0",
     "jsdom": "^24.0.0",
+    "pngjs": "^7.0.0",
     "rollup": "^4.52.5",
     "stylus": "^0.64.0",
+    "vite-node": "^5.0.0",
     "vitest": "^1.5.3"
   },
   "scripts": {
     "test": "vitest",
-    "test:ci": "NODE_OPTIONS=--experimental-global-webcrypto vitest run"
+    "test:ci": "NODE_OPTIONS=--experimental-global-webcrypto vitest run",
+    "export:sprites": "node scripts/export-sprites.cjs"
   }
 }

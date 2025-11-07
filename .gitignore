@@ -3,4 +3,8 @@ bower_components
 pal-assets
 dist
 notes
+exported-assets
+exported-sprites
+pal-assets/exported-assets
+pal-assets/exported-sprites
 **/.DS_Store

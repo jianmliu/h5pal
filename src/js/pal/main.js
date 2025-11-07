@@ -8,6 +8,7 @@ import game from './game';
 import rng from './rng';
 import co from './co';
 import services from '../../services/index.js';
+import modService from '../../services/mod-service.js';
 import worldService from '../../services/world-service.js';
 import { bootstrapAI } from '../../ai/ai-controller.js';
 import '../../tools/storygraph-export.js';
@@ -53,6 +54,10 @@ main.start = function() {
     services.world.init();
 
     Palette.init(Files.PAT);
+
+    if (modService && typeof modService.prepare === 'function') {
+      yield modService.prepare();
+    }
 
     var surf = new Surface(
       document.getElementById('cvs'),

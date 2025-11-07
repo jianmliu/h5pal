@@ -71,6 +71,8 @@ h5pal
 * 在`chrome://flags`里打开_“启用实验性JavaScript”_
 * 打开[http://localhost:8005/h5pal.html](http://localhost:8005/h5pal.html) 
 * 或直接打开 `dist/h5pal.html`（构建完成后），可整包部署至 `xianjian.github.com/ultimate/`
+  * 若使用 `rsync` 同步，可运行  
+    `rsync -a --delete --exclude 'pal-assets/' dist/ ../ultimate/`（`pal-assets/` 中包含原始资源与 `exported-*` 覆盖资源）
 * Enjoy
 
 # 其他

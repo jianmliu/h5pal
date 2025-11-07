@@ -11,7 +11,10 @@ var defaults = {
   assetBaseUrl: './pal-assets/',
   audioBaseUrl: null,
   enableTouch: true,
-  enableAudio: false
+  enableAudio: false,
+  enableModAssets: true,
+  modAssetBaseUrl: './pal-assets/exported-assets/',
+  modSpriteBaseUrl: './pal-assets/exported-sprites/'
 };
 
 var baseConfig = {};
@@ -27,6 +30,9 @@ for (var cfgKey in globalConfig) {
 }
 
 baseConfig.assetBaseUrl = normalizeBase(baseConfig.assetBaseUrl || defaults.assetBaseUrl);
+baseConfig.modAssetBaseUrl = normalizeBase(baseConfig.modAssetBaseUrl || defaults.modAssetBaseUrl);
+baseConfig.modSpriteBaseUrl = normalizeBase(baseConfig.modSpriteBaseUrl || defaults.modSpriteBaseUrl);
+baseConfig.enableModAssets = baseConfig.enableModAssets !== false;
 
 var audioConfigured = typeof baseConfig.audioBaseUrl === 'string' && baseConfig.audioBaseUrl.length > 0;
 if (audioConfigured || baseConfig.enableAudio) {
@@ -35,6 +41,20 @@ if (audioConfigured || baseConfig.enableAudio) {
 } else {
   baseConfig.enableAudio = false;
   baseConfig.audioBaseUrl = null;
+}
+
+function shouldUseModOverride(path) {
+  var lowered = (path || '').toLowerCase();
+  if (
+    lowered.endsWith('.mkf') ||
+    lowered.endsWith('.asc') ||
+    lowered.endsWith('.fon') ||
+    lowered.endsWith('.dat') ||
+    lowered.endsWith('.msg')
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function resolveAssetPath(path) {
@@ -54,7 +74,59 @@ function resolveAudioPath(path) {
   return baseConfig.audioBaseUrl + path;
 }
 
+function resolveModAssetPath(path) {
+  path = path || '';
+  if (!baseConfig.enableModAssets || !baseConfig.modAssetBaseUrl) return null;
+  if (path.charAt(0) === '/') {
+    path = path.substring(1);
+  }
+  return baseConfig.modAssetBaseUrl + path;
+}
+
+function resolveModSpritePath(path) {
+  path = path || '';
+  if (!baseConfig.enableModAssets || !baseConfig.modSpriteBaseUrl) return null;
+  if (path.charAt(0) === '/') {
+    path = path.substring(1);
+  }
+  return baseConfig.modSpriteBaseUrl + path;
+}
+
+function normalizeRelativePath(path) {
+  path = path || '';
+  if (path.charAt(0) === '/') {
+    return path.substring(1);
+  }
+  return path;
+}
+
+function resolveAssetPathCandidates(path) {
+  var normalized = normalizeRelativePath(path);
+  var list = [];
+  if (baseConfig.enableModAssets && baseConfig.modAssetBaseUrl && shouldUseModOverride(normalized)) {
+    list.push(baseConfig.modAssetBaseUrl + normalized);
+  }
+  list.push(baseConfig.assetBaseUrl + normalized);
+  return list;
+}
+
+function resolveAudioPathCandidates(path) {
+  var normalized = normalizeRelativePath(path);
+  var list = [];
+  if (baseConfig.enableModAssets && baseConfig.modAssetBaseUrl && shouldUseModOverride(normalized)) {
+    list.push(baseConfig.modAssetBaseUrl + normalized);
+  }
+  if (baseConfig.audioBaseUrl) {
+    list.push(baseConfig.audioBaseUrl + normalized);
+  }
+  return list;
+}
+
 baseConfig.resolveAssetPath = resolveAssetPath;
 baseConfig.resolveAudioPath = resolveAudioPath;
+baseConfig.resolveModAssetPath = resolveModAssetPath;
+baseConfig.resolveModSpritePath = resolveModSpritePath;
+baseConfig.resolveAssetPathCandidates = resolveAssetPathCandidates;
+baseConfig.resolveAudioPathCandidates = resolveAudioPathCandidates;
 
 export default baseConfig;

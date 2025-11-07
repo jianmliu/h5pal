@@ -3,6 +3,7 @@
 
 import utils from './utils';
 import yj_1 from './yj_1';
+import modService from '../../services/mod-service.js';
 
 console.trace('mkf module load');
 
@@ -12,7 +13,11 @@ console.trace('mkf module load');
  * @param  {Uint8Array} buf
  * @return {MKF}
  */
-var MKF = function(buf) {
+var MKF = function(buf, options) {
+  if (typeof options === 'string') {
+    options = { name: options };
+  }
+  this.name = options && options.name ? options.name : null;
   this.arraybuffer = buf;
   this.reader = new BinaryReader(buf);
   this.buf = new LPBYTE(buf);
@@ -118,6 +123,12 @@ utils.extend(MKF.prototype, {
    */
   decompressChunk: function(chunkNum) {
     if (this._decompressedChunks[chunkNum]) return this._decompressedChunks[chunkNum];
+    if (modService && typeof modService.getDecompressedOverride === 'function') {
+      var override = modService.getDecompressedOverride(this.name, chunkNum);
+      if (override) {
+        return (this._decompressedChunks[chunkNum] = override);
+      }
+    }
     var buf = this.readChunk(chunkNum);
     return (this._decompressedChunks[chunkNum] = yj_1.decompress(buf));
   }
