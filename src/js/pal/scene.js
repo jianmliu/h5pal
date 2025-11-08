@@ -27,6 +27,7 @@ import {
   getSceneEntry as getSceneEntrySnapshot,
   getSceneEventObjectRange as getSceneEventObjectRangeSnapshot
 } from '../../services/scene-data-adapter.js';
+import overviewController from './overview-controller';
 
 log.trace('scene module load');
 
@@ -166,6 +167,9 @@ scene.makeScene = function*() {
     if (activeScene) {
       activeScene.eventObjectSprite = null;
       activeScene._renderedMapId = null;
+    }
+    if (overviewController && typeof overviewController.applyScene === 'function') {
+      overviewController.applyScene(sceneId);
     }
   }
   yield activeScene.render();
@@ -737,6 +741,9 @@ utils.extend(Scene.prototype, {
       sceneEventObjects: sceneEventAdapter.getEventObjects()
     });
     var viewport = getViewportSnapshot();
+    if (overviewController && typeof overviewController.setViewport === 'function') {
+      overviewController.setViewport(viewport);
+    }
     var viewportX = PAL_X(viewport);
     var viewportY = PAL_Y(viewport);
     var party = getCachedPartyState();

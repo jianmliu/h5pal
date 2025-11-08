@@ -12,6 +12,8 @@ import modService from '../../services/mod-service.js';
 import worldService from '../../services/world-service.js';
 import { bootstrapAI } from '../../ai/ai-controller.js';
 import '../../tools/storygraph-export.js';
+import config from './config';
+import overviewController from './overview-controller';
 
 console.trace('main module load');
 
@@ -54,6 +56,10 @@ main.start = function() {
     services.world.init();
 
     Palette.init(Files.PAT);
+
+    if (overviewController && typeof overviewController.setEnabled === 'function') {
+      overviewController.setEnabled(!!config.enableOverviewMode);
+    }
 
     if (modService && typeof modService.prepare === 'function') {
       yield modService.prepare();

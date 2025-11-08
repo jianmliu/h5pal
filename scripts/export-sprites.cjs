@@ -6,7 +6,17 @@ const ROOT = path.resolve(__dirname, '..');
 const ASSET_DIR = path.join(ROOT, 'pal-assets');
 const SPRITE_OUTPUT_DIR = path.join(ASSET_DIR, 'exported-sprites');
 const ASSET_OUTPUT_DIR = path.join(ASSET_DIR, 'exported-assets');
+const OVERVIEW_DIR = path.join(ASSET_OUTPUT_DIR, 'map-overview');
 fs.mkdirSync(ASSET_OUTPUT_DIR, { recursive: true });
+fs.mkdirSync(OVERVIEW_DIR, { recursive: true });
+const overviewReadme = path.join(OVERVIEW_DIR, 'README.txt');
+if (!fs.existsSync(overviewReadme)) {
+  fs.writeFileSync(
+    overviewReadme,
+    'Place overview PNGs here (e.g. scene-123.png) to enable the Phase A maze overlay.\n' +
+      'Files in this folder are accessed via PAL_CONFIG.enableOverviewMode.\n'
+  );
+}
 
 const SPRITE_MKFS = ['BALL.MKF', 'RGM.MKF'];
 const BACKGROUND_MKF = 'FBP.MKF';

@@ -75,6 +75,14 @@ h5pal
     `rsync -a --delete --exclude 'pal-assets/' dist/ ../ultimate/`（`pal-assets/` 中包含原始资源与 `exported-*` 覆盖资源）
 * Enjoy
 
+### 迷宫扩展视图（Phase A）
+
+1. 在 `pal-assets/exported-assets/map-overview/` 下放置场景截图（例如 `scene-123.png` 或 `123.png`），尺寸建议 640×400。
+2. 在 `PAL_CONFIG` 中加入 `enableOverviewMode: true`，或运行后在控制台执行 `PAL_OVERVIEW.toggle()`。
+3. 没有对应截图的场景会自动退回原始模式，兼容旧版本。
+4. 可使用 `npm run export:overviews -- --maps=1,2,3 --zoom=1` 批量生成（默认输出到 `pal-assets/exported-assets/map-overview/scene-<mapId>.png`，并自动为这些地图对应的场景 ID 复制一份 `scene-<sceneId>.png`；`--maps` 留空则导出全部 MAP chunk）。
+5. Phase B（实验性）：启用后界面会自动在 640×400 画面背后展示该 PNG，并在中央镂空 + 提示当前视口位置。
+
 # 其他
 
 ## 一句话，我TM就想知道能玩吗？

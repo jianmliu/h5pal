@@ -14,7 +14,8 @@ var defaults = {
   enableAudio: false,
   enableModAssets: true,
   modAssetBaseUrl: './pal-assets/exported-assets/',
-  modSpriteBaseUrl: './pal-assets/exported-sprites/'
+  modSpriteBaseUrl: './pal-assets/exported-sprites/',
+  enableOverviewMode: false
 };
 
 var baseConfig = {};
@@ -33,6 +34,7 @@ baseConfig.assetBaseUrl = normalizeBase(baseConfig.assetBaseUrl || defaults.asse
 baseConfig.modAssetBaseUrl = normalizeBase(baseConfig.modAssetBaseUrl || defaults.modAssetBaseUrl);
 baseConfig.modSpriteBaseUrl = normalizeBase(baseConfig.modSpriteBaseUrl || defaults.modSpriteBaseUrl);
 baseConfig.enableModAssets = baseConfig.enableModAssets !== false;
+baseConfig.enableOverviewMode = baseConfig.enableOverviewMode === true;
 
 var audioConfigured = typeof baseConfig.audioBaseUrl === 'string' && baseConfig.audioBaseUrl.length > 0;
 if (audioConfigured || baseConfig.enableAudio) {
