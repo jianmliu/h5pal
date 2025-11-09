@@ -170,12 +170,7 @@ class ModService {
       const g = data[j + 1];
       const b = data[j + 2];
       const alpha = data[j + 3];
-      let key;
-      if (alpha === 0) {
-        key = '0,0,0';
-      } else {
-        key = `${r},${g},${b}`;
-      }
+      const key = alpha === 0 ? '0,0,0' : `${r},${g},${b}`;
       result[i] = paletteMap.get(key) ?? 0;
     }
     return result;
@@ -186,23 +181,59 @@ class ModService {
       return this.paletteMap;
     }
     const map = new Map();
-    try {
-      const reference = palette && typeof palette.get === 'function' ? palette.get(0, false) : null;
-      if (Array.isArray(reference)) {
-        reference.forEach((color, idx) => {
-          if (!color) return;
-          const key = `${color.r},${color.g},${color.b}`;
-          if (!map.has(key)) {
-            map.set(key, idx);
-          }
-        });
-      }
-    } catch (err) {
-      console.warn('[mod-service] failed to read palette', err);
+    const reference = this._resolvePaletteReference();
+    if (Array.isArray(reference)) {
+      reference.forEach((color, idx) => {
+        if (!color) {
+          return;
+        }
+        const key = `${color.r},${color.g},${color.b}`;
+        if (!map.has(key)) {
+          map.set(key, idx);
+        }
+      });
     }
     map.set('0,0,0', 0);
     this.paletteMap = map;
     return map;
+  }
+
+  _resolvePaletteReference() {
+    if (!palette || typeof palette.get !== 'function') {
+      return null;
+    }
+    try {
+      return palette.get(0, false);
+    } catch (err) {
+      if (this._tryInitPaletteFromGlobals()) {
+        try {
+          return palette.get(0, false);
+        } catch (innerErr) {
+          console.warn('[mod-service] failed to read palette after init', innerErr);
+          return null;
+        }
+      }
+      console.warn('[mod-service] failed to read palette', err);
+      return null;
+    }
+  }
+
+  _tryInitPaletteFromGlobals() {
+    if (!palette || typeof palette.init !== 'function') {
+      return false;
+    }
+    const files = GLOBAL_SCOPE && GLOBAL_SCOPE.Files ? GLOBAL_SCOPE.Files : null;
+    const pat = files && files.PAT;
+    if (!pat || typeof pat.readChunk !== 'function') {
+      return false;
+    }
+    try {
+      palette.init(pat);
+      return true;
+    } catch (err) {
+      console.warn('[mod-service] unable to initialise palette from Files.PAT', err);
+      return false;
+    }
   }
 }
 

@@ -72,7 +72,7 @@ h5pal
 * 打开[http://localhost:8005/h5pal.html](http://localhost:8005/h5pal.html) 
 * 或直接打开 `dist/h5pal.html`（构建完成后），可整包部署至 `xianjian.github.com/ultimate/`
   * 若使用 `rsync` 同步，可运行  
-    `rsync -a --delete --exclude 'pal-assets/' dist/ ../ultimate/`（`pal-assets/` 中包含原始资源与 `exported-*` 覆盖资源）
+    `rsync -a --exclude 'pal-assets/' dist/ ../ultimate/`（避免误删 `pal-assets/` 下的原始与导出资源）
 * Enjoy
 
 ### 迷宫扩展视图（Phase A）

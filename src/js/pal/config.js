@@ -15,7 +15,8 @@ var defaults = {
   enableModAssets: true,
   modAssetBaseUrl: './pal-assets/exported-assets/',
   modSpriteBaseUrl: './pal-assets/exported-sprites/',
-  enableOverviewMode: false
+  enableOverviewMode: false,
+  showEventObjectLabels: false
 };
 
 var baseConfig = {};

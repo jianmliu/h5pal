@@ -20,6 +20,7 @@ const { PNG } = require('pngjs');
 const ROOT = path.resolve(__dirname, '..');
 const PAL_ASSET_DIR = path.join(ROOT, 'pal-assets');
 const OUTPUT_DIR = path.join(PAL_ASSET_DIR, 'exported-assets', 'map-overview');
+const MANIFEST_NAME = 'map-overview-manifest.json';
 
 // Minimal DOM-ish shims for game modules.
 if (typeof globalThis.window === 'undefined') {
@@ -71,7 +72,7 @@ function parseArgs() {
   const args = process.argv.slice(2);
   const options = {
     zoom: 1,
-    prefix: 'scene-',
+    prefix: 'map-',
     zeroPad: false,
     outDir: OUTPUT_DIR,
     mapIds: null
@@ -270,7 +271,16 @@ function rasterizeMap(mapInstance, palette, options = {}) {
     decodeAndBlit(placement.frame, buffer, outputWidth, outputHeight, offsetX, offsetY, zoom, palette);
   });
 
-  return { width: outputWidth, height: outputHeight, data: buffer };
+  const bounds = {
+    minX,
+    minY,
+    maxX: Math.ceil(maxX),
+    maxY: Math.ceil(maxY),
+    width,
+    height
+  };
+
+  return { width: outputWidth, height: outputHeight, data: buffer, bounds };
 }
 
 function savePNG(image, targetPath) {
@@ -300,6 +310,13 @@ function savePNG(image, targetPath) {
     const gopMKF = new MKF(loadFileBytes(gopPath));
     const palette = loadPalette(MKF);
     const mapSceneMapping = buildSceneMapping(MKF);
+    const manifest = {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      zoom: options.zoom,
+      maps: {},
+      scenes: {}
+    };
 
     const totalMaps = mapMKF.getChunkCount();
     const mapIds = Array.isArray(options.mapIds) && options.mapIds.length
@@ -324,33 +341,25 @@ function savePNG(image, targetPath) {
         const filename = `${options.prefix}${mapLabel}.png`;
         const targetPath = path.join(options.outDir, filename);
         await savePNG(image, targetPath);
-        const relatedScenes = mapSceneMapping.get(mapId);
-        if (Array.isArray(relatedScenes) && relatedScenes.length) {
-          relatedScenes.forEach((sceneId) => {
-            const sceneLabel = options.zeroPad
-              ? String(sceneId).padStart(3, '0')
-              : String(sceneId);
-            const sceneFilename = `scene-${sceneLabel}.png`;
-            const scenePath = path.join(options.outDir, sceneFilename);
-            if (scenePath === targetPath) {
-              return;
-            }
-            try {
-              fs.copyFileSync(targetPath, scenePath);
-            } catch (copyErr) {
-              try {
-                fs.writeFileSync(scenePath, fs.readFileSync(targetPath));
-              } catch (err) {
-                console.warn(`[export-overviews] failed to write ${sceneFilename}:`, err && err.message ? err.message : err);
-              }
-            }
-          });
-        }
+        const relatedScenes = mapSceneMapping.get(mapId) || [];
+        manifest.maps[mapId] = {
+          mapId,
+          image: filename,
+          bounds: image.bounds,
+          imageSize: { width: image.width, height: image.height },
+          scenes: relatedScenes.slice()
+        };
+        relatedScenes.forEach((sceneId) => {
+          manifest.scenes[sceneId] = { sceneId, mapId };
+        });
         console.log(`[export-overviews] wrote ${targetPath}`);
       } catch (err) {
         console.warn(`[export-overviews] failed map ${mapId}:`, err && err.message ? err.message : err);
       }
     }
+    const manifestPath = path.join(options.outDir, MANIFEST_NAME);
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    console.log(`[export-overviews] wrote manifest ${manifestPath}`);
     console.log('[export-overviews] done');
   } catch (err) {
     console.error('[export-overviews] fatal', err);

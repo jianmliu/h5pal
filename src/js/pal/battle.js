@@ -8,6 +8,7 @@ import sound from './sound';
 import resourceService from '../../services/resource-service.js';
 import fight from './fight';
 import ui from './ui';
+import overviewController from './overview-controller';
 import uibattle from './uibattle';
 import battleService from '../../services/battle-service.js';
 import sceneEventAdapter from '../../services/scene-event-adapter.js';
@@ -1347,6 +1348,9 @@ battle.start = function*(enemyTeam, isBoss) {
   }
 
   worldService.setInBattle(true);
+  if (overviewController && typeof overviewController.setSuspended === 'function') {
+    overviewController.setSuspended(true);
+  }
 
   battle.updateFighters();
 
@@ -1413,6 +1417,9 @@ battle.start = function*(enemyTeam, isBoss) {
   }
 
   worldService.setInBattle(false);
+  if (overviewController && typeof overviewController.setSuspended === 'function') {
+    overviewController.setSuspended(false);
+  }
 
   music.play(getCachedMusicTrack(), true, 1);
 

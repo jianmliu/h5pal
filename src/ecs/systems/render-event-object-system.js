@@ -1,3 +1,5 @@
+import config from '../../js/pal/config.js';
+
 function getGlobalObject(name) {
   if (typeof globalThis !== 'undefined' && globalThis[name]) {
     return globalThis[name];
@@ -61,7 +63,10 @@ export default function renderEventObjectSystem(context = {}) {
   const viewportY = PAL_Y(viewportValue);
   const sceneId = typeof world.getSceneId === 'function' ? world.getSceneId() : null;
 
-  const debugStr = typeof surface.__debugStr === 'function' ? surface.__debugStr.bind(surface) : null;
+  const shouldLabelEvents = !!(config && config.showEventObjectLabels);
+  const debugStr = shouldLabelEvents && typeof surface.__debugStr === 'function'
+    ? surface.__debugStr.bind(surface)
+    : null;
   const sceneEventObjects = Array.isArray(context.sceneEventObjects)
     ? context.sceneEventObjects
     : null;

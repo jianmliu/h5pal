@@ -87,16 +87,16 @@ function getWaveProgressionValue() {
   return 0;
 }
 
-export const viewport$ = createAdapterObservable({
-  name: 'environment.viewport',
-  signal: viewportSlice.viewport,
-  getValue: getViewportValue
-});
-
 export const partyOffset$ = createAdapterObservable({
   name: 'environment.partyOffset',
   signal: viewportSlice.partyOffset,
   getValue: getPartyOffsetValue
+});
+
+export const viewport$ = createAdapterObservable({
+  name: 'environment.viewport',
+  signal: viewportSlice.viewport,
+  getValue: getViewportValue
 });
 
 export const partyDirection$ = createAdapterObservable({
