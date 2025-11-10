@@ -1,3 +1,4 @@
+import traceModuleLoad from './util-trace';
 import input from './input';
 import Surface from './surface';
 import Palette from './palette';
@@ -15,7 +16,7 @@ import '../../tools/storygraph-export.js';
 import config from './config';
 import overviewController from './overview-controller';
 
-console.trace('main module load');
+traceModuleLoad('main module load');
 
 var main = {};
 
@@ -93,6 +94,10 @@ main.start = function() {
       bootstrapAI({ logStart: true }).catch((err) => {
         console.error('[main] Failed to bootstrap AI controller', err);
       });
+    }
+
+    if (typeof window !== 'undefined') {
+      window.bootstrapAI = bootstrapAI;
     }
 
     yield game.main(); // 启动游戏

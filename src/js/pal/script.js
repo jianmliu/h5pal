@@ -9,6 +9,7 @@ import sound from './sound';
 import battleService from '../../services/battle-service.js';
 import worldService from '../../services/world-service.js';
 import stateService from '../../services/state-service.js';
+import dialogService from '../../services/dialog-service.js';
 import gameDataAdapter from '../../services/game-data-adapter.js';
 import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
@@ -64,6 +65,21 @@ const viewportSlice = viewportSignals();
 const viewportSignal = viewportSlice.viewport;
 const partyOffsetSignal = viewportSlice.partyOffset;
 const partyDirectionSignal = viewportSlice.partyDirection;
+
+function syncViewportToParty({ preserveFrames = true } = {}) {
+  try {
+    const viewportValue = getViewportSnapshot();
+    const partyOffsetValue = getPartyOffsetSnapshot();
+    const heroX = PAL_X(viewportValue) + PAL_X(partyOffsetValue);
+    const heroY = PAL_Y(viewportValue) + PAL_Y(partyOffsetValue);
+    worldService.setViewport(PAL_XY(heroX - PAL_X(partyOffsetValue), heroY - PAL_Y(partyOffsetValue)));
+    if (scene && typeof scene.updatePartyGestures === 'function') {
+      scene.updatePartyGestures(false, { preserveFrames });
+    }
+  } catch (err) {
+    // ignore sync issues during scripted moments
+  }
+}
 
 function handlePartyTrailUpdate(event) {
   if (!event) {
@@ -1826,6 +1842,14 @@ script.interpretInstruction = function*(scriptEntry, eventObjectID) {
         if (storeItemId) {
           s = s.concat(ui.getWord(storeItemId));
         }
+        dialogService.setPendingLineMetadata({
+          scriptEntry,
+          eventObjectId,
+          source: 'collect-transform',
+          metadata: {
+            storeItemId
+          }
+        });
         ui.showDialogText(s);
       } else {
         scriptEntry = sc.operand[0] - 1;
@@ -3129,6 +3153,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
           evtObj.scriptIdleFrame = 0;
           scriptEntry++;
         }
+        syncViewportToParty({ preserveFrames: sc.operand[0] !== 0xFFFF });
         break;
       case 0x0003:
         script.debug('[SCRIPT] unconditional jump');
@@ -3145,6 +3170,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
           //debugger;
           scriptEntry++;
         }
+        syncViewportToParty({ preserveFrames: sc.operand[0] !== 0xFFFF });
         break;
       case 0x0004:
         script.debug('[SCRIPT] Call script');
@@ -3237,7 +3263,20 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
       case 0x000A:
         script.debug('[SCRIPT] Goto the specified address if player selected no');
         yield ui.clearDialog(false);
+        dialogService.publishChoice({
+          type: 'confirm',
+          scriptEntry,
+          eventObjectId,
+          options: [
+            { label: 'No', value: false },
+            { label: 'Yes', value: true }
+          ]
+        });
         var ret = yield uigame.confirmMenu();
+        dialogService.resolveChoice(ret === true, {
+          selectedIndex: ret ? 1 : 0,
+          label: ret ? 'Yes' : 'No'
+        });
         if (!ret) {
           scriptEntry = sc.operand[0];
         } else {
@@ -3278,12 +3317,18 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
       case 0xFFFF:
         script.debug('[SCRIPT] Print dialog text');
         var msg = ui.getMsg(sc.operand[0]);
+        dialogService.setPendingLineMetadata({
+          msgId: sc.operand[0],
+          scriptEntry,
+          eventObjectId: eventObjectID
+        });
         yield ui.showDialogText(msg);
         scriptEntry++;
         break;
       default:
         yield ui.clearDialog(true);
         scriptEntry = yield script.interpretInstruction(scriptEntry, eventObjectID);
+        syncViewportToParty();
         break;
     }
 
@@ -3296,6 +3341,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
   if (!Number.isFinite(nextScriptEntry) || nextScriptEntry < 0) {
     nextScriptEntry = 0;
   }
+  syncViewportToParty();
   return nextScriptEntry;
 };
 

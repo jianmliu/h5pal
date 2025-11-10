@@ -4,6 +4,7 @@ import resourceService from './resource-service.js';
 import scriptService from './script-service.js';
 import battleService from './battle-service.js';
 import worldService from './world-service.js';
+import dialogService from './dialog-service.js';
 import environmentAdapter from './environment-adapter.js';
 import partyTrailAdapter from './party-trail-adapter.js';
 import playerStateAdapter from './player-state-adapter.js';
@@ -16,6 +17,7 @@ import gameDataAdapter from './game-data-adapter.js';
 import saveDataAdapter from './save-data-adapter.js';
 import sceneDataAdapter from './scene-data-adapter.js';
 import sceneStateAdapter from './scene-state-adapter.js';
+import dialogAdapter from './dialog-adapter.js';
 
 /**
  * @typedef {'world'|'party'|'player'|'battle'|'scene'|'game'|'script'|'storage'} AdapterCategory
@@ -222,6 +224,20 @@ const adapterManifest = Object.freeze({
     streams: [],
     module: saveDataAdapter,
     importer: () => import('./save-data-adapter.js')
+  }),
+  dialog: createManifestEntry({
+    id: 'dialog',
+    category: 'scene',
+    description: 'Live dialog lines, history, choice prompts, and status metadata.',
+    primaryStream: 'dialog.currentLine',
+    streams: [
+      'dialog.currentLine',
+      'dialog.history',
+      'dialog.choice',
+      'dialog.status'
+    ],
+    module: dialogAdapter,
+    importer: () => import('./dialog-adapter.js')
   })
 });
 
@@ -232,6 +248,7 @@ const services = {
   script: scriptService,
   battle: battleService,
   world: worldService,
+  dialog: dialogService,
   adapters: {
     environment: environmentAdapter,
     partyTrail: partyTrailAdapter,
@@ -244,7 +261,8 @@ const services = {
     gameFlags: gameFlagsAdapter,
     gameData: gameDataAdapter,
     saveData: saveDataAdapter,
-    sceneData: sceneDataAdapter
+    sceneData: sceneDataAdapter,
+    dialog: dialogAdapter
   },
   adapterManifest
 };
@@ -256,6 +274,7 @@ export {
   scriptService,
   battleService,
   worldService,
+  dialogService,
   environmentAdapter,
   partyTrailAdapter,
   playerStateAdapter,
@@ -268,6 +287,7 @@ export {
   gameDataAdapter,
   saveDataAdapter,
   sceneDataAdapter,
+  dialogAdapter,
   adapterManifest
 };
 

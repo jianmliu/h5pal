@@ -1,7 +1,8 @@
+import traceModuleLoad from './util-trace';
 import utils from './utils';
 import RLE from './rle';
 
-console.trace('sprite module load');
+traceModuleLoad('sprite module load');
 
 const SPRITE_STATS = {
   created: 0,

@@ -1,4 +1,6 @@
-console.trace('config module load');
+import traceModuleLoad from './util-trace';
+
+traceModuleLoad('config module load');
 
 function normalizeBase(url) {
   if (!url) return '';

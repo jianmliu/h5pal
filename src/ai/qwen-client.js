@@ -1,4 +1,4 @@
-const DEFAULT_MODEL = 'qwen:7b';
+const DEFAULT_MODEL = 'qwen3:8b';
 const DEFAULT_ENDPOINT = 'http://localhost:11434/api/generate';
 
 function getFetchImpl() {
@@ -19,20 +19,12 @@ export async function runQwen({ prompt, model = DEFAULT_MODEL, endpoint = DEFAUL
     stream: false,
     options
   };
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  const timeout = setTimeout(() => {
-    if (controller) {
-      controller.abort();
-    }
-  }, 30_000);
   try {
     const response = await fetchImpl(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: controller ? controller.signal : undefined
+      body: JSON.stringify(body)
     });
-    clearTimeout(timeout);
     if (!response.ok) {
       const text = await response.text().catch(() => response.statusText);
       throw new Error(`[qwen-client] request failed ${response.status}: ${text}`);
@@ -43,7 +35,6 @@ export async function runQwen({ prompt, model = DEFAULT_MODEL, endpoint = DEFAUL
     }
     return payload.response.trim();
   } catch (err) {
-    clearTimeout(timeout);
     throw err;
   }
 }

@@ -1,4 +1,5 @@
-console.trace('rle module load');
+import traceModuleLoad from './util-trace';
+traceModuleLoad('rle module load');
 
 const RLE_DECORATED = Symbol('rleDecorated');
 

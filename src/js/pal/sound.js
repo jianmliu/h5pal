@@ -1,4 +1,5 @@
-console.trace('sound module load');
+import traceModuleLoad from './util-trace';
+traceModuleLoad('sound module load');
 
 var sound = {};
 

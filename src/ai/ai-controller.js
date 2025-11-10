@@ -1,19 +1,30 @@
 import aiGateway, { ensureAdaptersLoaded } from './ai-gateway.js';
+import { worldService } from '../services/index.js';
 import { ReplayRecorder } from './ai-replay.js';
 import { runQwen } from './qwen-client.js';
 
-const DEFAULT_ADAPTERS = ['environment', 'partyTrail', 'sceneEvents', 'battleState'];
+const DEFAULT_ADAPTERS = ['environment', 'partyTrail', 'sceneEvents', 'battleState', 'playerState', 'gameFlags', 'dialog'];
+const DEFAULT_LLM_MODEL = 'qwen3:8b';
 
 const STREAM_CONFIG = [
-  { adapter: 'environment', stream: 'environment.viewport', key: 'environment.viewport', throttleMs: 200, maxPayloadSize: 1024 },
+  { adapter: 'environment', stream: 'environment.viewport', key: 'environment.viewport', throttleMs: 150, maxPayloadSize: 1024 },
   { adapter: 'partyTrail', stream: 'partyTrail.party', key: 'partyTrail.party', throttleMs: 200, maxPayloadSize: 2048 },
   { adapter: 'partyTrail', stream: 'partyTrail.followers', key: 'partyTrail.followers', throttleMs: 500, maxPayloadSize: 512 },
-  { adapter: 'sceneEvents', stream: 'scene.events.objects', key: 'scene.events', throttleMs: 300, maxPayloadSize: 4096 },
-  { adapter: 'battleState', stream: 'battleState.state', key: 'battle.state', throttleMs: 200, maxPayloadSize: 4096 }
+{ adapter: 'sceneEvents', stream: 'scene.events.objects', key: 'scene.events', throttleMs: 400, maxPayloadSize: 0 },
+  { adapter: 'battleState', stream: 'battleState.state', key: 'battle.state', throttleMs: 200, maxPayloadSize: 32768 },
+  { adapter: 'playerState', stream: 'playerState.roles', key: 'playerState.roles', throttleMs: 500, maxPayloadSize: 0 },
+  { adapter: 'gameFlags', stream: 'gameFlags.collect', key: 'gameFlags.collect', throttleMs: 500, maxPayloadSize: 512 },
+  { adapter: 'gameFlags', stream: 'gameFlags.chaseRange', key: 'gameFlags.chaseRange', throttleMs: 500, maxPayloadSize: 512 },
+  { adapter: 'gameFlags', stream: 'gameFlags.chaseSpeedCycles', key: 'gameFlags.chaseSpeedCycles', throttleMs: 500, maxPayloadSize: 512 },
+  { adapter: 'gameFlags', stream: 'gameFlags.battleSpeed', key: 'gameFlags.battleSpeed', throttleMs: 500, maxPayloadSize: 512 },
+  { adapter: 'dialog', stream: 'dialog.currentLine', key: 'dialog.currentLine', throttleMs: 0, maxPayloadSize: 4096 },
+  { adapter: 'dialog', stream: 'dialog.status', key: 'dialog.status', throttleMs: 0, maxPayloadSize: 1024 },
+  { adapter: 'dialog', stream: 'dialog.choice', key: 'dialog.choice', throttleMs: 0, maxPayloadSize: 2048 }
 ];
 
 export class AIController {
   constructor(options = {}) {
+    const llmPreference = resolveLLMPreference();
     this.adapters = options.adapters || DEFAULT_ADAPTERS;
     this.tickIntervalMs = options.tickIntervalMs || 500;
     this.state = new Map();
@@ -21,9 +32,15 @@ export class AIController {
     this.timer = null;
     this.recorder = new ReplayRecorder({ adapters: this.adapters });
     this.ticks = 0;
-    this.llmModel = options.llmModel || 'qwen:7b';
-    this.useLLM = typeof options.useLLM === 'boolean' ? options.useLLM : detectLLMFlag();
+    this.llmModel = options.llmModel || llmPreference.model || DEFAULT_LLM_MODEL;
+    this.useLLM = typeof options.useLLM === 'boolean' ? options.useLLM : llmPreference.enabled;
     this._tickPending = false;
+    this.lastActionResult = null;
+    this.logLLM = typeof options.logLLM === 'boolean' ? options.logLLM : true;
+    this.dialogHistory = [];
+    this.choiceMemory = new Map();
+    this.loggedChoiceIds = new Set();
+    this.lastChoiceSummary = null;
   }
 
   async start() {
@@ -65,6 +82,11 @@ export class AIController {
           maxPayloadSize,
           handler: (value) => {
             this.state.set(key, value);
+            if (key === 'dialog.currentLine') {
+              this._appendDialogHistory(value);
+            } else if (key === 'dialog.choice') {
+              this._trackChoiceUpdate(value);
+            }
             this.recorder.recordStream({ adapter, stream, value });
           }
         });
@@ -75,6 +97,68 @@ export class AIController {
         }
       }
     });
+  }
+
+  _appendDialogHistory(line) {
+    if (!line || typeof line.text !== 'string' || !line.text.trim()) {
+      return;
+    }
+    const entry = {
+      text: line.text.trim(),
+      msgId: line.msgId ?? null,
+      timestamp: line.timestamp || Date.now(),
+      source: line.source || null
+    };
+    this.dialogHistory.push(entry);
+    if (this.dialogHistory.length > 5) {
+      this.dialogHistory = this.dialogHistory.slice(-5);
+    }
+  }
+
+  _trackChoiceUpdate(choice) {
+    if (!choice || !choice.id) {
+      return;
+    }
+    if (choice.resolved) {
+      const key = `${choice.id}:${choice.resolvedAt || choice.resolved}`;
+      if (!this.loggedChoiceIds.has(key)) {
+        this.loggedChoiceIds.add(key);
+        this._logChoiceResolution(choice);
+      }
+    }
+  }
+
+  _logChoiceResolution(choice) {
+    let label = choice.resolvedLabel || choice.resolvedSelection?.label || null;
+    const resolvedValue = choice.resolved;
+    if (!label) {
+      if (typeof resolvedValue === 'boolean') {
+        label = resolvedValue ? 'YES' : 'NO';
+      } else if (resolvedValue != null) {
+        label = String(resolvedValue);
+      }
+    }
+    if (!label && Array.isArray(choice.options)) {
+      const index = Number.isFinite(choice.selectedIndex)
+        ? Math.max(0, Math.min(choice.options.length - 1, Math.trunc(choice.selectedIndex)))
+        : null;
+      if (index != null && choice.options[index] && typeof choice.options[index].label === 'string') {
+        label = choice.options[index].label.trim();
+      }
+    }
+    if (!label) {
+      label = 'UNKNOWN';
+    }
+    const summary = {
+      text: `[Choice] Selected ${label}`,
+      timestamp: Date.now(),
+      source: 'choice'
+    };
+    this.lastChoiceSummary = summary;
+    this._appendDialogHistory(summary);
+    if (this.logLLM && typeof console !== 'undefined' && console.info) {
+      console.info('[ai-controller] dialog choice resolved', { label, choiceId: choice.id });
+    }
   }
 
   _tick() {
@@ -96,8 +180,12 @@ export class AIController {
         return;
       }
       try {
-        aiGateway.dispatch(action);
-        this.recorder.recordAction(action);
+        const result = aiGateway.dispatch(action);
+        this.lastActionResult = result;
+        this.recorder.recordAction({ ...action, result });
+        if (!result?.success && typeof console !== 'undefined' && console.warn) {
+          console.warn('[ai-controller] action failed', result?.message);
+        }
       } catch (err) {
         if (typeof console !== 'undefined' && console.error) {
           console.error('[ai-controller] dispatch failed', err);
@@ -115,23 +203,110 @@ export class AIController {
   }
 
   _summarise() {
+    const battleState = this.state.get('battle.state') || null;
+    const inBattleFlag = (worldService && typeof worldService.isInBattle === 'function' && worldService.isInBattle()) ||
+      (battleState && Array.isArray(battleState.player) && battleState.player.length > 0);
+    const dialogState = {
+      latest: this.state.get('dialog.currentLine') || null,
+      history: [...this.dialogHistory],
+      choice: this.state.get('dialog.choice') || null,
+      status: this.state.get('dialog.status') || null,
+      lastChoice: this.lastChoiceSummary
+    };
     const summary = {
       timestamp: Date.now(),
       ticks: this.ticks,
-      viewport: this.state.get('environment.viewport') || null,
+      viewport: this._getViewportValue(),
       party: this.state.get('partyTrail.party') || [],
       followers: this.state.get('partyTrail.followers') || 0,
       sceneEvents: this.state.get('scene.events') || [],
-      battle: this.state.get('battle.state') || null
+      battle: battleState,
+      playerStats: this._getPlayerStats(),
+      flags: this._getGameFlags(),
+      dialog: dialogState,
+      isInBattle: inBattleFlag,
+      lastActionResult: this.lastActionResult
     };
     return summary;
+  }
+
+  _getViewportValue() {
+    if (this.state.has('environment.viewport')) {
+      return this.state.get('environment.viewport');
+    }
+    if (worldService && typeof worldService.getViewportComponent === 'function') {
+      const component = worldService.getViewportComponent();
+      if (component && Number.isFinite(component.value)) {
+        return component.value;
+      }
+    }
+    return null;
+  }
+
+  _getPlayerStats() {
+    const roles = this.state.get('playerState.roles');
+    if (Array.isArray(roles)) {
+      return roles.slice(0, 4).map((role) => {
+        if (!role) return null;
+        return {
+          roleId: role.playerRole,
+          hp: role.hp,
+          maxHp: role.maxHp,
+          mp: role.mp,
+          maxMp: role.maxMp,
+          status: role.status
+        };
+      }).filter(Boolean);
+    }
+    return null;
+  }
+
+  _getGameFlags() {
+    return {
+      collect: this.state.get('gameFlags.collect') || 0,
+      chaseRange: this.state.get('gameFlags.chaseRange') || 0,
+      chaseCycles: this.state.get('gameFlags.chaseSpeedCycles') || 0,
+      battleSpeed: this.state.get('gameFlags.battleSpeed') || 0
+    };
+  }
+
+  _getPlayerStats() {
+    const roles = this.state.get('playerState.roles');
+    if (Array.isArray(roles)) {
+      return roles.slice(0, 4).map((role) => {
+        if (!role) return null;
+        return {
+          roleId: role.playerRole,
+          hp: role.hp,
+          maxHp: role.maxHp,
+          mp: role.mp,
+          maxMp: role.maxMp,
+          status: role.status
+        };
+      }).filter(Boolean);
+    }
+    return null;
+  }
+
+  _getGameFlags() {
+    return {
+      collect: this.state.get('gameFlags.collect') || 0,
+      chaseRange: this.state.get('gameFlags.chaseRange') || 0,
+      chaseCycles: this.state.get('gameFlags.chaseSpeedCycles') || 0,
+      battleSpeed: this.state.get('gameFlags.battleSpeed') || 0
+    };
   }
 
   _decideRuleBased(summary) {
     if (!summary) {
       return null;
     }
-    const inBattle = summary.battle && summary.battle.stateId != null;
+    const dialogAction = this._decideDialog(summary);
+    if (dialogAction) {
+      return dialogAction;
+    }
+    const inBattle = summary.isInBattle ||
+      (summary.battle && Array.isArray(summary.battle.player) && summary.battle.player.length > 0);
     if (inBattle) {
       return this._decideBattle(summary);
     }
@@ -165,13 +340,173 @@ export class AIController {
     if (!battle) {
       return null;
     }
-    const players = (battle.player || []).filter(Boolean);
-    const enemies = (battle.enemy || []).filter(Boolean);
-    const allHealthy = players.every((p) => p.hp > 0 && p.hp > p.maxHp * 0.3);
-    if (allHealthy) {
-      return { type: 'startBattle', payload: { formationId: battle.fieldId || 0, cooldownMs: 500 } };
+    const enemies = (battle.enemy || []).map((enemy, idx) => ({ enemy, idx }))
+      .filter(({ enemy }) => enemy && enemy.objectID !== 0);
+    if (enemies.length === 0) {
+      return null;
+    }
+    const preferred = enemies.find(({ enemy }) => {
+      const hp = typeof enemy.hp === 'number' ? enemy.hp : (enemy.e && enemy.e.health) || enemy.prevHP || 0;
+      return hp > 0;
+    }) || enemies[0];
+    return {
+      type: 'battleCommand',
+      payload: {
+        command: 'attack',
+        targetType: 'enemy',
+        targetIndex: preferred.idx,
+        cooldownMs: 450
+      }
+    };
+  }
+
+  _decideDialog(summary) {
+    const dialog = summary.dialog;
+    if (!dialog) {
+      return null;
+    }
+    const choice = dialog.choice;
+    if (choice) {
+      if (choice.resolved && choice.id) {
+        this.choiceMemory.delete(choice.id);
+      } else if (!choice.resolved) {
+        return this._decideChoiceAction(choice);
+      }
+    }
+    const status = dialog.status;
+    if (status && status.active) {
+      return {
+        type: 'dialog',
+        payload: { action: 'advance', cooldownMs: status.awaitingInput ? 180 : 320 }
+      };
     }
     return null;
+  }
+
+  _planChoiceNavigation(choice) {
+    const options = Array.isArray(choice.options) ? choice.options : [];
+    if (options.length === 0) {
+      return { moves: [], confirmAction: 'advance' };
+    }
+    const normalized = options.map((option, index) => ({
+      index,
+      label: typeof option.label === 'string' ? option.label.toLowerCase() : '',
+      value: option.value,
+      raw: option
+    }));
+
+    const preferredTokens = [
+      'yes', 'ok', '是', '確', '继续', '繼續', 'enter', 'start',
+      'use', 'equip', 'buy', 'sell', '接受', 'confirm', '前进', '進入'
+    ];
+
+    const resolveTargetIndex = () => {
+      if (Number.isFinite(choice.targetIndex)) {
+        return Math.max(0, Math.min(options.length - 1, Math.trunc(choice.targetIndex)));
+      }
+      if (choice.targetLabel) {
+        const targetLabel = String(choice.targetLabel).toLowerCase();
+        const match = normalized.find((entry) => entry.label.includes(targetLabel));
+        if (match) {
+          return match.index;
+        }
+      }
+      if (choice.preferredValue != null) {
+        const match = normalized.find((entry) => entry.value === choice.preferredValue);
+        if (match) {
+          return match.index;
+        }
+      }
+      const truthy = normalized.find((entry) => entry.value === true);
+      if (truthy) {
+        return truthy.index;
+      }
+      for (const token of preferredTokens) {
+        const match = normalized.find((entry) => entry.label && entry.label.includes(token));
+        if (match) {
+          return match.index;
+        }
+      }
+      return 0;
+    };
+
+    const columns = (() => {
+      if (Number.isFinite(choice.columns)) {
+        return Math.max(1, Math.trunc(choice.columns));
+      }
+      if (choice.layout && Number.isFinite(choice.layout.columns)) {
+        return Math.max(1, Math.trunc(choice.layout.columns));
+      }
+      return 1;
+    })();
+    const currentIndex = Number.isFinite(choice.selectedIndex)
+      ? Math.max(0, Math.min(options.length - 1, Math.trunc(choice.selectedIndex)))
+      : 0;
+    const targetIndex = resolveTargetIndex();
+
+    const moves = [];
+    if (columns > 1) {
+      const currentRow = Math.floor(currentIndex / columns);
+      const currentCol = currentIndex % columns;
+      const targetRow = Math.floor(targetIndex / columns);
+      const targetCol = targetIndex % columns;
+      const verticalSteps = targetRow - currentRow;
+      const horizontalSteps = targetCol - currentCol;
+      const verticalDir = verticalSteps > 0 ? 'down' : 'up';
+      const horizontalDir = horizontalSteps > 0 ? 'right' : 'left';
+      for (let i = 0; i < Math.abs(verticalSteps); i++) {
+        moves.push(verticalDir);
+      }
+      for (let i = 0; i < Math.abs(horizontalSteps); i++) {
+        moves.push(horizontalDir);
+      }
+    } else {
+      const delta = targetIndex - currentIndex;
+      const direction = delta >= 0 ? 'right' : 'left';
+      for (let i = 0; i < Math.abs(delta); i++) {
+        moves.push(direction);
+      }
+    }
+
+    return {
+      moves,
+      confirmAction: choice.confirmAction || 'advance',
+      confirmCooldown: choice.confirmCooldown || 220
+    };
+  }
+
+  _decideChoiceAction(choice) {
+    const choiceId = choice.id || `choice-${choice.type || 'generic'}`;
+    let memory = this.choiceMemory.get(choiceId);
+    if (!memory) {
+      memory = this._planChoiceNavigation(choice);
+      this.choiceMemory.set(choiceId, memory);
+    }
+    if (Array.isArray(memory.moves) && memory.moves.length > 0) {
+      const direction = memory.moves.shift();
+      if (!direction) {
+        return {
+          type: 'dialog',
+          payload: { action: 'advance', cooldownMs: 200 }
+        };
+      }
+      return {
+        type: 'dialog',
+        payload: {
+          action: 'none',
+          direction,
+          cooldownMs: 160
+        }
+      };
+    }
+    this.choiceMemory.delete(choiceId);
+    return {
+      type: 'dialog',
+      payload: {
+        action: memory.confirmAction || 'advance',
+        cooldownMs: memory.confirmCooldown || 220
+      }
+    };
   }
 
   async _decideWithLLM(summary) {
@@ -180,7 +515,9 @@ export class AIController {
     }
     try {
       const prompt = this._buildLLMPrompt(summary);
+      this._logLLM('prompt', prompt);
       const raw = await runQwen({ prompt, model: this.llmModel });
+      this._logLLM('response', raw);
       const parsed = parseLLMResponse(raw);
       return this._normaliseLLMAction(parsed);
     } catch (err) {
@@ -195,7 +532,17 @@ export class AIController {
     if (!candidate || typeof candidate !== 'object') {
       return null;
     }
-    const allowed = new Set(['move', 'interact', 'startBattle', 'useItem', 'castMagic', 'openMenu', 'saveGame']);
+    const allowed = new Set([
+      'move',
+      'interact',
+      'startBattle',
+      'useItem',
+      'castMagic',
+      'openMenu',
+      'saveGame',
+      'dialog',
+      'battleCommand'
+    ]);
     const type = typeof candidate.action === 'string'
       ? candidate.action
       : (typeof candidate.type === 'string' ? candidate.type : null);
@@ -218,7 +565,26 @@ export class AIController {
       }
       payload.eventId = eventId;
     }
+    if (type === 'dialog') {
+      const dialogAction = typeof payload.action === 'string'
+        ? payload.action
+        : (typeof payload.mode === 'string' ? payload.mode : 'advance');
+      payload.action = dialogAction;
+      if (payload.direction && typeof payload.direction !== 'string') {
+        delete payload.direction;
+      }
+    }
+    if (type === 'battleCommand' && typeof payload.command !== 'string' && typeof payload.actionType !== 'number') {
+      return null;
+    }
     return { type, payload };
+  }
+
+  _logLLM(direction, payload) {
+    if (!this.logLLM || typeof console === 'undefined' || typeof console.info !== 'function') {
+      return;
+    }
+    console.info(`[ai-controller][llm] ${direction}`, payload);
   }
 
   _buildLLMPrompt(summary) {
@@ -243,41 +609,83 @@ export class AIController {
         if (!e) return null;
         return `E${idx} hp=${e.hp || e.prevHP || 0}`;
       }).filter(Boolean).join('; ');
-      battleSection = `Battle stateId=${battle.stateId}, field=${battle.fieldId}, players:[${playerStatus || 'n/a'}], enemies:[${enemyStatus || 'n/a'}]`;
+      battleSection = `Battle field=${battle.fieldId ?? 'n/a'}, players:[${playerStatus || 'n/a'}], enemies:[${enemyStatus || 'n/a'}]`;
     }
+
+    const partyStats = (summary.playerStats || []).map((p, idx) => `P${idx} role=${p.roleId} hp=${p.hp}/${p.maxHp} mp=${p.mp}/${p.maxMp} status=${p.status}`).join('; ') || 'n/a';
+    const flags = summary.flags || {};
+    const dialogHistory = (summary.dialog?.history || []).slice(-3).map((entry) => {
+      if (!entry || !entry.text) {
+        return null;
+      }
+      return `- ${entry.text}`;
+    }).filter(Boolean).join('\n') || '- None';
+    const pendingChoice = summary.dialog?.choice
+      ? `Pending choice: ${summary.dialog.choice.type || 'unknown'}`
+      : 'Pending choice: none';
+    const lastChoice = summary.dialog?.lastChoice
+      ? `Last choice: ${summary.dialog.lastChoice.text} at ${new Date(summary.dialog.lastChoice.timestamp).toLocaleTimeString()}`
+      : 'Last choice: n/a';
 
     return [
       'You control the hero party in a retro RPG. Decide the next action.',
-      'Allowed actions and payloads:',
-      '- move -> {\"direction\": number} (0=N,1=E,2=S,3=W).',
-      '- interact -> {\"eventId\": number}.',
-      '- startBattle -> {\"formationId\": number}.',
-      '- useItem -> {\"itemId\": number, \"targetIndex\": number}.',
-      '- castMagic -> {\"magicId\": number, \"casterIndex\": number, \"targetIndex\": number}.',
-      '- openMenu -> {\"menu\": string}.',
-      '- saveGame -> {\"slot\": number}.',
-      'Output STRICT JSON like {\"action\":\"move\",\"payload\":{\"direction\":1,\"cooldownMs\":300}} with no explanation.',
+      'Allowed actions and payloads (respond with JSON only):',
+      '- move -> {"direction": number} (0=N,1=E,2=S,3=W).',
+      '- interact -> {"eventId": number}.',
+      '- startBattle -> {"formationId": number}.',
+      '- useItem -> {"itemId": number, "targetIndex": number}.',
+      '- castMagic -> {"magicId": number, "casterIndex": number, "targetIndex": number}.',
+      '- battleCommand -> {"command":"attack|magic|defend|useItem|throwItem|flee","targetType":"enemy|ally","targetIndex":number,"applyAll":bool,"objectId":number?}.',
+      '- openMenu -> {"menu": string}.',
+      '- saveGame -> {"slot": number}.',
+      'Output STRICT JSON like {"action":"move","payload":{"direction":1,"cooldownMs":300}} with no explanation.',
       '',
       `Tick: ${summary.ticks}`,
       `Leader: (${leader.x || 0}, ${leader.y || 0}) facing ${leader.direction || 0}`,
+      `Party stats: ${partyStats}`,
+      `Flags: collect=${flags.collect} chaseRange=${flags.chaseRange} chaseCycles=${flags.chaseCycles} battleSpeed=${flags.battleSpeed}`,
+      `Viewport: ${summary.viewport}`,
       `Followers: ${summary.followers}`,
       'Nearby events:',
       events,
-      battleSection
+      battleSection,
+      'Recent dialog:',
+      dialogHistory,
+      pendingChoice,
+      lastChoice
     ].join('\n');
   }
 }
 
-function detectLLMFlag() {
+function resolveLLMPreference() {
   if (typeof window === 'undefined') {
-    return false;
+    return { enabled: false, model: null };
   }
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.get('llm') === 'qwen';
+    const raw = params.get('llm');
+    const model = normalizeLLMModel(raw);
+    return {
+      enabled: !!model,
+      model
+    };
   } catch (err) {
-    return false;
+    return { enabled: false, model: null };
   }
+}
+
+function normalizeLLMModel(value) {
+  if (!value) {
+    return null;
+  }
+  const normalized = String(value).trim();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.toLowerCase() === 'qwen') {
+    return DEFAULT_LLM_MODEL;
+  }
+  return normalized;
 }
 
 let controllerInstance = null;

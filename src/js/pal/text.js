@@ -7,6 +7,7 @@ import Palette from './palette';
 import input from './input';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
+import dialogService from '../../services/dialog-service.js';
 import {
   getPaletteIdValue as getPaletteIdSnapshot,
   isNightPaletteEnabled
@@ -55,6 +56,60 @@ typedef struct tagTEXTLIB
 var text = {
   updatedInBattle: false
 };
+
+const dialogDecoder = (() => {
+  if (typeof TextDecoder === 'undefined') {
+    return null;
+  }
+  try {
+    return new TextDecoder('big5');
+  } catch (err) {
+    try {
+      return new TextDecoder('big5-hkscs');
+    } catch (err2) {
+      return new TextDecoder();
+    }
+  }
+})();
+
+function toUint8Array(buf) {
+  if (!buf) {
+    return new Uint8Array();
+  }
+  if (buf instanceof Uint8Array) {
+    return buf;
+  }
+  if (ArrayBuffer.isView(buf)) {
+    return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+  }
+  if (Array.isArray(buf)) {
+    return Uint8Array.from(buf);
+  }
+  return new Uint8Array();
+}
+
+function decodeDialogBuffer(buf) {
+  const view = toUint8Array(buf);
+  if (view.length === 0) {
+    return '';
+  }
+  if (dialogDecoder) {
+    try {
+      return dialogDecoder.decode(view).replace(/\u0000+$/, '').trim();
+    } catch (err) {
+      // fall through to manual decode
+    }
+  }
+  let result = '';
+  for (let i = 0; i < view.length; i++) {
+    const code = view[i];
+    if (code === 0) {
+      break;
+    }
+    result += String.fromCharCode(code);
+  }
+  return result.trim();
+}
 
 var surface = null;
 var WORD_LENGTH = 10;
@@ -313,6 +368,7 @@ text.init = function*(surf, _ui) {
    */
   ui.dialogWaitForKey = function*() {
     log.trace('[TEXT] dialogWaitForKey');
+    dialogService.setAwaitingInput(true, { position: textLib.dialogPosition });
     // get the current palette
     var paletteId = getPaletteIdSnapshot();
     var nightPalette = isNightPaletteEnabled();
@@ -363,6 +419,7 @@ text.init = function*(surf, _ui) {
     }
     input.clear();
     textLib.userSkip = false;
+    dialogService.setAwaitingInput(false, { position: textLib.dialogPosition });
   };
 
   /**
@@ -376,6 +433,11 @@ text.init = function*(surf, _ui) {
 
     input.clear();
     textLib.icon = 0;
+    dialogService.publishLine({
+      text: decodeDialogBuffer(buf),
+      position: textLib.dialogPosition,
+      line: textLib.currentDialogLine
+    });
 
     if (worldService.isInBattle() && !text.updatedInBattle) {
       // Update the screen in battle, or the graphics may seem messed up
@@ -548,6 +610,7 @@ text.init = function*(surf, _ui) {
       textLib.currentFontColor = FontColor.DEFAULT;
       textLib.dialogPosition = DialogPosition.Upper;
     }
+    dialogService.setAwaitingInput(false);
   };
 
   /**
@@ -563,6 +626,7 @@ text.init = function*(surf, _ui) {
     textLib.dialogPosition = DialogPosition.Upper;
     textLib.userSkip = false;
     textLib.playingRNG = false;
+    dialogService.clearDialog('endDialog');
   };
 
   /**

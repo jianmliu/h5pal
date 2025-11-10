@@ -73,6 +73,15 @@ play.update = function*(trigger) {
       }
 
       input.clear();
+      try {
+        const viewportValue = getViewportSnapshot();
+        const partyOffsetValue = getPartyOffsetSnapshot();
+        const heroX = PAL_X(viewportValue) + PAL_X(partyOffsetValue);
+        const heroY = PAL_Y(viewportValue) + PAL_Y(partyOffsetValue);
+        worldService.setViewport(PAL_XY(heroX - PAL_X(partyOffsetValue), heroY - PAL_Y(partyOffsetValue)));
+      } catch (err) {
+        // ignore sync errors
+      }
       scene.updatePartyGestures(false);
       yield scene.makeScene();
     }

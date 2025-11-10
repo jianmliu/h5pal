@@ -21,6 +21,104 @@ const big5Decoder = (() => {
 let textResourcesPromise = null;
 const scriptNarrativeCache = new Map();
 
+function safeNumber(value) {
+  return Number.isFinite(value) ? value : null;
+}
+
+function extractSpeaker(text) {
+  if (!text || typeof text !== 'string') {
+    return null;
+  }
+  const separators = ['：', ':'];
+  for (let i = 0; i < separators.length; i++) {
+    const idx = text.indexOf(separators[i]);
+    if (idx > 0 && idx < 12) {
+      return text.slice(0, idx).trim();
+    }
+  }
+  return null;
+}
+
+function mapPartySnapshot() {
+  if (!worldService || typeof worldService.getParty !== 'function') {
+    return [];
+  }
+  const party = worldService.getParty() || [];
+  return party.map((member, index) => {
+    if (!member || typeof member !== 'object') {
+      return { index };
+    }
+    return {
+      index,
+      playerRole: member.playerRole ?? null,
+      hp: safeNumber(member.hp),
+      maxHp: safeNumber(member.maxHp),
+      mp: safeNumber(member.mp),
+      maxMp: safeNumber(member.maxMp),
+      x: safeNumber(member.x),
+      y: safeNumber(member.y)
+    };
+  });
+}
+
+function summarizeEvents(events, leader) {
+  if (!Array.isArray(events)) {
+    return [];
+  }
+  const leaderX = leader && Number.isFinite(leader.x) ? leader.x : null;
+  const leaderY = leader && Number.isFinite(leader.y) ? leader.y : null;
+  return events.map((event) => {
+    const state = event && event.state ? event.state : {};
+    const x = safeNumber(state.x);
+    const y = safeNumber(state.y);
+    return {
+      id: event && event.id != null ? event.id : null,
+      index: event && event.index != null ? event.index : null,
+      position: { x, y },
+      offsets: leaderX == null || leaderY == null || x == null || y == null
+        ? null
+        : { dx: x - leaderX, dy: y - leaderY },
+      triggerScript: state.triggerScript ?? null,
+      autoScript: state.autoScript ?? null,
+      spriteId: state.spriteId ?? null
+    };
+  });
+}
+
+function buildSceneContext(sceneId, events) {
+  const viewport = typeof worldService.getViewport === 'function'
+    ? safeNumber(worldService.getViewport())
+    : null;
+  const followers = typeof worldService.getFollowerCount === 'function'
+    ? safeNumber(worldService.getFollowerCount())
+    : null;
+  const flags = {
+    collect: typeof worldService.getCollectValue === 'function'
+      ? safeNumber(worldService.getCollectValue())
+      : null,
+    chaseRange: typeof worldService.getChaseRange === 'function'
+      ? safeNumber(worldService.getChaseRange())
+      : null,
+    chaseCycles: typeof worldService.getChaseSpeedChangeCycles === 'function'
+      ? safeNumber(worldService.getChaseSpeedChangeCycles())
+      : null,
+    battleSpeed: typeof worldService.getBattleSpeed === 'function'
+      ? safeNumber(worldService.getBattleSpeed())
+      : null
+  };
+  const party = mapPartySnapshot();
+  const leader = party.length > 0 ? party[0] : null;
+  return {
+    sceneId,
+    viewport,
+    followers,
+    flags,
+    leader,
+    party,
+    events: summarizeEvents(events, leader)
+  };
+}
+
 function ensureSceneReady(sceneId) {
   if (!Number.isFinite(sceneId) || sceneId <= 0) {
     throw new TypeError('[storygraph] sceneId must be a positive number');
@@ -123,42 +221,197 @@ async function collectScriptNarrative(scriptId, options = {}) {
   if (scriptNarrativeCache.has(scriptId)) {
     return scriptNarrativeCache.get(scriptId);
   }
-  const maxSteps = options.maxSteps || 80;
+  const maxSteps = options.maxSteps || 512;
+  const maxDepth = options.maxDepth || 64;
   const summary = {
     scriptId,
     dialogues: [],
-    choices: []
+    choices: [],
+    truncated: false
   };
-  let pointer = scriptId;
   const visited = new Set();
-  for (let step = 0; step < maxSteps; step++) {
-    if (!Number.isFinite(pointer) || pointer < 0 || visited.has(pointer)) {
-      break;
+  const queue = [];
+  const baseFrame = {
+    pointer: scriptId,
+    depth: 0,
+    path: `script-${scriptId}`,
+    stack: []
+  };
+
+  const extendPath = (frame, segment) => {
+    const basePath = frame && frame.path ? frame.path : baseFrame.path;
+    if (!segment && segment !== 0) {
+      return basePath;
     }
-    visited.add(pointer);
-    const entry = scriptObjectAdapter.getScriptEntry(pointer);
+    return `${basePath}->${segment}`;
+  };
+
+  const enqueue = (frame) => {
+    if (!frame) {
+      return;
+    }
+    const pointer = Number(frame.pointer);
+    if (!Number.isFinite(pointer) || pointer <= 0) {
+      return;
+    }
+    if (Number(frame.depth) > maxDepth) {
+      return;
+    }
+    queue.push({
+      pointer,
+      depth: Number(frame.depth) || 0,
+      path: frame.path || baseFrame.path,
+      stack: Array.isArray(frame.stack) ? [...frame.stack] : []
+    });
+  };
+
+  enqueue(baseFrame);
+
+  let cursor = 0;
+  let steps = 0;
+  while (cursor < queue.length && steps < maxSteps) {
+    const frame = queue[cursor++];
+    const visitKey = `${frame.pointer}:${frame.stack.join('>')}`;
+    if (visited.has(visitKey)) {
+      continue;
+    }
+    visited.add(visitKey);
+    steps += 1;
+
+    const entry = scriptObjectAdapter.getScriptEntry(frame.pointer);
     if (!entry) {
-      break;
+      continue;
     }
     const op = entry.operation >>> 0;
     const operands = Array.isArray(entry.operand) ? entry.operand : [];
-    if (op === 0xFFFF) {
-      const msgId = Number(operands[0]);
-      const text = await decodeMessage(msgId);
-      if (text) {
-        summary.dialogues.push({ msgId, text });
+
+    switch (op) {
+      case 0xFFFF: {
+        const msgId = Number(operands[0]);
+        const text = await decodeMessage(msgId);
+        if (text) {
+          summary.dialogues.push({
+            msgId,
+            text,
+            speaker: extractSpeaker(text),
+            path: frame.path,
+            depth: frame.depth,
+            pointer: frame.pointer
+          });
+        }
+        enqueue({
+          pointer: frame.pointer + 1,
+          depth: frame.depth + 1,
+          path: extendPath(frame, frame.pointer + 1),
+          stack: frame.stack
+        });
+        continue;
       }
-    } else if (op === 0x000A) {
-      summary.choices.push({
-        type: 'confirm',
-        nextIfNo: Number(operands[0]) || null,
-        description: 'Yes/No prompt'
-      });
+      case 0x000A: {
+        summary.choices.push({
+          type: 'confirm',
+          nextIfNo: Number(operands[0]) || null,
+          description: 'Yes/No prompt',
+          path: frame.path,
+          depth: frame.depth,
+          pointer: frame.pointer
+        });
+        enqueue({
+          pointer: frame.pointer + 1,
+          depth: frame.depth + 1,
+          path: extendPath(frame, 'yes'),
+          stack: frame.stack
+        });
+        if (Number.isFinite(operands[0]) && operands[0] > 0) {
+          enqueue({
+            pointer: operands[0],
+            depth: frame.depth + 1,
+            path: extendPath(frame, 'no'),
+            stack: [...frame.stack]
+          });
+        }
+        continue;
+      }
+      case 0x0002: {
+        const target = Number(operands[0]);
+        if (Number.isFinite(target) && target > 0) {
+          enqueue({
+            pointer: target,
+            depth: frame.depth + 1,
+            path: extendPath(frame, `jump:${target}`),
+            stack: frame.stack
+          });
+        }
+        enqueue({
+          pointer: frame.pointer + 1,
+          depth: frame.depth + 1,
+          path: extendPath(frame, 'cont'),
+          stack: frame.stack
+        });
+        continue;
+      }
+      case 0x0003: {
+        const target = Number(operands[0]);
+        if (Number.isFinite(target) && target > 0) {
+          enqueue({
+            pointer: target,
+            depth: frame.depth + 1,
+            path: extendPath(frame, `jmp:${target}`),
+            stack: frame.stack
+          });
+        }
+        continue;
+      }
+      case 0x0004: {
+        const target = Number(operands[0]);
+        if (Number.isFinite(target) && target > 0) {
+          const returnPointer = frame.pointer + 1;
+          enqueue({
+            pointer: target,
+            depth: frame.depth + 1,
+            path: extendPath(frame, `call:${target}`),
+            stack: [...frame.stack, returnPointer]
+          });
+        }
+        continue;
+      }
+      case 0x0005: {
+        if (frame.stack.length > 0) {
+          const nextPointer = frame.stack[frame.stack.length - 1];
+          enqueue({
+            pointer: nextPointer,
+            depth: frame.depth + 1,
+            path: extendPath(frame, `ret:${nextPointer}`),
+            stack: frame.stack.slice(0, -1)
+          });
+        }
+        continue;
+      }
+      case 0x0000: {
+        if (frame.stack.length > 0) {
+          const nextPointer = frame.stack[frame.stack.length - 1];
+          enqueue({
+            pointer: nextPointer,
+            depth: frame.depth + 1,
+            path: extendPath(frame, `ret:${nextPointer}`),
+            stack: frame.stack.slice(0, -1)
+          });
+        }
+        continue;
+      }
+      default: {
+        enqueue({
+          pointer: frame.pointer + 1,
+          depth: frame.depth + 1,
+          path: extendPath(frame, frame.pointer + 1),
+          stack: frame.stack
+        });
+        continue;
+      }
     }
-    if (op === 0x0000) {
-      break;
-    }
-    pointer += 1;
+  }
+  if (cursor < queue.length || steps >= maxSteps) {
+    summary.truncated = true;
   }
   scriptNarrativeCache.set(scriptId, summary);
   return summary;
@@ -169,17 +422,22 @@ export async function buildStoryGraphForScene(sceneId = 2) {
   const sceneNodeId = `scene-${sceneId}`;
   try {
     const sceneEntry = worldService.getSceneEntry(sceneId) || {};
+    const events = worldService.getEventObjectsInCurrentScene() || [];
+    const sceneContext = buildSceneContext(sceneId, events);
+    const sceneNarrative = { dialogues: [], choices: [] };
     const nodes = [
       {
         id: sceneNodeId,
         type: 'scene',
         label: `Scene ${sceneId}`,
-        metadata: sceneEntry
+        metadata: {
+          ...sceneEntry,
+          context: sceneContext
+        }
       }
     ];
     const edges = [];
     const scriptCache = new Map();
-    const events = worldService.getEventObjectsInCurrentScene() || [];
 
     const sceneScriptRefs = [
       ['scriptOnEnter', 'enter'],
@@ -195,6 +453,8 @@ export async function buildStoryGraphForScene(sceneId = 2) {
         if (summary && (summary.dialogues.length || summary.choices.length)) {
           scriptNode.metadata = scriptNode.metadata || {};
           scriptNode.metadata.narrative = summary;
+          sceneNarrative.dialogues.push(...summary.dialogues);
+          sceneNarrative.choices.push(...summary.choices);
         }
       }
     }
@@ -202,6 +462,17 @@ export async function buildStoryGraphForScene(sceneId = 2) {
     for (const event of events) {
       const eventNodeId = `scene-${sceneId}-event-${event.id}`;
       const eventMetadata = event.state ? { ...event.state } : {};
+      const eventContext = sceneContext.events.find((entry) => entry && entry.id === event.id) || null;
+      eventMetadata.context = {
+        sceneId,
+        eventId: event.id ?? null,
+        viewport: sceneContext.viewport,
+        followers: sceneContext.followers,
+        flags: sceneContext.flags,
+        leader: sceneContext.leader,
+        party: sceneContext.party,
+        event: eventContext
+      };
       nodes.push({
         id: eventNodeId,
         type: 'event',
@@ -234,6 +505,8 @@ export async function buildStoryGraphForScene(sceneId = 2) {
 
       if (aggregatedNarrative.dialogues.length || aggregatedNarrative.choices.length) {
         eventMetadata.narrative = aggregatedNarrative;
+        sceneNarrative.dialogues.push(...aggregatedNarrative.dialogues);
+        sceneNarrative.choices.push(...aggregatedNarrative.choices);
       }
     }
 
@@ -243,9 +516,14 @@ export async function buildStoryGraphForScene(sceneId = 2) {
       edges,
       metadata: {
         generatedAt: new Date().toISOString(),
-        totalEvents: events.length
+        totalEvents: events.length,
+        context: sceneContext,
+        narrative: sceneNarrative
       }
     };
+    if (nodes[0] && nodes[0].metadata) {
+      nodes[0].metadata.narrative = sceneNarrative;
+    }
     return graph;
   } finally {
     restoreScene();

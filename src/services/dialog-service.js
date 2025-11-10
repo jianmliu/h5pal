@@ -1,0 +1,226 @@
+import reactiveContext from '../state/reactive-context.js';
+
+const MAX_HISTORY = 20;
+
+const currentLineSignal = reactiveContext.ensureSignal('dialog.currentLine', null);
+const historySignal = reactiveContext.ensureSignal('dialog.history', []);
+const statusSignal = reactiveContext.ensureSignal('dialog.status', {
+  active: false,
+  awaitingInput: false,
+  lastUpdated: null
+});
+const choiceSignal = reactiveContext.ensureSignal('dialog.choice', null);
+
+let pendingMetadata = null;
+let choiceCounter = 0;
+
+function now() {
+  return Date.now();
+}
+
+function normalizeLine(payload = {}) {
+  const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+  return {
+    text,
+    msgId: Number.isFinite(payload.msgId) ? Math.trunc(payload.msgId) : null,
+    position: payload.position || null,
+    line: Number.isFinite(payload.line) ? Math.trunc(payload.line) : null,
+    timestamp: payload.timestamp || now(),
+    scriptEntry: Number.isFinite(payload.scriptEntry) ? Math.trunc(payload.scriptEntry) : null,
+    eventObjectId: Number.isFinite(payload.eventObjectId) ? Math.trunc(payload.eventObjectId) : null,
+    source: payload.source || null,
+    metadata: payload.metadata || null
+  };
+}
+
+function pushHistory(entry) {
+  if (!entry || !entry.text) {
+    return;
+  }
+  const history = Array.isArray(historySignal.value) ? historySignal.value.slice(-MAX_HISTORY + 1) : [];
+  history.push(entry);
+  historySignal.value = history;
+}
+
+function consumePendingMetadata() {
+  const metadata = pendingMetadata;
+  pendingMetadata = null;
+  return metadata || null;
+}
+
+function clampIndex(index, length) {
+  if (!Number.isFinite(index)) {
+    return null;
+  }
+  const clamped = Math.max(0, Math.min(length - 1, Math.trunc(index)));
+  return Number.isFinite(clamped) ? clamped : null;
+}
+
+function getOptions(choice) {
+  if (!choice) {
+    return [];
+  }
+  return Array.isArray(choice.options) ? choice.options : [];
+}
+
+function deriveSelectionIndex(choice, resolvedValue, fallbackIndex) {
+  const options = getOptions(choice);
+  if (options.length === 0) {
+    return null;
+  }
+  if (fallbackIndex != null) {
+    return clampIndex(fallbackIndex, options.length);
+  }
+  if (resolvedValue !== undefined) {
+    const match = options.findIndex((entry) => entry && entry.value === resolvedValue);
+    if (match >= 0) {
+      return match;
+    }
+  }
+  return null;
+}
+
+function deriveSelectionLabel(choice, index, resolvedValue, explicitLabel) {
+  if (explicitLabel) {
+    return explicitLabel;
+  }
+  const options = getOptions(choice);
+  if (index != null && options[index] && typeof options[index].label === 'string') {
+    return options[index].label.trim();
+  }
+  if (typeof resolvedValue === 'string') {
+    return resolvedValue;
+  }
+  if (typeof resolvedValue === 'boolean') {
+    return resolvedValue ? 'YES' : 'NO';
+  }
+  if (typeof resolvedValue === 'number') {
+    return `Option ${resolvedValue}`;
+  }
+  return null;
+}
+
+function updateStatus(patch = {}) {
+  const previous = statusSignal.value || {};
+  statusSignal.value = Object.assign({}, previous, patch, { lastUpdated: now() });
+  return statusSignal.value;
+}
+
+function publishLine(payload = {}) {
+  const metadata = consumePendingMetadata();
+  const entry = normalizeLine(Object.assign({}, metadata || {}, payload));
+  currentLineSignal.value = entry;
+  pushHistory(entry);
+  choiceSignal.value = null;
+  updateStatus({
+    active: true,
+    awaitingInput: payload.awaitingInput === true,
+    position: entry.position ?? (metadata && metadata.position) ?? statusSignal.value?.position ?? null,
+    lastMsgId: entry.msgId
+  });
+  return entry;
+}
+
+function clearDialog(reason = 'unknown') {
+  currentLineSignal.value = null;
+  updateStatus({
+    active: false,
+    awaitingInput: false,
+    reason
+  });
+}
+
+function setPendingLineMetadata(metadata) {
+  if (!metadata) {
+    pendingMetadata = null;
+    return;
+  }
+  pendingMetadata = Object.assign({}, metadata);
+}
+
+function setAwaitingInput(isAwaiting, context = {}) {
+  updateStatus({
+    awaitingInput: !!isAwaiting,
+    active: isAwaiting ? true : statusSignal.value?.active,
+    position: context.position ?? statusSignal.value?.position ?? null
+  });
+}
+
+function publishChoice(choice) {
+  if (!choice) {
+    choiceSignal.value = null;
+    return null;
+  }
+  const options = getOptions(choice);
+  const payload = Object.assign({}, choice, {
+    id: ++choiceCounter,
+    timestamp: now(),
+    options
+  });
+  if (payload.selectedIndex != null) {
+    payload.selectedIndex = clampIndex(payload.selectedIndex, options.length || 1) ?? 0;
+  }
+  choiceSignal.value = payload;
+  updateStatus({
+    active: true,
+    awaitingInput: true
+  });
+  return payload;
+}
+
+function resolveChoice(result, options = {}) {
+  const current = choiceSignal.value;
+  if (!current) {
+    return null;
+  }
+  const selectionIndex =
+    clampIndex(options.selectedIndex, getOptions(current).length || 1) ??
+    deriveSelectionIndex(current, result, current.selectedIndex);
+  const resolvedLabel = deriveSelectionLabel(current, selectionIndex, result, options.label);
+  const resolved = Object.assign({}, current, {
+    resolved: result,
+    resolvedAt: now(),
+    selectedIndex: selectionIndex,
+    resolvedLabel,
+    resolvedSelection: {
+      index: selectionIndex,
+      label: resolvedLabel,
+      value: result
+    }
+  });
+  choiceSignal.value = resolved;
+  updateStatus({
+    awaitingInput: false
+  });
+  return resolved;
+}
+
+const dialogService = {
+  publishLine,
+  clearDialog,
+  setPendingLineMetadata,
+  consumePendingMetadata,
+  setAwaitingInput,
+  publishChoice,
+  resolveChoice,
+  getCurrentLine() {
+    return currentLineSignal.value;
+  },
+  getHistory() {
+    return historySignal.value || [];
+  },
+  getStatus() {
+    return statusSignal.value || { active: false, awaitingInput: false };
+  },
+  getChoice() {
+    return choiceSignal.value;
+  },
+  signals: {
+    currentLine: currentLineSignal,
+    history: historySignal,
+    status: statusSignal,
+    choice: choiceSignal
+  }
+};
+
+export default dialogService;

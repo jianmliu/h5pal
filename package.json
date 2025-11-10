@@ -32,6 +32,7 @@
     "test": "vitest",
     "test:ci": "NODE_OPTIONS=--experimental-global-webcrypto vitest run",
     "export:sprites": "node scripts/export-sprites.cjs",
-    "export:overviews": "node --experimental-loader ./scripts/node-relative-loader.mjs scripts/export-overviews.cjs"
+    "export:overviews": "node --experimental-loader ./scripts/node-relative-loader.mjs scripts/export-overviews.cjs",
+    "embeddings:storygraph": "node scripts/build-story-embeddings.mjs"
   }
 }

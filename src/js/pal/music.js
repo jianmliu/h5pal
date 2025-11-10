@@ -1,7 +1,8 @@
+import traceModuleLoad from './util-trace';
 import config from './config';
 import worldService from '../../services/world-service.js';
 
-console.trace('music module load');
+traceModuleLoad('music module load');
 
 var music = {};
 

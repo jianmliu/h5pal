@@ -1,3 +1,4 @@
+import traceModuleLoad from './util-trace';
 // 对象方式的mkf文件读取
 // decompress需要yj_1
 
@@ -5,7 +6,7 @@ import utils from './utils';
 import yj_1 from './yj_1';
 import modService from '../../services/mod-service.js';
 
-console.trace('mkf module load');
+traceModuleLoad('mkf module load');
 
 /**
  * MKF文件

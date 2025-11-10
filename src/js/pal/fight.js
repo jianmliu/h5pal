@@ -6,6 +6,7 @@ import sound from './sound';
 import resourceService from '../../services/resource-service.js';
 import utils from './utils';
 import battleService from '../../services/battle-service.js';
+import dialogService from '../../services/dialog-service.js';
 import { recomputeTimeChargingUnit } from '../../services/battle-systems.js';
 import { BattleComponents } from '../../ecs/index.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
@@ -3656,6 +3657,13 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 
     if (s && s[0] != 0) {
        ui.startDialog(DialogPosition.CenterWindow, 0, 0, false);
+       dialogService.setPendingLineMetadata({
+         source: 'battle-steal',
+         metadata: {
+           target,
+           stealItem: targetEnemy && targetEnemy.e ? targetEnemy.e.stealItem : null
+         }
+       });
        ui.showDialogText(s);
     }
   };

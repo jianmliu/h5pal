@@ -1,10 +1,11 @@
+import traceModuleLoad from './util-trace';
 import utils from './utils';
 import Global from './pal-global';
 import MKF from './mkf';
 import co from './co';
 import config from './config';
 
-console.trace('ajax module load');
+traceModuleLoad('ajax module load');
 
 /**
  * 异步加载文件

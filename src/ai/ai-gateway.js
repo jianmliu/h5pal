@@ -4,6 +4,260 @@ import services, {
   battleService,
   resourceService
 } from '../services/index.js';
+import input, { Key } from '../js/pal/input.js';
+
+const GLOBAL_ROOT = (() => {
+  if (typeof globalThis !== 'undefined') return globalThis;
+  if (typeof window !== 'undefined') return window;
+  if (typeof global !== 'undefined') return global;
+  return {};
+})();
+
+function getGlobalEnum(name) {
+  if (!name) {
+    return null;
+  }
+  const value = GLOBAL_ROOT[name];
+  return value || null;
+}
+
+function getBattleActionEnum() {
+  return getGlobalEnum('BattleActionType');
+}
+
+function getBattleUIStateEnum() {
+  return getGlobalEnum('BattleUIState');
+}
+
+function getBattleMenuStateEnum() {
+  return getGlobalEnum('BattleMenuState');
+}
+
+const BATTLE_ACTION_ALIASES = Object.freeze({
+  attack: 'Attack',
+  physical: 'Attack',
+  fight: 'Attack',
+  defend: 'Defend',
+  guard: 'Defend',
+  pass: 'Pass',
+  wait: 'Pass',
+  idle: 'Pass',
+  flee: 'Flee',
+  escape: 'Flee',
+  magic: 'Magic',
+  spell: 'Magic',
+  castmagic: 'Magic',
+  cast: 'Magic',
+  coopmagic: 'CoopMagic',
+  cooperative: 'CoopMagic',
+  combo: 'CoopMagic',
+  useitem: 'UseItem',
+  item: 'UseItem',
+  heal: 'UseItem',
+  throwitem: 'ThrowItem',
+  toss: 'ThrowItem',
+  attackmate: 'AttackMate'
+});
+
+const TARGETED_ACTIONS = new Set(['Attack', 'Magic', 'CoopMagic', 'UseItem', 'ThrowItem', 'AttackMate']);
+
+const DEFAULT_TARGET_TYPES = Object.freeze({
+  Attack: 'enemy',
+  Magic: 'enemy',
+  CoopMagic: 'enemy',
+  ThrowItem: 'enemy',
+  AttackMate: 'ally',
+  UseItem: 'ally'
+});
+
+function resolveBattleActionName(action) {
+  if (typeof action === 'number' && Number.isFinite(action)) {
+    const enumRef = getBattleActionEnum();
+    if (enumRef) {
+      const match = Object.keys(enumRef).find((key) => enumRef[key] === action);
+      if (match) {
+        return match;
+      }
+    }
+    return null;
+  }
+  if (!action) {
+    return null;
+  }
+  if (typeof action === 'string') {
+    const normalized = action.replace(/[\s_-]/g, '').toLowerCase();
+    if (normalized in BATTLE_ACTION_ALIASES) {
+      return BATTLE_ACTION_ALIASES[normalized];
+    }
+    const direct = action[0].toUpperCase() + action.slice(1);
+    if (direct in BATTLE_ACTION_ALIASES) {
+      return BATTLE_ACTION_ALIASES[direct];
+    }
+    return direct;
+  }
+  return null;
+}
+
+function resolveBattleActionType(action) {
+  const actionEnum = getBattleActionEnum();
+  if (!actionEnum) {
+    return null;
+  }
+  if (typeof action === 'number' && Number.isFinite(action)) {
+    return action;
+  }
+  const resolvedName = resolveBattleActionName(action);
+  if (!resolvedName) {
+    return null;
+  }
+  if (typeof actionEnum[resolvedName] === 'number') {
+    return actionEnum[resolvedName];
+  }
+  return null;
+}
+
+function ensureBattleContext() {
+  if (!battleService || typeof battleService.getState !== 'function') {
+    throw new Error('[ai-gateway] battleService unavailable');
+  }
+  if (!worldService || typeof worldService.isInBattle !== 'function' || !worldService.isInBattle()) {
+    throw new Error('[ai-gateway] battleCommand requires an active battle');
+  }
+  const state = battleService.getState();
+  if (!state) {
+    throw new Error('[ai-gateway] battle state unavailable');
+  }
+  const ui = typeof battleService.getUI === 'function'
+    ? battleService.getUI()
+    : (state.UI || null);
+  if (!ui) {
+    throw new Error('[ai-gateway] battle UI unavailable');
+  }
+  return { state, ui };
+}
+
+function resolveBattleTarget(payload = {}, uiSnapshot = {}, options = {}) {
+  const defaultType = options.defaultType || 'enemy';
+  const targetInput = payload.target && typeof payload.target === 'object' ? payload.target : null;
+  const providedType = payload.targetType || (targetInput && targetInput.type);
+  const resolvedType = typeof providedType === 'string'
+    ? providedType.toLowerCase()
+    : defaultType;
+  const targetType = resolvedType === 'ally' || resolvedType === 'player' || resolvedType === 'self'
+    ? (resolvedType === 'self' ? 'self' : 'ally')
+    : 'enemy';
+  const scope = (payload.scope || payload.targetScope || (targetInput && targetInput.scope) || '').toLowerCase();
+  const applyAll = payload.applyAll === true
+    || payload.all === true
+    || payload.targetIndex === 'all'
+    || (typeof payload.target === 'string' && payload.target.toLowerCase() === 'all')
+    || scope === 'all';
+  let rawIndex = payload.targetIndex;
+  if (rawIndex != null && !Number.isFinite(rawIndex)) {
+    const numeric = Number(rawIndex);
+    if (!Number.isNaN(numeric)) {
+      rawIndex = numeric;
+    }
+  }
+  if (targetInput && typeof targetInput.index !== 'undefined') {
+    rawIndex = targetInput.index;
+    if (rawIndex != null && !Number.isFinite(rawIndex)) {
+      const numericTarget = Number(rawIndex);
+      if (!Number.isNaN(numericTarget)) {
+        rawIndex = numericTarget;
+      }
+    }
+  }
+  if (targetType === 'self' && typeof uiSnapshot.curPlayerIndex === 'number') {
+    rawIndex = uiSnapshot.curPlayerIndex;
+  }
+  let selectedIndex = Number.isFinite(rawIndex) ? Math.trunc(rawIndex) : null;
+  if (applyAll || Number(rawIndex) === -1) {
+    selectedIndex = -1;
+  }
+  if (selectedIndex === null || Number.isNaN(selectedIndex)) {
+    if (targetType === 'ally') {
+      selectedIndex = 0;
+    } else if (typeof uiSnapshot.prevEnemyTarget === 'number') {
+      selectedIndex = uiSnapshot.prevEnemyTarget;
+    } else {
+      selectedIndex = 0;
+    }
+  }
+  let uiState = null;
+  const uiEnum = getBattleUIStateEnum();
+  if (uiEnum) {
+    if (targetType === 'ally' || targetType === 'self') {
+      uiState = selectedIndex === -1 ? uiEnum.SelectTargetPlayerAll : uiEnum.SelectTargetPlayer;
+    } else {
+      uiState = selectedIndex === -1 ? uiEnum.SelectTargetEnemyAll : uiEnum.SelectTargetEnemy;
+    }
+  }
+  return { selectedIndex, uiState, targetType };
+}
+
+function handleBattleCommand(payload = {}) {
+  const { state, ui } = ensureBattleContext();
+  const actionInput = payload.action || payload.command || payload.actionType;
+  const resolvedName = resolveBattleActionName(actionInput);
+  const actionType = resolveBattleActionType(actionInput);
+  if (typeof actionType !== 'number') {
+    throw new Error('[ai-gateway] battleCommand requires a valid action');
+  }
+  const explicitTarget =
+    payload.applyAll === true ||
+    typeof payload.targetIndex !== 'undefined' ||
+    !!payload.target ||
+    typeof payload.targetType === 'string';
+  const needsTarget = (resolvedName && TARGETED_ACTIONS.has(resolvedName)) || explicitTarget;
+  const updates = { actionType };
+  if (resolvedName && resolvedName in DEFAULT_TARGET_TYPES && !payload.targetType) {
+    payload.targetType = DEFAULT_TARGET_TYPES[resolvedName];
+  }
+  if (needsTarget) {
+    const { selectedIndex, uiState, targetType } = resolveBattleTarget(payload, ui, {
+      defaultType: DEFAULT_TARGET_TYPES[resolvedName] || 'enemy'
+    });
+    if (typeof selectedIndex === 'number' && !Number.isNaN(selectedIndex)) {
+      updates.selectedIndex = selectedIndex;
+      if (targetType === 'enemy' && selectedIndex >= 0) {
+        updates.prevEnemyTarget = selectedIndex;
+      }
+    }
+    if (uiState != null) {
+      updates.state = uiState;
+    }
+  }
+  if (Number.isFinite(payload.objectId)) {
+    updates.objectID = Math.trunc(payload.objectId);
+  } else if (Number.isFinite(payload.magicId)) {
+    updates.objectID = Math.trunc(payload.magicId);
+  } else if (Number.isFinite(payload.itemId)) {
+    updates.objectID = Math.trunc(payload.itemId);
+  } else if (needsTarget && resolvedName && (resolvedName === 'Magic' || resolvedName === 'UseItem' || resolvedName === 'ThrowItem')) {
+    throw new Error('[ai-gateway] battleCommand requires objectId/magicId/itemId for this action');
+  }
+  if (Number.isFinite(payload.curPlayerIndex)) {
+    updates.curPlayerIndex = Math.trunc(payload.curPlayerIndex);
+  }
+  const menuEnum = getBattleMenuStateEnum();
+  if (menuEnum && typeof menuEnum.Main === 'number') {
+    updates.menuState = menuEnum.Main;
+  }
+  if (typeof battleService.setUI !== 'function') {
+    throw new Error('[ai-gateway] battleService.setUI unavailable');
+  }
+  battleService.setUI(updates);
+  const shouldCommit = payload.commit !== false;
+  if (shouldCommit) {
+    if (typeof battleService.commitAction !== 'function') {
+      throw new Error('[ai-gateway] battle module is missing commitAction');
+    }
+    battleService.commitAction(!!payload.repeat);
+  }
+  const message = resolvedName ? `battleCommand:${resolvedName}` : 'battleCommand';
+  return normalizeResult(true, `${message}${shouldCommit ? ' committed' : ' staged'}`);
+}
 
 const STREAM_ALIASES = Object.freeze({
   'environment.viewport': 'viewport$',
@@ -191,6 +445,31 @@ export async function ensureAdaptersLoaded(adapterIds = []) {
   await Promise.all(ids.map((id) => loadAdapter(id)));
 }
 
+function normalizeResult(success, message, extra = {}) {
+  return Object.assign({ success: !!success, message }, extra);
+}
+
+function simulateKey(palKey) {
+  if (!palKey) {
+    throw new Error('[ai-gateway] invalid key');
+  }
+  if (!input || typeof input.fire !== 'function') {
+    throw new Error('[ai-gateway] input module unavailable');
+  }
+  if (typeof input.simulateKeyPress === 'function') {
+    input.simulateKeyPress(palKey, 160);
+    return;
+  }
+  input.fire('keydown', palKey);
+  if (typeof setTimeout === 'function') {
+    setTimeout(() => {
+      input.fire('keyup', palKey);
+    }, 100);
+  } else {
+    input.fire('keyup', palKey);
+  }
+}
+
 const ACTION_HANDLERS = {
   move: ({ direction }) => {
     if (typeof direction !== 'number') {
@@ -200,6 +479,7 @@ const ACTION_HANDLERS = {
       throw new Error('[ai-gateway] worldService.setPartyDirection unavailable');
     }
     worldService.setPartyDirection(direction);
+    return normalizeResult(true, `Facing direction ${direction}`);
   },
   interact: ({ eventId }) => {
     if (typeof scriptService !== 'object' || typeof scriptService.runTriggerScript !== 'function') {
@@ -207,12 +487,15 @@ const ACTION_HANDLERS = {
     }
     const targetEventId = Number.isFinite(eventId) ? eventId : 0xFFFF;
     scriptService.runTriggerScript(0, targetEventId);
+    return normalizeResult(true, `Triggered event ${targetEventId}`);
   },
   startBattle: ({ formationId }) => {
     if (!battleService || typeof battleService.startBattle !== 'function') {
       throw new Error('[ai-gateway] battleService.startBattle unavailable');
     }
-    battleService.startBattle(formationId);
+    const resolved = Number.isFinite(formationId) ? formationId : 0;
+    battleService.startBattle(resolved);
+    return normalizeResult(true, `startBattle formation=${resolved}`);
   },
   useItem: ({ itemId, targetIndex }) => {
     if (!worldService || typeof worldService.useInventoryItem !== 'function') {
@@ -222,12 +505,14 @@ const ACTION_HANDLERS = {
       throw new TypeError('[ai-gateway] useItem requires numeric itemId');
     }
     worldService.useInventoryItem(itemId, targetIndex);
+    return normalizeResult(true, `useItem ${itemId} -> ${targetIndex}`);
   },
   openMenu: ({ menu }) => {
     if (!scriptService || typeof scriptService.openMenu !== 'function') {
       throw new Error('[ai-gateway] scriptService.openMenu unavailable');
     }
     scriptService.openMenu(menu);
+    return normalizeResult(true, `openMenu ${menu || 'main'}`);
   },
   castMagic: ({ magicId, casterIndex, targetIndex }) => {
     if (!battleService || typeof battleService.castMagic !== 'function') {
@@ -237,6 +522,7 @@ const ACTION_HANDLERS = {
       throw new TypeError('[ai-gateway] castMagic requires numeric magicId');
     }
     battleService.castMagic({ magicId, casterIndex, targetIndex });
+    return normalizeResult(true, `castMagic ${magicId}`);
   },
   saveGame: ({ slot }) => {
     if (!resourceService || typeof resourceService.saveGame !== 'function') {
@@ -244,7 +530,50 @@ const ACTION_HANDLERS = {
     }
     const resolvedSlot = Number.isFinite(slot) ? slot : undefined;
     resourceService.saveGame(resolvedSlot);
-  }
+    return normalizeResult(true, `saveGame slot=${resolvedSlot ?? 'default'}`);
+  },
+  dialog: ({ action = 'advance', direction } = {}) => {
+    const Key = typeof globalThis !== 'undefined' ? globalThis.Key : null;
+    if (!Key) {
+      throw new Error('[ai-gateway] PAL Key map unavailable');
+    }
+    const dirMap = {
+      up: Key.Up,
+      north: Key.Up,
+      down: Key.Down,
+      south: Key.Down,
+      left: Key.Left,
+      west: Key.Left,
+      right: Key.Right,
+      east: Key.Right
+    };
+    if (direction) {
+      const resolvedDir = dirMap[String(direction).toLowerCase()];
+      if (!resolvedDir) {
+        throw new Error(`[ai-gateway] dialog direction '${direction}' unsupported`);
+      }
+      simulateKey(resolvedDir);
+    }
+    const normalizedAction = String(action || '').toLowerCase();
+    switch (normalizedAction) {
+      case 'advance':
+      case 'confirm':
+      case 'next':
+        simulateKey(Key.Search);
+        break;
+      case 'cancel':
+      case 'back':
+        simulateKey(Key.Menu);
+        break;
+      case 'none':
+      case 'noop':
+        break;
+      default:
+        throw new Error(`[ai-gateway] dialog action '${action}' unsupported`);
+    }
+    return normalizeResult(true, `dialog ${normalizedAction || 'advance'}`);
+  },
+  battleCommand: (payload) => handleBattleCommand(payload)
 };
 
 const actionCooldowns = new Map();
@@ -264,11 +593,19 @@ export function dispatch(action) {
     const last = actionCooldowns.get(type) || 0;
     const now = Date.now();
     if (now - last < cooldownMs) {
-      throw new Error(`[ai-gateway] action '${type}' throttled (${cooldownMs}ms)`);
+      return normalizeResult(false, `action '${type}' throttled (${cooldownMs}ms)`);
     }
     actionCooldowns.set(type, now);
   }
-  return handler(action.payload || {});
+  try {
+    const result = handler(payload);
+    if (result && typeof result === 'object' && 'success' in result) {
+      return result;
+    }
+    return normalizeResult(true, `action '${type}' executed`);
+  } catch (err) {
+    return normalizeResult(false, err && err.message ? err.message : String(err));
+  }
 }
 
 export default {

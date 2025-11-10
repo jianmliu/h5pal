@@ -1,7 +1,9 @@
 // 调色盘类
 import utils from './utils';
 
-console.trace('palette module load');
+import traceModuleLoad from './util-trace';
+
+traceModuleLoad('palette module load');
 
 /**
  * 调色盘对象

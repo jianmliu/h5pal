@@ -1,3 +1,4 @@
+import traceModuleLoad from './util-trace';
 /**
  * 处理浏览器键盘输入的模块
  * @mixes utils.Events
@@ -8,14 +9,14 @@ import utils from './utils';
 import config from './config';
 import worldService from '../../services/world-service.js';
 
-console.trace('input module load');
+traceModuleLoad('input module load');
 
 const root = (typeof global !== 'undefined' && global) ||
   (typeof window !== 'undefined' && window) ||
   (typeof self !== 'undefined' && self) ||
   {};
 
-const Key = root.Key || {
+export const Key = root.Key || {
   Menu: 1,
   Search: 2,
   Down: 4,
@@ -34,7 +35,7 @@ const Key = root.Key || {
   Force: 32768
 };
 
-const Direction = root.Direction || {
+export const Direction = root.Direction || {
   South: 0,
   West: 1,
   North: 2,
@@ -182,6 +183,21 @@ function releaseKey(palKey) {
   }
   input.fire('keyup', palKey);
 }
+
+input.simulateKeyPress = function(palKey, duration) {
+  if (!Number.isFinite(palKey)) {
+    return;
+  }
+  const holdDuration = Number.isFinite(duration) ? Math.max(16, duration) : 120;
+  pressKey(palKey);
+  if (typeof setTimeout === 'function') {
+    setTimeout(function() {
+      releaseKey(palKey);
+    }, holdDuration);
+  } else {
+    releaseKey(palKey);
+  }
+};
 
 function keyboardEventFilter(evt) {
   var processed = false;

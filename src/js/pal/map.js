@@ -1,3 +1,4 @@
+import traceModuleLoad from './util-trace';
 // 文件方式的访问Map
 // 依赖MKF
 import utils from './utils';
@@ -5,7 +6,7 @@ import MKF from './mkf';
 import Sprite from './sprite';
 //var yj_1 = require('./yj_1');
 
-console.trace('map module load');
+traceModuleLoad('map module load');
 
 /**
  * 地图对象

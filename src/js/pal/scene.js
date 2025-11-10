@@ -255,9 +255,10 @@ scene.updateParty = function() {
  *
  * @param  {Boolean} walking  whether the party is walking or not.
  */
-scene.updatePartyGestures = function(walking) {
+scene.updatePartyGestures = function(walking, options) {
   ensurePartyTrailSubscription();
   //log.trace('[Scene] updatePartyGestures ' + walking);
+  const preserveFrames = options && options.preserveFrames === true;
   var party = getCachedPartyState();
   var trail = getCachedTrailState();
   var walkFrames = getPlayerRoleField('walkFrames');
@@ -295,10 +296,12 @@ scene.updatePartyGestures = function(walking) {
     party[0].x = PAL_X(partyOffset);
     party[0].y = PAL_Y(partyOffset);
 
-    if (resolveWalkFrame(party[0].playerRole, 0) === 4) {
-      party[0].frame = partyDirection * 4 + scene.thisStepFrame;
-    } else {
-      party[0].frame = partyDirection * 3 + stepFrameLeader;
+    if (!preserveFrames) {
+      if (resolveWalkFrame(party[0].playerRole, 0) === 4) {
+        party[0].frame = partyDirection * 4 + scene.thisStepFrame;
+      } else {
+        party[0].frame = partyDirection * 3 + stepFrameLeader;
+      }
     }
 
     // Update the gestures and positions for other party members
@@ -328,10 +331,12 @@ scene.updatePartyGestures = function(walking) {
 
       // Update gesture for this party member
       var gestureTrail = trail[2] || baseTrail;
-      if (resolveWalkFrame(party[i].playerRole, 0) === 4) {
-        party[i].frame = gestureTrail.direction * 4 + scene.thisStepFrame;
-      } else {
-        party[i].frame = gestureTrail.direction * 3 + stepFrameLeader;
+      if (!preserveFrames) {
+        if (resolveWalkFrame(party[i].playerRole, 0) === 4) {
+          party[i].frame = gestureTrail.direction * 4 + scene.thisStepFrame;
+        } else {
+          party[i].frame = gestureTrail.direction * 3 + stepFrameLeader;
+        }
       }
     }
 
@@ -339,7 +344,9 @@ scene.updatePartyGestures = function(walking) {
     if (followerCount > 0 && party.length > maxPartyMemberIndex + 1){
       party[maxPartyMemberIndex + 1].x = followerTrail.x - PAL_X(viewport);
       party[maxPartyMemberIndex + 1].y = followerTrail.y - PAL_Y(viewport);
-      party[maxPartyMemberIndex + 1].frame = followerTrail.direction * 3 + stepFrameFollower;
+      if (!preserveFrames) {
+        party[maxPartyMemberIndex + 1].frame = followerTrail.direction * 3 + stepFrameFollower;
+      }
     }
   } else {
     // Player is not moved. Use the "standing" gesture instead of "walking" one.
@@ -347,7 +354,9 @@ scene.updatePartyGestures = function(walking) {
     if (i === 0) {
       i = 3;
     }
-    party[0].frame = partyDirection * i;
+    if (!preserveFrames) {
+      party[0].frame = partyDirection * i;
+    }
     party[0].x = PAL_X(partyOffset);
     party[0].y = PAL_Y(partyOffset);
 
@@ -358,7 +367,9 @@ scene.updatePartyGestures = function(walking) {
       if (f === 0) {
         f = 3;
       }
-      party[i].frame = idleTrail.direction * f;
+      if (!preserveFrames) {
+        party[i].frame = idleTrail.direction * f;
+      }
 
       var baseTrail = i === 1 ? firstTrailIdle : (trail[1] || leadTrail);
       party[i].x = baseTrail.x - PAL_X(viewport);
@@ -375,7 +386,9 @@ scene.updatePartyGestures = function(walking) {
 
     var idleFollowerTrail = trail[3] || idleTrail;
     if (followerCount > 0 && party.length > maxPartyMemberIndex + 1) {
-       party[maxPartyMemberIndex + 1].frame = idleFollowerTrail.direction * 3;
+       if (!preserveFrames) {
+         party[maxPartyMemberIndex + 1].frame = idleFollowerTrail.direction * 3;
+       }
        party[maxPartyMemberIndex + 1].x = idleFollowerTrail.x - PAL_X(viewport);
        party[maxPartyMemberIndex + 1].y = idleFollowerTrail.y - PAL_Y(viewport);
     }

@@ -1,3 +1,4 @@
+import traceModuleLoad from './util-trace';
 import worldService from '../../services/world-service.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
@@ -25,7 +26,7 @@ import {
   findPlayerMagicSlot as findPlayerMagicSlotValue,
   getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
 } from '../../services/player-state-adapter.js';
-console.trace('script_extras module load');
+traceModuleLoad('script_extras module load');
 
 var surface = null
 var abs = Math.abs;
