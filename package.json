@@ -38,6 +38,7 @@
     "export:storygraphs": "node --experimental-loader ./scripts/node-relative-loader.mjs scripts/export-storygraphs.mjs",
     "embeddings:storygraph": "STORY_EMBED_SOURCES=graph STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs",
     "embeddings:docs": "STORY_EMBED_SOURCES=docs STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs",
-    "embeddings:all": "STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs"
+    "embeddings:all": "STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs",
+    "export:npc-map": "node scripts/export-npc-map.mjs"
   }
 }

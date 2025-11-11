@@ -82,10 +82,21 @@ h5pal
 | `npm run export:sprites` | 解析 BALL/RGM/FBP 等 MKF，将精灵、背景导出到 `pal-assets/exported-sprites/`（包含配套 manifest）。 |
 | `npm run export:overviews` | 调用地图导出脚本生成全景图，默认写入 `pal-assets/exported-assets/map-overview/scene-<mapId>.png`，可用 `--maps`、`--zoom` 过滤。 |
 | `npm run export:storygraphs` | 在 Node 环境运行 StoryGraph 导出脚本，把所有场景的图写入 `pal-assets/exported-storygraphs/scene-*.json` 与 manifest。 |
+| `npm run export:npc-map` | 扫描 `pal-assets/exported-storygraphs` 中的场景，聚合 NPC 名称与事件 ID，输出 `pal-assets/npc-event-map.json`。 |
 | `npm run embeddings:storygraph` | 仅读取 StoryGraph JSON，并将嵌入结果输出到 `pal-assets/storygraph-embeddings.json`（AI 检索使用的主文件）。 |
 | `npm run embeddings:docs` | 仅针对 `../docs/` 下的攻略/对白等文本生成嵌入，写入 `pal-assets/storygraph-embeddings.json`。 |
 | `npm run embeddings:all` | StoryGraph + docs 双管齐下，同样输出 `pal-assets/storygraph-embeddings.json`。 |
 | `npm run test` / `npm run test:ci` | 运行 Vitest（CI 版本带 `--experimental-global-webcrypto` 以兼容管线环境）。 |
+
+### NPC 事件映射导出
+
+在页面载入游戏后打开浏览器控制台，执行 `npcMap.exportMap()` 即可遍历全部 `scene.events.objects`，根据触发脚本对白里的角色名生成 `name -> { sceneId, eventObjectId }` 映射，并自动下载 `npc-event-map.json`。若想在 CI/Node 环境批量导出，可运行 `npm run export:npc-map -- --output ../ultimate/pal-assets/npc-event-map.json`，默认读取 `pal-assets/exported-storygraphs/scene-*.json`。
+
+常用参数：
+
+- `npcMap.exportMap({ download: false })`：返回结果对象而不是触发下载。
+- `npcMap.exportMap({ sceneIds: [1, 2, 16] })`：仅扫描指定场景。
+- `npcMap.exportMap({ filename: 'li_family-npcs.json', maxDialoguesPerEvent: 3 })`：自定义文件名及每个事件附带的对白数量。
 
 ### 迷宫扩展视图（Phase A）
 

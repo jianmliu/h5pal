@@ -39,6 +39,25 @@ function extractSpeaker(text) {
   return null;
 }
 
+function stripSpeakerPrefix(text, speaker) {
+  if (!text || typeof text !== 'string') {
+    return '';
+  }
+  let normalized = text.trim();
+  if (!speaker) {
+    return normalized;
+  }
+  const separators = ['：', ':', '﹕'];
+  for (let i = 0; i < separators.length; i++) {
+    const prefix = `${speaker}${separators[i]}`;
+    if (normalized.startsWith(prefix)) {
+      normalized = normalized.slice(prefix.length).trim();
+      break;
+    }
+  }
+  return normalized;
+}
+
 function mapPartySnapshot() {
   if (!worldService || typeof worldService.getParty !== 'function') {
     return [];
@@ -169,7 +188,7 @@ async function ensureTextResources() {
     return textResourcesPromise;
   }
   textResourcesPromise = (async () => {
-    const [msgBuffer] = await resourceService.loadFiles('m.msg');
+    const msgBuffer = await resourceService.loadFiles('M.MSG');
     await resourceService.loadMKF('SSS');
     const sss = resourceService.getMKF('SSS');
     const offsetChunk = sss.readChunk(3);
@@ -214,6 +233,24 @@ async function decodeMessage(msgId) {
   return result.trim();
 }
 
+function normalizeOperands(entry) {
+  if (!entry) {
+    return [];
+  }
+  const operands = entry.operand;
+  if (Array.isArray(operands)) {
+    return operands;
+  }
+  if (operands && typeof operands.length === 'number') {
+    const result = [];
+    for (let i = 0; i < operands.length; i++) {
+      result.push(operands[i]);
+    }
+    return result;
+  }
+  return [];
+}
+
 async function collectScriptNarrative(scriptId, options = {}) {
   if (!Number.isFinite(scriptId) || scriptId <= 0) {
     return null;
@@ -235,7 +272,8 @@ async function collectScriptNarrative(scriptId, options = {}) {
     pointer: scriptId,
     depth: 0,
     path: `script-${scriptId}`,
-    stack: []
+    stack: [],
+    speaker: null
   };
 
   const extendPath = (frame, segment) => {
@@ -261,7 +299,8 @@ async function collectScriptNarrative(scriptId, options = {}) {
       pointer,
       depth: Number(frame.depth) || 0,
       path: frame.path || baseFrame.path,
-      stack: Array.isArray(frame.stack) ? [...frame.stack] : []
+      stack: Array.isArray(frame.stack) ? [...frame.stack] : [],
+      speaker: typeof frame.speaker === 'string' && frame.speaker.length ? frame.speaker : null
     });
   };
 
@@ -271,7 +310,7 @@ async function collectScriptNarrative(scriptId, options = {}) {
   let steps = 0;
   while (cursor < queue.length && steps < maxSteps) {
     const frame = queue[cursor++];
-    const visitKey = `${frame.pointer}:${frame.stack.join('>')}`;
+    const visitKey = `${frame.pointer}:${frame.stack.join('>')}:${frame.speaker || ''}`;
     if (visited.has(visitKey)) {
       continue;
     }
@@ -283,27 +322,40 @@ async function collectScriptNarrative(scriptId, options = {}) {
       continue;
     }
     const op = entry.operation >>> 0;
-    const operands = Array.isArray(entry.operand) ? entry.operand : [];
+    const operands = normalizeOperands(entry);
 
     switch (op) {
       case 0xFFFF: {
         const msgId = Number(operands[0]);
-        const text = await decodeMessage(msgId);
-        if (text) {
-          summary.dialogues.push({
-            msgId,
-            text,
-            speaker: extractSpeaker(text),
-            path: frame.path,
-            depth: frame.depth,
-            pointer: frame.pointer
+        const rawText = await decodeMessage(msgId);
+        const extractedSpeaker = extractSpeaker(rawText);
+        const normalizedText = stripSpeakerPrefix(rawText, extractedSpeaker);
+        const resolvedSpeaker = extractedSpeaker || frame.speaker || null;
+        const carrySpeaker = extractedSpeaker || frame.speaker || null;
+        if (!normalizedText) {
+          enqueue({
+            pointer: frame.pointer + 1,
+            depth: frame.depth + 1,
+            path: extendPath(frame, frame.pointer + 1),
+            stack: frame.stack,
+            speaker: carrySpeaker
           });
+          continue;
         }
+        summary.dialogues.push({
+          msgId,
+          text: normalizedText,
+          speaker: resolvedSpeaker,
+          path: frame.path,
+          depth: frame.depth,
+          pointer: frame.pointer
+        });
         enqueue({
           pointer: frame.pointer + 1,
           depth: frame.depth + 1,
           path: extendPath(frame, frame.pointer + 1),
-          stack: frame.stack
+          stack: frame.stack,
+          speaker: carrySpeaker
         });
         continue;
       }

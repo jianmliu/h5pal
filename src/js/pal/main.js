@@ -13,6 +13,7 @@ import modService from '../../services/mod-service.js';
 import worldService from '../../services/world-service.js';
 import { bootstrapAI } from '../../ai/ai-controller.js';
 import '../../tools/storygraph-export.js';
+import '../../tools/npc-map-export.js';
 import config from './config';
 import overviewController from './overview-controller';
 
