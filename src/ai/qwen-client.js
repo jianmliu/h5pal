@@ -1,5 +1,7 @@
 const DEFAULT_MODEL = 'qwen3:8b';
 const DEFAULT_ENDPOINT = 'http://localhost:11434/api/generate';
+const DEFAULT_EMBED_MODEL = 'nomic-embed-text';
+const DEFAULT_EMBED_ENDPOINT = 'http://localhost:11434/api/embeddings';
 
 function getFetchImpl() {
   if (typeof fetch === 'function') {
@@ -39,6 +41,38 @@ export async function runQwen({ prompt, model = DEFAULT_MODEL, endpoint = DEFAUL
   }
 }
 
+export async function runEmbedding({
+  text,
+  model = DEFAULT_EMBED_MODEL,
+  endpoint = DEFAULT_EMBED_ENDPOINT,
+  signal
+} = {}) {
+  if (!text || typeof text !== 'string') {
+    throw new TypeError('[qwen-client] embedding text must be a non-empty string');
+  }
+  const fetchImpl = getFetchImpl();
+  const body = {
+    model,
+    prompt: text
+  };
+  const response = await fetchImpl(endpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal
+  });
+  if (!response.ok) {
+    const textResp = await response.text().catch(() => response.statusText);
+    throw new Error(`[qwen-client] embedding request failed ${response.status}: ${textResp}`);
+  }
+  const payload = await response.json();
+  if (!payload || !Array.isArray(payload.embedding)) {
+    throw new Error('[qwen-client] embedding response missing vector');
+  }
+  return payload.embedding;
+}
+
 export default {
-  runQwen
+  runQwen,
+  runEmbedding
 };

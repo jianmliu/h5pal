@@ -7,6 +7,7 @@ const historySignal = reactiveContext.ensureSignal('dialog.history', []);
 const statusSignal = reactiveContext.ensureSignal('dialog.status', {
   active: false,
   awaitingInput: false,
+  needsAdvance: false,
   lastUpdated: null
 });
 const choiceSignal = reactiveContext.ensureSignal('dialog.choice', null);
@@ -100,10 +101,14 @@ function deriveSelectionLabel(choice, index, resolvedValue, explicitLabel) {
   return null;
 }
 
-function updateStatus(patch = {}) {
+function updateStatus(patch = {}, tag = '') {
   const previous = statusSignal.value || {};
-  statusSignal.value = Object.assign({}, previous, patch, { lastUpdated: now() });
-  return statusSignal.value;
+  const next = Object.assign({}, previous, patch, { lastUpdated: now() });
+  if (typeof console !== 'undefined' && typeof console.debug === 'function') {
+    console.debug('[dialog][status]', tag || 'update', next);
+  }
+  statusSignal.value = next;
+  return next;
 }
 
 function publishLine(payload = {}) {
@@ -115,6 +120,7 @@ function publishLine(payload = {}) {
   updateStatus({
     active: true,
     awaitingInput: payload.awaitingInput === true,
+    needsAdvance: true,
     position: entry.position ?? (metadata && metadata.position) ?? statusSignal.value?.position ?? null,
     lastMsgId: entry.msgId
   });
@@ -126,8 +132,9 @@ function clearDialog(reason = 'unknown') {
   updateStatus({
     active: false,
     awaitingInput: false,
+    needsAdvance: false,
     reason
-  });
+  }, 'clearDialog');
 }
 
 function setPendingLineMetadata(metadata) {
@@ -142,8 +149,9 @@ function setAwaitingInput(isAwaiting, context = {}) {
   updateStatus({
     awaitingInput: !!isAwaiting,
     active: isAwaiting ? true : statusSignal.value?.active,
+    needsAdvance: isAwaiting ? true : statusSignal.value?.needsAdvance,
     position: context.position ?? statusSignal.value?.position ?? null
-  });
+  }, isAwaiting ? 'awaiting:true' : 'awaiting:false');
 }
 
 function publishChoice(choice) {
@@ -163,7 +171,8 @@ function publishChoice(choice) {
   choiceSignal.value = payload;
   updateStatus({
     active: true,
-    awaitingInput: true
+    awaitingInput: true,
+    needsAdvance: true
   });
   return payload;
 }
@@ -190,7 +199,8 @@ function resolveChoice(result, options = {}) {
   });
   choiceSignal.value = resolved;
   updateStatus({
-    awaitingInput: false
+    awaitingInput: false,
+    needsAdvance: true
   });
   return resolved;
 }

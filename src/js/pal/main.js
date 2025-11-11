@@ -89,7 +89,8 @@ main.start = function() {
 
     yield game.init(surf);
 
-    const enableAI = typeof window !== 'undefined' && window.location.search.includes('ai=1');
+    const runtimeAiFlag = typeof window !== 'undefined' && window.location.search.includes('ai=1');
+    const enableAI = runtimeAiFlag && config.enableAIControl;
     if (enableAI) {
       bootstrapAI({ logStart: true }).catch((err) => {
         console.error('[main] Failed to bootstrap AI controller', err);

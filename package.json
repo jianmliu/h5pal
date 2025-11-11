@@ -10,7 +10,9 @@
     "gulp-rename": "^2.0.0",
     "gulp-sourcemaps": "^3.0.0",
     "gulp-stylus": "^2.7.0",
+    "iconv-lite": "^0.6.3",
     "jquery": "^3.7.1",
+    "mammoth": "^1.6.0",
     "requirejs": "^2.3.7",
     "rxjs": "^7.8.2"
   },
@@ -33,6 +35,9 @@
     "test:ci": "NODE_OPTIONS=--experimental-global-webcrypto vitest run",
     "export:sprites": "node scripts/export-sprites.cjs",
     "export:overviews": "node --experimental-loader ./scripts/node-relative-loader.mjs scripts/export-overviews.cjs",
-    "embeddings:storygraph": "node scripts/build-story-embeddings.mjs"
+    "export:storygraphs": "node --experimental-loader ./scripts/node-relative-loader.mjs scripts/export-storygraphs.mjs",
+    "embeddings:storygraph": "STORY_EMBED_SOURCES=graph STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs",
+    "embeddings:docs": "STORY_EMBED_SOURCES=docs STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs",
+    "embeddings:all": "STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs"
   }
 }

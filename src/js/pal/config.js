@@ -18,7 +18,11 @@ var defaults = {
   modAssetBaseUrl: './pal-assets/exported-assets/',
   modSpriteBaseUrl: './pal-assets/exported-sprites/',
   enableOverviewMode: false,
-  showEventObjectLabels: false
+  showEventObjectLabels: false,
+  enableAIControl: false,
+  embeddingSource: 'storygraph-embeddings.json',
+  embeddingModel: 'nomic-embed-text',
+  llmModel: null
 };
 
 var baseConfig = {};
@@ -38,6 +42,10 @@ baseConfig.modAssetBaseUrl = normalizeBase(baseConfig.modAssetBaseUrl || default
 baseConfig.modSpriteBaseUrl = normalizeBase(baseConfig.modSpriteBaseUrl || defaults.modSpriteBaseUrl);
 baseConfig.enableModAssets = baseConfig.enableModAssets !== false;
 baseConfig.enableOverviewMode = baseConfig.enableOverviewMode === true;
+baseConfig.enableAIControl = baseConfig.enableAIControl === true;
+baseConfig.embeddingSource = baseConfig.embeddingSource || defaults.embeddingSource;
+baseConfig.embeddingModel = baseConfig.embeddingModel || defaults.embeddingModel;
+baseConfig.llmModel = baseConfig.llmModel || defaults.llmModel;
 
 var audioConfigured = typeof baseConfig.audioBaseUrl === 'string' && baseConfig.audioBaseUrl.length > 0;
 if (audioConfigured || baseConfig.enableAudio) {

@@ -2,6 +2,8 @@ import aiGateway, { ensureAdaptersLoaded } from './ai-gateway.js';
 import { worldService } from '../services/index.js';
 import { ReplayRecorder } from './ai-replay.js';
 import { runQwen } from './qwen-client.js';
+import { retrieveKnowledge } from './knowledge-retriever.js';
+import config from '../js/pal/config.js';
 
 const DEFAULT_ADAPTERS = ['environment', 'partyTrail', 'sceneEvents', 'battleState', 'playerState', 'gameFlags', 'dialog'];
 const DEFAULT_LLM_MODEL = 'qwen3:8b';
@@ -41,6 +43,11 @@ export class AIController {
     this.choiceMemory = new Map();
     this.loggedChoiceIds = new Set();
     this.lastChoiceSummary = null;
+    this.embeddingModel = options.embeddingModel || config.embeddingModel || 'nomic-embed-text';
+    this.enableKnowledge = options.enableKnowledge !== false;
+    this.knowledgeTopK = options.knowledgeTopK || 3;
+    this.minKnowledgeScore = typeof options.minKnowledgeScore === 'number' ? options.minKnowledgeScore : 0.32;
+    this.lastKnowledgeEntries = [];
   }
 
   async start() {
@@ -301,6 +308,21 @@ export class AIController {
     if (!summary) {
       return null;
     }
+    const dialogState = summary.dialog && summary.dialog.status;
+    const latestLine = summary.dialog?.latest;
+    const recentDialogTs = latestLine && Number.isFinite(latestLine.timestamp) ? latestLine.timestamp : null;
+    const recentDialogActive = recentDialogTs && Date.now() - recentDialogTs < 1500;
+    if ((dialogState && (dialogState.awaitingInput || dialogState.active || dialogState.needsAdvance)) || recentDialogActive) {
+      const action = dialogState && dialogState.mode === 'choice' ? 'confirm' : 'advance';
+      return {
+        type: 'dialog',
+        payload: {
+          action,
+          cooldownMs: dialogState.cooldownMs ?? 200
+        }
+      };
+    }
+
     const dialogAction = this._decideDialog(summary);
     if (dialogAction) {
       return dialogAction;
@@ -513,8 +535,20 @@ export class AIController {
     if (!summary) {
       return null;
     }
+    const dialogStatus = summary.dialog?.status;
+    const latestLine = summary.dialog?.latest;
+    const recentDialogTs = latestLine && Number.isFinite(latestLine.timestamp) ? latestLine.timestamp : null;
+    const recentDialogActive = recentDialogTs && Date.now() - recentDialogTs < 1500;
+    if ((dialogStatus && (dialogStatus.awaitingInput || dialogStatus.needsAdvance || dialogStatus.active)) || recentDialogActive) {
+      return null;
+    }
     try {
-      const prompt = this._buildLLMPrompt(summary);
+      const knowledge = await this._retrieveKnowledge(summary);
+      const displayKnowledge = knowledge && knowledge.length ? [knowledge[0]] : [];
+      if (displayKnowledge.length) {
+        this._logLLM('knowledge', displayKnowledge);
+      }
+      const prompt = this._buildLLMPrompt(summary, displayKnowledge);
       this._logLLM('prompt', prompt);
       const raw = await runQwen({ prompt, model: this.llmModel });
       this._logLLM('response', raw);
@@ -587,7 +621,90 @@ export class AIController {
     console.info(`[ai-controller][llm] ${direction}`, payload);
   }
 
-  _buildLLMPrompt(summary) {
+  async _retrieveKnowledge(summary) {
+    if (!this.enableKnowledge) {
+      return [];
+    }
+    const sceneQuery = this._buildKnowledgeSceneQuery(summary);
+    const dialogQuery = this._buildKnowledgeDialogQuery(summary);
+    if (!sceneQuery && !dialogQuery) {
+      return [];
+    }
+    try {
+      const results = await retrieveKnowledge({
+        sceneQuery,
+        dialogQuery,
+        topK: this.knowledgeTopK,
+        minScore: this.minKnowledgeScore,
+        embeddingModel: this.embeddingModel
+      });
+      this.lastKnowledgeEntries = results;
+      return results;
+    } catch (err) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[ai-controller] knowledge retrieval failed', err);
+      }
+      return [];
+    }
+  }
+
+  _buildKnowledgeSceneQuery(summary) {
+    if (!summary) {
+      return '';
+    }
+    const pieces = [];
+    const sceneId = worldService && typeof worldService.getSceneId === 'function'
+      ? worldService.getSceneId()
+      : null;
+    if (sceneId != null) {
+      pieces.push(`场景编号：${sceneId}`);
+    }
+    const leader = (summary.party || [])[0];
+    if (leader) {
+      pieces.push(`主角坐标：(${leader.x || 0}, ${leader.y || 0}) 朝向 ${leader.direction || 0}`);
+    }
+    if (summary.dialog?.latest?.text) {
+      pieces.push(`最新对白：「${summary.dialog.latest.text}」`);
+    }
+    if (summary.isInBattle && summary.battle) {
+      pieces.push(`战斗信息：战场=${summary.battle.fieldId} 敌人数量=${(summary.battle.enemy || []).length}`);
+    }
+    const recentDialog = (summary.dialog?.history || []).slice(-2).map((entry) => entry.text).join(' | ');
+    if (recentDialog) {
+      pieces.push(`对白履历：${recentDialog}`);
+    }
+    const events = (summary.sceneEvents || []).slice(0, 5).map((entry) => entry && entry.state
+      ? `事件${entry.id} 精灵=${entry.state.spriteId} 位置=(${entry.state.x},${entry.state.y})`
+      : null).filter(Boolean);
+    if (events.length) {
+      pieces.push(`附近事件：${events.join('；')}`);
+    }
+    return pieces.join('\n').trim();
+  }
+
+  _buildKnowledgeDialogQuery(summary) {
+    if (!summary || !summary.dialog) {
+      return '';
+    }
+    const parts = [];
+    if (summary.dialog.latest?.text) {
+      parts.push(summary.dialog.latest.text);
+    }
+    const history = (summary.dialog.history || []).map((entry) => entry.text).filter(Boolean);
+    if (history.length) {
+      parts.push(...history.slice(-3));
+    }
+    if (summary.dialog.choice) {
+      const choice = summary.dialog.choice;
+      const options = Array.isArray(choice.options)
+        ? choice.options.map((opt) => opt.label || opt.text).filter(Boolean)
+        : [];
+      parts.push(`当前选项：${choice.type || choice.id || '未知'} -> ${options.join(' | ')}`);
+    }
+    return parts.join('\n').trim();
+  }
+
+  _buildLLMPrompt(summary, knowledge = []) {
     const leader = (summary.party || [])[0] || {};
     const events = (summary.sceneEvents || []).slice(0, 5).map((entry) => {
       if (!entry || !entry.state) {
@@ -614,6 +731,7 @@ export class AIController {
 
     const partyStats = (summary.playerStats || []).map((p, idx) => `P${idx} role=${p.roleId} hp=${p.hp}/${p.maxHp} mp=${p.mp}/${p.maxMp} status=${p.status}`).join('; ') || 'n/a';
     const flags = summary.flags || {};
+    const dialogStatus = summary.dialog?.status?.mode || 'idle';
     const dialogHistory = (summary.dialog?.history || []).slice(-3).map((entry) => {
       if (!entry || !entry.text) {
         return null;
@@ -626,51 +744,74 @@ export class AIController {
     const lastChoice = summary.dialog?.lastChoice
       ? `Last choice: ${summary.dialog.lastChoice.text} at ${new Date(summary.dialog.lastChoice.timestamp).toLocaleTimeString()}`
       : 'Last choice: n/a';
+    const knowledgeSection = Array.isArray(knowledge) && knowledge.length
+      ? knowledge.map((entry, idx) => {
+        const title = entry.metadata?.title || entry.metadata?.kind || entry.kind || entry.source || entry.id || `chunk-${idx + 1}`;
+        const text = entry.text && entry.text.length > 600 ? `${entry.text.slice(0, 600)}…` : entry.text || '';
+        const score = typeof entry.score === 'number' ? entry.score.toFixed(2) : 'n/a';
+        return `#${idx + 1} (${score}) ${title}\n${text}`;
+      }).join('\n\n')
+      : 'None';
+
+    const needsAdvance = summary.dialog?.status?.needsAdvance ? '是' : '否';
 
     return [
-      'You control the hero party in a retro RPG. Decide the next action.',
-      'Allowed actions and payloads (respond with JSON only):',
-      '- move -> {"direction": number} (0=N,1=E,2=S,3=W).',
-      '- interact -> {"eventId": number}.',
-      '- startBattle -> {"formationId": number}.',
-      '- useItem -> {"itemId": number, "targetIndex": number}.',
-      '- castMagic -> {"magicId": number, "casterIndex": number, "targetIndex": number}.',
-      '- battleCommand -> {"command":"attack|magic|defend|useItem|throwItem|flee","targetType":"enemy|ally","targetIndex":number,"applyAll":bool,"objectId":number?}.',
-      '- openMenu -> {"menu": string}.',
-      '- saveGame -> {"slot": number}.',
-      'Output STRICT JSON like {"action":"move","payload":{"direction":1,"cooldownMs":300}} with no explanation.',
+      '你正在操控《仙剑奇侠传》游戏的主角一行，请依据下列信息决定下一步行动。',
+      '阅读下方参考知识，先推导当前任务（如：端酒菜、寻找 NPC 等），再根据任务选择最合适的动作。严禁忽视对白阶段对白的推进。',
+      '仅允许以下动作，务必以 JSON 输出（示例 {"action":"move","payload":{"direction":1,"cooldownMs":300}}）：',
+      '- move → {"direction":数字}，0=北、1=东、2=南、3=西。',
+      '- interact → {"eventId":数字}，用于与事件交互。',
+      '- startBattle → {"formationId":数字}。',
+      '- useItem → {"itemId":数字,"targetIndex":数字}。',
+      '- castMagic → {"magicId":数字,"casterIndex":数字,"targetIndex":数字}。',
+      '- battleCommand → {"command":"attack|magic|defend|useItem|throwItem|flee","targetType":"enemy|ally","targetIndex":数字,"applyAll":布尔,"objectId":数字?}。',
+      '- openMenu → {"menu":字符串}。',
+      '- saveGame → {"slot":数字}。',
+      '- dialog → {"action":"advance|confirm|cancel|none","direction":可选方向,"cooldownMs":数字}。',
+      '- 若对白状态为 dialog/choice，必须先完成对白（使用 dialog 指令），否则禁止执行移动、战斗或其他操作，直到对白结束。',
+      '严禁添加解释或多余文字。',
       '',
-      `Tick: ${summary.ticks}`,
-      `Leader: (${leader.x || 0}, ${leader.y || 0}) facing ${leader.direction || 0}`,
-      `Party stats: ${partyStats}`,
-      `Flags: collect=${flags.collect} chaseRange=${flags.chaseRange} chaseCycles=${flags.chaseCycles} battleSpeed=${flags.battleSpeed}`,
-      `Viewport: ${summary.viewport}`,
-      `Followers: ${summary.followers}`,
-      'Nearby events:',
+      `时间轴 tick：${summary.ticks}`,
+      `主角位置：(${leader.x || 0}, ${leader.y || 0}) 朝向 ${leader.direction || 0}`,
+      `队伍状态：${partyStats}`,
+      `全局旗标：collect=${flags.collect} chaseRange=${flags.chaseRange} chaseCycles=${flags.chaseCycles} battleSpeed=${flags.battleSpeed}`,
+      `视窗偏移：${summary.viewport}`,
+      `随从数量：${summary.followers}`,
+      `对白状态：${dialogStatus}，需要继续对白：${needsAdvance}`,
+      '附近事件：',
       events,
-      battleSection,
-      'Recent dialog:',
+      `战斗信息：${battleSection}`,
+      '近期对白：',
       dialogHistory,
       pendingChoice,
-      lastChoice
+      lastChoice,
+      '参考知识：',
+      knowledgeSection
     ].join('\n');
   }
 }
 
 function resolveLLMPreference() {
+  const configuredModel = normalizeLLMModel(config && config.llmModel);
   if (typeof window === 'undefined') {
-    return { enabled: false, model: null };
+    return {
+      enabled: !!configuredModel,
+      model: configuredModel
+    };
   }
   try {
     const params = new URLSearchParams(window.location.search);
     const raw = params.get('llm');
-    const model = normalizeLLMModel(raw);
+    const model = normalizeLLMModel(raw) || configuredModel;
     return {
       enabled: !!model,
       model
     };
   } catch (err) {
-    return { enabled: false, model: null };
+    return {
+      enabled: !!configuredModel,
+      model: configuredModel
+    };
   }
 }
 

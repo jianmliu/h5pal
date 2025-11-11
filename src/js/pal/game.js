@@ -3,6 +3,7 @@ import ui from './ui';
 import uigame from './uigame';
 import input from './input';
 import play from './play';
+import dialogService from '../../services/dialog-service.js';
 import script from '../../services/script-service.js';
 import res from './res';
 import resourceService from '../../services/resource-service.js';
@@ -560,6 +561,10 @@ game.main = function*() {
   //var slot = 5;
   worldService.setCurrentSaveSlot(slot);
   yield game.initGameData(slot); // 加载游戏
+
+  if (slot === 0) {
+    dialogService.setAwaitingInput(true, { reason: 'intro' });
+  }
 
   while (true) {
     if (worldService.isGameStart()) {

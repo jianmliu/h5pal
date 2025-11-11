@@ -71,9 +71,21 @@ h5pal
 * 在`chrome://flags`里打开_“启用实验性JavaScript”_
 * 打开[http://localhost:8005/h5pal.html](http://localhost:8005/h5pal.html) 
 * 或直接打开 `dist/h5pal.html`（构建完成后），可整包部署至 `xianjian.github.com/ultimate/`
-  * 若使用 `rsync` 同步，可运行  
+* 若使用 `rsync` 同步，可运行  
     `rsync -a --exclude 'pal-assets/' dist/ ../ultimate/`（避免误删 `pal-assets/` 下的原始与导出资源）
 * Enjoy
+
+## 常用 npm 指令
+
+| 指令 | 功能 |
+| --- | --- |
+| `npm run export:sprites` | 解析 BALL/RGM/FBP 等 MKF，将精灵、背景导出到 `pal-assets/exported-sprites/`（包含配套 manifest）。 |
+| `npm run export:overviews` | 调用地图导出脚本生成全景图，默认写入 `pal-assets/exported-assets/map-overview/scene-<mapId>.png`，可用 `--maps`、`--zoom` 过滤。 |
+| `npm run export:storygraphs` | 在 Node 环境运行 StoryGraph 导出脚本，把所有场景的图写入 `pal-assets/exported-storygraphs/scene-*.json` 与 manifest。 |
+| `npm run embeddings:storygraph` | 仅读取 StoryGraph JSON，并将嵌入结果输出到 `pal-assets/storygraph-embeddings.json`（AI 检索使用的主文件）。 |
+| `npm run embeddings:docs` | 仅针对 `../docs/` 下的攻略/对白等文本生成嵌入，写入 `pal-assets/storygraph-embeddings.json`。 |
+| `npm run embeddings:all` | StoryGraph + docs 双管齐下，同样输出 `pal-assets/storygraph-embeddings.json`。 |
+| `npm run test` / `npm run test:ci` | 运行 Vitest（CI 版本带 `--experimental-global-webcrypto` 以兼容管线环境）。 |
 
 ### 迷宫扩展视图（Phase A）
 
