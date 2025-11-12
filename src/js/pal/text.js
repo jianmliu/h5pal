@@ -395,6 +395,7 @@ text.init = function*(surf, _ui) {
     }
 
     input.clear();
+    var waitingForRelease = true;
 
     while (true) {
       yield sleep(100);
@@ -407,6 +408,12 @@ text.init = function*(surf, _ui) {
         }
         palette[0xFE] = t;
         surface.setPalette(palette);
+      }
+      if (waitingForRelease) {
+        if (input.keyPress === 0) {
+          waitingForRelease = false;
+        }
+        continue;
       }
       if (input.keyPress !== 0) {
         break;
@@ -427,15 +434,15 @@ text.init = function*(surf, _ui) {
    * @param  {Uint8Array} buf
    * @return {Promise}
    */
-  ui.showDialogText = function*(buf) {
-    var len = buf.length;
-    log.trace('[TEXT] showDialogText (%d)', len);
+function* renderDialogBuffer(buf) {
+  var len = buf.length;
+  log.trace('[TEXT] showDialogText (%d)', len);
 
-    input.clear();
-    textLib.icon = 0;
-    dialogService.publishLine({
-      text: decodeDialogBuffer(buf),
-      position: textLib.dialogPosition,
+  input.clear();
+  textLib.icon = 0;
+  dialogService.publishLine({
+    text: decodeDialogBuffer(buf),
+    position: textLib.dialogPosition,
       line: textLib.currentDialogLine
     });
 
@@ -588,6 +595,52 @@ text.init = function*(surf, _ui) {
         textLib.posIcon = PAL_XY(x, y);
         textLib.currentDialogLine++;
       }
+    }
+  };
+
+  ui.showDialogText = function*(buf, options = {}) {
+    var scriptMetadata = dialogService.consumePendingMetadata();
+    var injectionContext = scriptMetadata && typeof scriptMetadata === 'object'
+      ? {
+        eventObjectId: Number.isFinite(scriptMetadata.eventObjectId) ? scriptMetadata.eventObjectId : null,
+        sceneId: Number.isFinite(scriptMetadata.sceneId) ? scriptMetadata.sceneId : null
+      }
+      : {
+        eventObjectId: null,
+        sceneId: null
+      };
+    var currentBuffer = buf;
+    var consumedInjectedLine = false;
+    if (!options.skipInjected) {
+      while (true) {
+        var injected = dialogService.consumeInjectedLine(currentBuffer, injectionContext);
+        if (!injected || !(injected.buffer instanceof Uint8Array)) {
+          break;
+        }
+        var previousPosition = textLib.dialogPosition;
+        if (Number.isFinite(injected.position)) {
+          textLib.dialogPosition = injected.position;
+        }
+        if (injected.metadata) {
+          dialogService.setPendingLineMetadata(injected.metadata);
+        }
+        yield* renderDialogBuffer(injected.buffer);
+        if (Number.isFinite(injected.position)) {
+          textLib.dialogPosition = previousPosition;
+        }
+        if (injected.skipOriginal) {
+          currentBuffer = null;
+          consumedInjectedLine = true;
+          break;
+        }
+        consumedInjectedLine = true;
+      }
+    }
+    if (currentBuffer && (!consumedInjectedLine || !options.onlyInjected)) {
+      if (scriptMetadata) {
+        dialogService.setPendingLineMetadata(scriptMetadata);
+      }
+      yield* renderDialogBuffer(currentBuffer);
     }
   };
 

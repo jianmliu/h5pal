@@ -4,6 +4,7 @@ import { ReplayRecorder } from './ai-replay.js';
 import { runQwen } from './qwen-client.js';
 import { retrieveKnowledge } from './knowledge-retriever.js';
 import config from '../js/pal/config.js';
+import npcRegistry from './npc-behaviours.js';
 
 const DEFAULT_ADAPTERS = ['environment', 'partyTrail', 'sceneEvents', 'battleState', 'playerState', 'gameFlags', 'dialog'];
 const DEFAULT_LLM_MODEL = 'qwen3:8b';
@@ -36,6 +37,12 @@ export class AIController {
     this.ticks = 0;
     this.llmModel = options.llmModel || llmPreference.model || DEFAULT_LLM_MODEL;
     this.useLLM = typeof options.useLLM === 'boolean' ? options.useLLM : llmPreference.enabled;
+    this.enablePlayerAutomation = typeof options.enablePlayerAutomation === 'boolean'
+      ? options.enablePlayerAutomation
+      : true;
+    this.enableNPCBehaviours = typeof options.enableNPCBehaviours === 'boolean'
+      ? options.enableNPCBehaviours
+      : (config && config.enableNPCBehaviours) === true;
     this._tickPending = false;
     this.lastActionResult = null;
     this.logLLM = typeof options.logLLM === 'boolean' ? options.logLLM : true;
@@ -176,11 +183,14 @@ export class AIController {
     (async () => {
       this.ticks += 1;
       const snapshot = this._summarise();
+      if (this.enableNPCBehaviours) {
+        this._dispatchNpcActions(npcRegistry.plan(snapshot));
+      }
       let action = null;
       if (this.useLLM) {
         action = await this._decideWithLLM(snapshot);
       }
-      if (!action) {
+      if (!action && this.enablePlayerAutomation) {
         action = this._decideRuleBased(snapshot);
       }
       if (!action) {
@@ -223,6 +233,7 @@ export class AIController {
     const summary = {
       timestamp: Date.now(),
       ticks: this.ticks,
+      sceneId: this._getSceneId(),
       viewport: this._getViewportValue(),
       party: this.state.get('partyTrail.party') || [],
       followers: this.state.get('partyTrail.followers') || 0,
@@ -234,6 +245,9 @@ export class AIController {
       isInBattle: inBattleFlag,
       lastActionResult: this.lastActionResult
     };
+    if (this.enableNPCBehaviours) {
+      npcRegistry.observe(summary);
+    }
     return summary;
   }
 
@@ -250,6 +264,16 @@ export class AIController {
     return null;
   }
 
+  _getSceneId() {
+    if (this.state.has('environment.sceneId')) {
+      return this.state.get('environment.sceneId');
+    }
+    if (worldService && typeof worldService.getSceneId === 'function') {
+      return worldService.getSceneId();
+    }
+    return null;
+  }
+
   _getPlayerStats() {
     const roles = this.state.get('playerState.roles');
     if (Array.isArray(roles)) {
@@ -302,6 +326,28 @@ export class AIController {
       chaseCycles: this.state.get('gameFlags.chaseSpeedCycles') || 0,
       battleSpeed: this.state.get('gameFlags.battleSpeed') || 0
     };
+  }
+
+  _dispatchNpcActions(actions) {
+    if (!Array.isArray(actions) || !actions.length) {
+      return;
+    }
+    actions.forEach((action) => {
+      if (!action) {
+        return;
+      }
+      try {
+        const result = aiGateway.dispatch(action);
+        this.recorder.recordAction({ ...action, result, source: 'npc' });
+        if (!result?.success && typeof console !== 'undefined' && console.warn) {
+          console.warn('[ai-controller] npc action failed', result?.message);
+        }
+      } catch (err) {
+        if (typeof console !== 'undefined' && console.error) {
+          console.error('[ai-controller] npc dispatch failed', err);
+        }
+      }
+    });
   }
 
   _decideRuleBased(summary) {
@@ -837,6 +883,9 @@ export async function bootstrapAI(options = {}) {
   }
   controllerInstance = new AIController(options);
   await controllerInstance.start();
+  if (typeof window !== 'undefined') {
+    window.AI_CONTROLLER = controllerInstance;
+  }
   if (options.logStart && typeof console !== 'undefined' && console.info) {
     console.info('[ai-controller] AI bootstrap complete');
   }
@@ -849,6 +898,9 @@ export function shutdownAI() {
   }
   controllerInstance.stop();
   controllerInstance = null;
+  if (typeof window !== 'undefined' && window.AI_CONTROLLER) {
+    delete window.AI_CONTROLLER;
+  }
 }
 
 function parseLLMResponse(rawText) {

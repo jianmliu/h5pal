@@ -20,6 +20,7 @@ var defaults = {
   enableOverviewMode: false,
   showEventObjectLabels: false,
   enableAIControl: false,
+  enableNPCBehaviours: false,
   embeddingSource: 'storygraph-embeddings.json',
   embeddingModel: 'nomic-embed-text',
   llmModel: null
@@ -43,6 +44,7 @@ baseConfig.modSpriteBaseUrl = normalizeBase(baseConfig.modSpriteBaseUrl || defau
 baseConfig.enableModAssets = baseConfig.enableModAssets !== false;
 baseConfig.enableOverviewMode = baseConfig.enableOverviewMode === true;
 baseConfig.enableAIControl = baseConfig.enableAIControl === true;
+baseConfig.enableNPCBehaviours = baseConfig.enableNPCBehaviours === true;
 baseConfig.embeddingSource = baseConfig.embeddingSource || defaults.embeddingSource;
 baseConfig.embeddingModel = baseConfig.embeddingModel || defaults.embeddingModel;
 baseConfig.llmModel = baseConfig.llmModel || defaults.llmModel;

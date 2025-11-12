@@ -11,6 +11,29 @@ const statusSignal = reactiveContext.ensureSignal('dialog.status', {
   lastUpdated: null
 });
 const choiceSignal = reactiveContext.ensureSignal('dialog.choice', null);
+const injectedLines = [];
+
+function clearInjectedLines(predicate) {
+  if (!injectedLines.length) {
+    return;
+  }
+  if (typeof predicate !== 'function') {
+    injectedLines.length = 0;
+    return;
+  }
+  for (let i = injectedLines.length - 1; i >= 0; i--) {
+    const entry = injectedLines[i];
+    let shouldRemove = false;
+    try {
+      shouldRemove = predicate(entry) === true;
+    } catch (err) {
+      shouldRemove = true;
+    }
+    if (shouldRemove) {
+      injectedLines.splice(i, 1);
+    }
+  }
+}
 
 let pendingMetadata = null;
 let choiceCounter = 0;
@@ -135,6 +158,9 @@ function clearDialog(reason = 'unknown') {
     needsAdvance: false,
     reason
   }, 'clearDialog');
+  if (reason === 'endDialog' || reason === 'clearDialog') {
+    clearInjectedLines();
+  }
 }
 
 function setPendingLineMetadata(metadata) {
@@ -205,6 +231,49 @@ function resolveChoice(result, options = {}) {
   return resolved;
 }
 
+function queueInjectedLine(entry = {}) {
+  const buffer = entry.buffer instanceof Uint8Array ? entry.buffer : null;
+  if (!buffer || buffer.length === 0) {
+    return;
+  }
+  const ttlMs = Number.isFinite(entry.ttlMs) ? Math.max(0, entry.ttlMs) : 0;
+  injectedLines.push({
+    buffer,
+    metadata: entry.metadata || null,
+    position: Number.isFinite(entry.position) ? entry.position : null,
+    skipOriginal: entry.skipOriginal === true,
+    targetEventId: Number.isFinite(entry.targetEventId) ? entry.targetEventId : null,
+    targetSceneId: Number.isFinite(entry.targetSceneId) ? entry.targetSceneId : null,
+    expiresAt: ttlMs > 0 ? Date.now() + ttlMs : null
+  });
+}
+
+function consumeInjectedLine(defaultBuffer, context = {}) {
+  const now = Date.now();
+  for (let i = 0; i < injectedLines.length; i++) {
+    const entry = injectedLines[i];
+    if (entry.expiresAt && entry.expiresAt < now) {
+      injectedLines.splice(i, 1);
+      i--;
+      continue;
+    }
+    if (entry.targetEventId && context.eventObjectId && entry.targetEventId !== context.eventObjectId) {
+      continue;
+    }
+    if (entry.targetSceneId && context.sceneId && entry.targetSceneId !== context.sceneId) {
+      continue;
+    }
+    injectedLines.splice(i, 1);
+    if (!(entry.buffer instanceof Uint8Array)) {
+      return null;
+    }
+    return Object.assign({}, entry, {
+      originalBuffer: defaultBuffer
+    });
+  }
+  return null;
+}
+
 const dialogService = {
   publishLine,
   clearDialog,
@@ -213,6 +282,9 @@ const dialogService = {
   setAwaitingInput,
   publishChoice,
   resolveChoice,
+  queueInjectedLine,
+  consumeInjectedLine,
+  clearInjectedLines,
   getCurrentLine() {
     return currentLineSignal.value;
   },

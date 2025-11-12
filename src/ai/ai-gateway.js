@@ -2,7 +2,8 @@ import services, {
   worldService,
   scriptService,
   battleService,
-  resourceService
+  resourceService,
+  dialogService
 } from '../services/index.js';
 import input, { Key } from '../js/pal/input.js';
 
@@ -572,6 +573,30 @@ const ACTION_HANDLERS = {
         throw new Error(`[ai-gateway] dialog action '${action}' unsupported`);
     }
     return normalizeResult(true, `dialog ${normalizedAction || 'advance'}`);
+  },
+  npcSpeak: ({ text, speaker, npcId, eventId, msgId, awaitingInput, metadata } = {}) => {
+    if (!dialogService || typeof dialogService.publishLine !== 'function') {
+      throw new Error('[ai-gateway] dialogService unavailable');
+    }
+    const resolvedText = typeof text === 'string' ? text.trim() : '';
+    if (!resolvedText) {
+      throw new Error('[ai-gateway] npcSpeak requires text');
+    }
+    const meta = metadata && typeof metadata === 'object' ? Object.assign({}, metadata) : {};
+    if (npcId && typeof meta.npcId === 'undefined') {
+      meta.npcId = npcId;
+    }
+    dialogService.publishLine({
+      text: resolvedText,
+      source: speaker || npcId || 'NPC',
+      msgId: Number.isFinite(msgId) ? msgId : null,
+      eventObjectId: Number.isFinite(eventId) ? eventId : null,
+      metadata: Object.keys(meta).length ? meta : undefined
+    });
+    if (awaitingInput) {
+      dialogService.setAwaitingInput(true, { reason: 'npcSpeak' });
+    }
+    return normalizeResult(true, `npcSpeak ${speaker || npcId || 'npc'}`);
   },
   battleCommand: (payload) => handleBattleCommand(payload)
 };

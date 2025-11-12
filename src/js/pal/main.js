@@ -90,10 +90,30 @@ main.start = function() {
 
     yield game.init(surf);
 
-    const runtimeAiFlag = typeof window !== 'undefined' && window.location.search.includes('ai=1');
-    const enableAI = runtimeAiFlag && config.enableAIControl;
-    if (enableAI) {
-      bootstrapAI({ logStart: true }).catch((err) => {
+    let runtimeAiFlag = false;
+    let npcOverride = null;
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        runtimeAiFlag = params.get('ai') === '1' || window.location.search.includes('ai=1');
+        if (params.has('npc')) {
+          npcOverride = params.get('npc') === '1';
+        }
+      } catch (err) {
+        runtimeAiFlag = typeof window !== 'undefined' && window.location.search.includes('ai=1');
+      }
+    }
+    const enablePlayerAI = runtimeAiFlag && config.enableAIControl;
+    const enableNPCBehaviours = typeof npcOverride === 'boolean'
+      ? npcOverride
+      : config.enableNPCBehaviours;
+    if (enablePlayerAI || enableNPCBehaviours) {
+      bootstrapAI({
+        logStart: true,
+        useLLM: enablePlayerAI,
+        enablePlayerAutomation: enablePlayerAI,
+        enableNPCBehaviours
+      }).catch((err) => {
         console.error('[main] Failed to bootstrap AI controller', err);
       });
     }
