@@ -18,8 +18,10 @@ if (!fs.existsSync(overviewReadme)) {
   );
 }
 
-const SPRITE_MKFS = ['BALL.MKF', 'RGM.MKF'];
+const SPRITE_MKFS = ['BALL.MKF', 'RGM.MKF', 'MGO.MKF', 'ABC.MKF', 'FIRE.MKF'];
 const BACKGROUND_MKF = 'FBP.MKF';
+const STORYGRAPH_DIR = path.join(ASSET_DIR, 'exported-storygraphs');
+const MGO_MANIFEST_PATH = path.join(SPRITE_OUTPUT_DIR, 'ball-sprite-manifest.json');
 const AUDIO_MKFS = [
   { file: 'VOC.MKF', extension: 'voc', folder: 'audio/voc', manifestKey: 'voc' },
   { file: 'MIDI.MKF', extension: 'mid', folder: 'audio/midi', manifestKey: 'midi' },
@@ -44,6 +46,78 @@ const WORD = value => {
   }
   return v;
 };
+
+const SPEAKER_SEPARATORS = ['：', ':', '﹕'];
+const MAX_SPRITE_DIM = 1024;
+const MAX_SPRITE_PIXELS = MAX_SPRITE_DIM * MAX_SPRITE_DIM;
+
+function parseCliOptions(argv) {
+  const result = {
+    spriteIds: new Set(),
+    spriteSource: 'rgm'
+  };
+  for (let i = 2; i < argv.length; i++) {
+    const token = argv[i];
+    if (!token || !token.startsWith('--')) {
+      continue;
+    }
+    const trimmed = token.slice(2);
+    const [keyRaw, valueRaw] = trimmed.includes('=') ? trimmed.split(/=(.+)/, 2) : [trimmed, undefined];
+    const key = keyRaw.toLowerCase();
+    const nextValue = typeof valueRaw === 'undefined' ? argv[i + 1] : valueRaw;
+    const needsValue = typeof valueRaw === 'undefined';
+    const assignValue = () => {
+      if (needsValue && (!nextValue || nextValue.startsWith('--'))) {
+        return null;
+      }
+      if (needsValue) {
+        i += 1;
+      }
+      return valueRaw ?? nextValue;
+    };
+    const handleSpriteList = () => {
+      const value = assignValue();
+      if (!value && value !== 0) {
+        return;
+      }
+      String(value)
+        .split(',')
+        .map((part) => Number(part.trim()))
+        .filter((num) => Number.isFinite(num) && num >= 0)
+        .forEach((num) => result.spriteIds.add(num));
+    };
+    switch (key) {
+      case 'sprite':
+      case 'spriteid':
+      case 'sprite-id':
+      case 'sprites':
+      case 'spriteids':
+      case 'sprite-ids':
+        handleSpriteList();
+        break;
+      case 'sprite-source':
+      case 'sprite-archive':
+      case 'sprite-type': {
+        const value = assignValue();
+        if (typeof value === 'string') {
+          const normalized = value.trim().toLowerCase();
+          if (normalized === 'rgm' || normalized === 'mgo' || normalized === 'ball') {
+            result.spriteSource = normalized;
+          }
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  if (!result.spriteIds.size) {
+    result.spriteIds = null;
+  }
+  return result;
+}
+
+const CLI_OPTIONS = parseCliOptions(process.argv);
 
 function loadFileBytes(filePath) {
   const buf = fs.readFileSync(filePath);
@@ -139,7 +213,13 @@ function decodeRLEFrame(frameOffset, chunk) {
   if (!width || !height) {
     return null;
   }
+  if (width > MAX_SPRITE_DIM || height > MAX_SPRITE_DIM) {
+    throw new Error(`sprite frame exceeds limits (${width}x${height})`);
+  }
   const totalPixels = width * height;
+  if (totalPixels > MAX_SPRITE_PIXELS) {
+    throw new Error(`sprite frame too large (${totalPixels} pixels)`);
+  }
   const pixels = new Uint8Array(totalPixels);
   let dst = 0;
   let src = 4;
@@ -181,9 +261,265 @@ function writePNG(image, target) {
   png.pack().pipe(fs.createWriteStream(target));
 }
 
+function normalizeSpeaker(rawSpeaker, text) {
+  if (typeof rawSpeaker === 'string') {
+    const trimmed = rawSpeaker.trim();
+    if (trimmed) {
+      return trimmed;
+    }
+  }
+  if (typeof text === 'string') {
+    const normalized = text.trim();
+    for (let i = 0; i < SPEAKER_SEPARATORS.length; i++) {
+      const idx = normalized.indexOf(SPEAKER_SEPARATORS[i]);
+      if (idx > 0 && idx < 12) {
+        return normalized.slice(0, idx).trim();
+      }
+    }
+  }
+  return null;
+}
+
+function extractEventIdFromNode(nodeId) {
+  if (typeof nodeId !== 'string') {
+    return null;
+  }
+  const match = nodeId.match(/event-(\d+)/i);
+  return match ? Number(match[1]) : null;
+}
+
+function loadStorygraphEntries() {
+  if (!fs.existsSync(STORYGRAPH_DIR)) {
+    return [];
+  }
+  const manifestPath = path.join(STORYGRAPH_DIR, 'manifest.json');
+  if (fs.existsSync(manifestPath)) {
+    try {
+      const manifestContent = fs.readFileSync(manifestPath, 'utf-8');
+      const manifestJson = JSON.parse(manifestContent);
+      if (Array.isArray(manifestJson?.entries) && manifestJson.entries.length) {
+        return manifestJson.entries
+          .map((entry) => ({
+            sceneId: Number(entry.sceneId),
+            filename: entry.filename || (entry.sceneId ? `scene-${entry.sceneId}.json` : null)
+          }))
+          .filter((entry) => Number.isFinite(entry.sceneId) && entry.sceneId > 0 && entry.filename);
+      }
+    } catch (err) {
+      console.warn(`[sprite-manifest] failed to read storygraph manifest: ${err.message}`);
+    }
+  }
+  return fs
+    .readdirSync(STORYGRAPH_DIR)
+    .filter((name) => /^scene-\d+\.json$/i.test(name))
+    .map((filename) => {
+      const match = filename.match(/scene-(\d+)\.json/i);
+      return {
+        sceneId: match ? Number(match[1]) : null,
+        filename
+      };
+    })
+    .filter((entry) => Number.isFinite(entry.sceneId) && entry.sceneId > 0);
+}
+
+function collectSpeakers(dialogues) {
+  if (!Array.isArray(dialogues)) {
+    return [];
+  }
+  const seen = new Set();
+  const speakers = [];
+  dialogues.forEach((dialogue) => {
+    if (!dialogue) {
+      return;
+    }
+    const name = normalizeSpeaker(dialogue.speaker, dialogue.text);
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      speakers.push(name);
+    }
+  });
+  return speakers;
+}
+
+function readGameDataPayload() {
+  const gameDataPath = path.join(ASSET_DIR, 'game-data.json');
+  if (!fs.existsSync(gameDataPath)) {
+    return null;
+  }
+  try {
+    return JSON.parse(fs.readFileSync(gameDataPath, 'utf-8'));
+  } catch (err) {
+    console.warn(`[sprite-manifest] failed to parse game-data.json: ${err.message}`);
+    return null;
+  }
+}
+
+function decodeBase64Entry(entry) {
+  if (!entry || entry.encoding !== 'base64' || typeof entry.data !== 'string') {
+    return null;
+  }
+  if (typeof Buffer === 'undefined') {
+    return null;
+  }
+  return Buffer.from(entry.data, 'base64');
+}
+
+function loadEventObjectTable() {
+  const payload = readGameDataPayload();
+  const bytes = payload?.files?.SSS?.eventObject ? decodeBase64Entry(payload.files.SSS.eventObject) : null;
+  if (!bytes || !bytes.length) {
+    return null;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset ?? 0, bytes.byteLength);
+  const recordSize = 32;
+  const count = Math.floor(bytes.length / recordSize);
+  if (!count) {
+    return null;
+  }
+  const table = new Array(count + 1);
+  for (let i = 0; i < count; i++) {
+    const base = i * recordSize;
+    const readUint16 = (offset) => view.getUint16(base + offset, true);
+    const readInt16 = (offset) => view.getInt16(base + offset, true);
+    table[i + 1] = {
+      id: i + 1,
+      vanishTime: readInt16(0),
+      x: readUint16(2),
+      y: readUint16(4),
+      layer: readInt16(6),
+      triggerScript: readUint16(8),
+      autoScript: readUint16(10),
+      state: readInt16(12),
+      triggerMode: readUint16(14),
+      spriteId: readUint16(16),
+      spriteFrames: readUint16(18),
+      direction: readUint16(20),
+      currentFrame: readUint16(22)
+    };
+  }
+  return table;
+}
+
+function buildMgoSpriteManifest() {
+  if (!fs.existsSync(STORYGRAPH_DIR)) {
+    console.warn('[sprite-manifest] skipped: exported storygraphs not found');
+    return;
+  }
+  const sceneEntries = loadStorygraphEntries();
+  if (!sceneEntries.length) {
+    console.warn('[sprite-manifest] skipped: no scene JSON files detected');
+    return;
+  }
+
+  const eventObjects = loadEventObjectTable();
+  if (!eventObjects || eventObjects.length <= 1) {
+    console.warn('[sprite-manifest] skipped: event object table missing');
+    return;
+  }
+
+  const spriteMap = new Map();
+  sceneEntries.forEach((entry) => {
+    const filePath = path.join(STORYGRAPH_DIR, entry.filename);
+    let graph;
+    try {
+      graph = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    } catch (err) {
+      console.warn(`[sprite-manifest] skipped ${entry.filename}: ${err.message}`);
+      return;
+    }
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    nodes.forEach((node) => {
+      if (!node || node.type !== 'event') {
+        return;
+      }
+      const metadata = node.metadata || {};
+      const context = metadata.context || {};
+      const eventContext = context.event || {};
+      const eventId = eventContext.id ?? extractEventIdFromNode(node.id);
+      if (!Number.isFinite(eventId) || eventId <= 0) {
+        return;
+      }
+      const eventEntry = eventObjects[eventId];
+      const spriteId = eventEntry && Number.isFinite(eventEntry.spriteId) ? eventEntry.spriteId : null;
+      if (!Number.isFinite(spriteId) || spriteId <= 0) {
+        return;
+      }
+      const speakerNames = collectSpeakers(metadata.narrative?.dialogues);
+      if (!speakerNames.length && typeof metadata.label === 'string') {
+        const fallback = metadata.label.trim();
+        if (fallback) {
+          speakerNames.push(fallback);
+        }
+      }
+      const key = spriteId;
+      const entryKey = `${key}`;
+      if (!spriteMap.has(entryKey)) {
+        spriteMap.set(entryKey, {
+          spriteId: key,
+          npcNames: new Set(),
+          occurrences: 0,
+          samples: []
+        });
+      }
+      const record = spriteMap.get(entryKey);
+      speakerNames.forEach((name) => record.npcNames.add(name));
+      record.occurrences += 1;
+      if (record.samples.length < 5) {
+        record.samples.push({
+          sceneId: graph.sceneId ?? entry.sceneId ?? null,
+          eventId: eventContext.id ?? extractEventIdFromNode(node.id),
+          nodeId: node.id ?? null,
+          speaker: speakerNames[0] || null,
+          position: eventEntry ? { x: eventEntry.x, y: eventEntry.y } : null,
+          triggerScript: eventEntry ? eventEntry.triggerScript : null,
+          autoScript: eventEntry ? eventEntry.autoScript : null
+        });
+      }
+    });
+  });
+
+  if (!spriteMap.size) {
+      console.warn('[sprite-manifest] skipped: no sprite references found in storygraphs');
+      return;
+    }
+
+  const entries = Array.from(spriteMap.values())
+    .sort((a, b) => a.spriteId - b.spriteId)
+    .map((entry) => ({
+      spriteId: entry.spriteId,
+      chunkFile: 'MGO.MKF',
+      npcNames: Array.from(entry.npcNames).sort((a, b) =>
+        a.localeCompare(b, 'zh-Hans', { sensitivity: 'base' })
+      ),
+      occurrences: entry.occurrences,
+      samples: entry.samples
+    }));
+
+  const payload = {
+    version: 1,
+    generatedAt: new Date().toISOString(),
+    source: toPublicPath(STORYGRAPH_DIR),
+    spriteArchive: 'MGO.MKF',
+    totalEntries: entries.length,
+    entries
+  };
+  fs.writeFileSync(MGO_MANIFEST_PATH, JSON.stringify(payload, null, 2));
+  console.info(`[sprite-manifest] wrote ${entries.length} entries -> ${toPublicPath(MGO_MANIFEST_PATH)}`);
+}
+
 function exportSprites(palette) {
   fs.mkdirSync(SPRITE_OUTPUT_DIR, { recursive: true });
-  for (const filename of SPRITE_MKFS) {
+  const spriteFilter = CLI_OPTIONS.spriteIds;
+  const hasSpriteFilter = spriteFilter && spriteFilter.size;
+  const spriteSource = (CLI_OPTIONS.spriteSource || 'rgm').toLowerCase();
+  const selectedArchive = spriteSource === 'mgo'
+    ? 'MGO.MKF'
+    : spriteSource === 'ball'
+      ? 'BALL.MKF'
+      : 'RGM.MKF';
+  const spriteFiles = hasSpriteFilter ? [selectedArchive] : SPRITE_MKFS;
+  const exportedSpriteChunks = new Set();
+  for (const filename of spriteFiles) {
     const sourcePath = path.join(ASSET_DIR, filename);
     if (!fs.existsSync(sourcePath)) {
       console.warn(`[export] missing ${filename}`);
@@ -193,10 +529,14 @@ function exportSprites(palette) {
     const folder = path.join(SPRITE_OUTPUT_DIR, path.basename(filename, '.MKF').toLowerCase());
     fs.mkdirSync(folder, { recursive: true });
     for (let i = 0; i < mkf.chunkCount; i++) {
+      if (hasSpriteFilter && filename.toUpperCase() === selectedArchive && !spriteFilter.has(i)) {
+        continue;
+      }
       const chunk = mkf.getChunk(i);
       if (!chunk) continue;
+      const data = maybeDecompress(chunk);
       try {
-        const frames = decodeSprite(chunk);
+        const frames = decodeSprite(data);
         frames.forEach((frame, idx) => {
           if (!frame) {
             return;
@@ -217,9 +557,18 @@ function exportSprites(palette) {
           );
           writePNG({ width: frame.width, height: frame.height, data: rgba }, targetPath);
         });
+        if (hasSpriteFilter && filename.toUpperCase() === selectedArchive) {
+          exportedSpriteChunks.add(i);
+        }
       } catch (err) {
         console.warn(`[export] skipped ${filename} chunk ${i}: ${err.message}`);
       }
+    }
+  }
+  if (hasSpriteFilter) {
+    const missing = Array.from(spriteFilter).filter((id) => !exportedSpriteChunks.has(id));
+    if (missing.length) {
+      console.warn(`[export] spriteId(s) not found in ${selectedArchive}: ${missing.join(', ')}`);
     }
   }
 }
@@ -510,6 +859,7 @@ function main() {
   exportSprites(palette);
   exportBackgrounds(palette);
   exportAudioAssets();
+  buildMgoSpriteManifest();
   manifest.generatedAt = new Date().toISOString();
   const manifestPath = path.join(ASSET_OUTPUT_DIR, 'mod-manifest.json');
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
