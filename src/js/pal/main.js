@@ -57,6 +57,17 @@ main.start = function() {
     global.services = services;
     services.world.init();
 
+    if (config.enableMud && services.mud && typeof services.mud.start === 'function') {
+      try {
+        yield services.mud.start();
+        if (typeof window !== 'undefined') {
+          window.mudBridge = services.mud;
+        }
+      } catch (err) {
+        console.warn('[main] Mud bridge failed to start', err);
+      }
+    }
+
     Palette.init(Files.PAT);
 
     if (overviewController && typeof overviewController.setEnabled === 'function') {

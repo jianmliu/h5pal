@@ -1,4 +1,5 @@
 import reactiveContext from '../state/reactive-context.js';
+import { writeDialogState } from '../state/ecs-context.js';
 
 const MAX_HISTORY = 20;
 
@@ -131,6 +132,13 @@ function updateStatus(patch = {}, tag = '') {
     console.debug('[dialog][status]', tag || 'update', next);
   }
   statusSignal.value = next;
+  writeDialogState({
+    active: !!next.active,
+    awaitingInput: !!next.awaitingInput,
+    needsAdvance: !!next.needsAdvance,
+    lastMsgId: Number.isFinite(next.lastMsgId) ? next.lastMsgId : null,
+    position: Number.isFinite(next.position) ? next.position : null
+  });
   return next;
 }
 

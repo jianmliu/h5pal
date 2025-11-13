@@ -86,7 +86,22 @@ h5pal
 | `npm run embeddings:storygraph` | 仅读取 StoryGraph JSON，并将嵌入结果输出到 `pal-assets/storygraph-embeddings.json`（AI 检索使用的主文件）。 |
 | `npm run embeddings:docs` | 仅针对 `../docs/` 下的攻略/对白等文本生成嵌入，写入 `pal-assets/storygraph-embeddings.json`。 |
 | `npm run embeddings:all` | StoryGraph + docs 双管齐下，同样输出 `pal-assets/storygraph-embeddings.json`。 |
+| `npm run mud:deploy` | 在指定的 Foundry/MUD 合约目录中执行 `mud deploy`（默认 profile 为 `local`，可通过 `MUD_PROFILE` 或命令行参数覆盖）。 |
+| `npm run mud:codegen` | 在同一目录执行 `mud codegen`，若设置 `MUD_WORLD_ABI` 会自动把生成的 ABI 拷贝到 `src/mud/worldAbi.json`。 |
 | `npm run test` / `npm run test:ci` | 运行 Vitest（CI 版本带 `--experimental-global-webcrypto` 以兼容管线环境）。 |
+
+### MUD 本地链脚本
+
+1. **启动链（Point #1）**：在另一个终端运行 `anvil --port 8545 --host 127.0.0.1`（或任意 Foundry 节点）。
+2. **部署合约（Point #2）**：在本仓库执行 `npm run mud:deploy`，脚本会自动切换到 `MUD_CONTRACTS_DIR` 并运行 `mud deploy --profile=<profile>`。默认 profile 为 `local`，可通过 `MUD_PROFILE=redstone npm run mud:deploy` 或附加 `--profile=xxx` 参数覆盖。
+3. **生成 ABI（Point #3）**：运行 `npm run mud:codegen`，若在环境变量中提供 `MUD_WORLD_ABI`（绝对路径或相对 `MUD_CONTRACTS_DIR` 的路径），脚本会把文件复制到 `src/mud/worldAbi.json`，供浏览器侧 `mud-client` 使用。
+
+常用环境变量：
+
+- `MUD_CONTRACTS_DIR`: 指向 Foundry/MUD 合约目录。若未设置，脚本会尝试 `onchain/`、`onchain/contracts/`，最后回退到 `../mud/templates/vanilla/packages/contracts`。
+- `MUD_PROFILE`: 传递给 `mud deploy` 的 profile 名，默认 `local`。
+- `MUD_WORLD_ABI`: `mud codegen` 产物（例如 `out/world/world.abi.json`）的路径；设置后会覆盖 `src/mud/worldAbi.json`。
+- 其他 `mud` CLI 所需的变量（如 `.env` 中的 `PRIVATE_KEY`、`RPC_URL`）可照常放在合约目录下。
 
 ### NPC 事件映射导出
 

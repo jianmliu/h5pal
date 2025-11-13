@@ -3,8 +3,14 @@
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
+    "@latticexyz/cli": "^2.2.23",
+    "@latticexyz/dev-tools": "^2.2.23",
+    "@latticexyz/recs": "^2.2.23",
+    "@latticexyz/store-sync": "^2.2.23",
+    "@latticexyz/utils": "^2.2.23",
     "co": "^4.6.0",
     "del": "^6.1.1",
+    "dotenv": "^17.2.3",
     "gulp": "^4.0.2",
     "gulp-connect": "^5.7.0",
     "gulp-rename": "^2.0.0",
@@ -14,13 +20,17 @@
     "jquery": "^3.7.1",
     "mammoth": "^1.6.0",
     "requirejs": "^2.3.7",
-    "rxjs": "^7.8.2"
+    "rxjs": "^7.8.2",
+    "viem": "^2.39.0"
   },
   "devDependencies": {
     "@babel/core": "^7.26.10",
     "@babel/parser": "^7.28.5",
     "@babel/plugin-transform-modules-amd": "^7.26.0",
     "@babel/preset-env": "^7.26.9",
+    "@rollup/plugin-commonjs": "^26.0.3",
+    "@rollup/plugin-json": "^6.1.0",
+    "@rollup/plugin-node-resolve": "^15.2.3",
     "fancy-log": "^2.0.0",
     "gulp-babel": "^8.0.0",
     "jsdom": "^24.0.0",
@@ -39,6 +49,8 @@
     "embeddings:storygraph": "STORY_EMBED_SOURCES=graph STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs",
     "embeddings:docs": "STORY_EMBED_SOURCES=docs STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs",
     "embeddings:all": "STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs",
-    "export:npc-map": "node scripts/export-npc-map.mjs"
+    "export:npc-map": "node scripts/export-npc-map.mjs",
+    "mud:deploy": "node scripts/mud-deploy.mjs",
+    "mud:codegen": "node scripts/mud-codegen.mjs"
   }
 }

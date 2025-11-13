@@ -7,6 +7,7 @@ import stylus from 'gulp-stylus';
 import rename from 'gulp-rename';
 import path from 'path';
 import { exportGameData } from './scripts/export-game-data.mjs';
+import buildMudVendor from './scripts/build-mud-vendor.mjs';
 
 const JS = ['src/**/*.js'];
 
@@ -88,6 +89,7 @@ async function buildLib() {
   });
 
   await Promise.all([...tasks, customRxjs]);
+  await buildMudVendor();
 }
 
 // Serve files

@@ -18,6 +18,7 @@ import saveDataAdapter from './save-data-adapter.js';
 import sceneDataAdapter from './scene-data-adapter.js';
 import sceneStateAdapter from './scene-state-adapter.js';
 import dialogAdapter from './dialog-adapter.js';
+import mudBridge from './mud-bridge.js';
 
 /**
  * @typedef {'world'|'party'|'player'|'battle'|'scene'|'game'|'script'|'storage'} AdapterCategory
@@ -249,6 +250,7 @@ const services = {
   battle: battleService,
   world: worldService,
   dialog: dialogService,
+  mud: mudBridge,
   adapters: {
     environment: environmentAdapter,
     partyTrail: partyTrailAdapter,
@@ -275,6 +277,7 @@ export {
   battleService,
   worldService,
   dialogService,
+  mudBridge,
   environmentAdapter,
   partyTrailAdapter,
   playerStateAdapter,

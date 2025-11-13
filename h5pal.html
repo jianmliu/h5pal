@@ -26,6 +26,7 @@
     <div class="control-panel">
       <input type="button" id="save" value="SAVE" />
       <input type="button" id="load" value="LOAD" />
+      <input type="button" id="connect-wallet" value="Connect Wallet" style="display:none" />
       <label for="invincible">无敌<input type="checkbox" id="invincible" /></label>
       <label for="superAttack">超强攻击力<input type="checkbox" id="superAttack" /></label>
       <label for="superDefense">超强防御力<input type="checkbox" id="superDefense" /></label>
@@ -36,7 +37,14 @@
     assetBaseUrl: "./pal-assets/",
     audioBaseUrl: "./pal-assets/MP3/",
     enableAudio: true,
-    enableOverviewMode: true
+    enableOverviewMode: true,
+    enableMud: true,
+    mud: {
+      rpcUrl: "http://127.0.0.1:8545",
+      wsUrl: "ws://127.0.0.1:8545",
+      worldAddress: "0x012a31a98Ea3D2611E281f88899b6b52eACF00c0",
+      privateKey: null
+    }
   };
   </script>
   <script src="lib/requirejs/require.js"></script>
@@ -50,7 +58,10 @@
       'sprintf': '../lib/sprintf/sprintf.min',
       'co': '../lib/co/co',
       'rxjs': '../lib/rxjs/rxjs.umd.min',
-      'rxjs/operators': '../lib/rxjs/rxjs.operators'
+      'rxjs/operators': '../lib/rxjs/rxjs.operators',
+      '@latticexyz/recs': '../lib/mud/pal-mud-recs',
+      '@latticexyz/store-sync': '../lib/mud/pal-mud-store-sync',
+      'viem': '../lib/mud/pal-mud-viem'
     },
     shim: {
       'semantic-ui': {
@@ -108,8 +119,28 @@
       checkbox.change(function(e) {
         var me = $(this);
         window[variable] = me.checked();
-      })
-    })
+      });
+    });
+
+    var mudEnabled = window.PAL_CONFIG && window.PAL_CONFIG.enableMud === true;
+    if (mudEnabled) {
+      $('#connect-wallet').show();
+      $('#connect-wallet').click(async function () {
+        if (!window.mudBridge || typeof window.mudBridge.connectWallet !== 'function') {
+          alert('Mud services not ready');
+          return;
+        }
+        try {
+          $(this).prop('disabled', true).val('Connecting...');
+          await window.mudBridge.connectWallet();
+          $(this).val('Wallet Connected');
+        } catch (err) {
+          console.error('[UI] wallet connect failed', err);
+          alert('Failed to connect wallet. Please check MetaMask or injected provider.');
+          $(this).prop('disabled', false).val('Connect Wallet');
+        }
+      });
+    }
   });
   </script>
 </body>

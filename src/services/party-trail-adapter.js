@@ -10,6 +10,7 @@ import {
 import stateService from './state-service.js';
 import worldService from './world-service.js';
 import { createAdapterObservable } from './adapter-helpers.js';
+import { writePlayerState } from '../state/ecs-context.js';
 
 let initialised = false;
 let partyCache = [];
@@ -146,6 +147,7 @@ function notify(event) {
       }
     }
   });
+  syncPlayerStateToEcs();
 }
 
 function ensureInitialised() {
@@ -184,6 +186,7 @@ function ensureInitialised() {
   ];
 
   initialised = true;
+  syncPlayerStateToEcs();
 }
 
 function subscribe(listener) {
@@ -204,6 +207,34 @@ function subscribe(listener) {
       teardown();
     }
   };
+}
+
+function syncPlayerStateToEcs() {
+  try {
+    const leader = Array.isArray(partyCache) && partyCache.length > 0 ? partyCache[0] : null;
+    const headTrail = Array.isArray(trailCache) && trailCache.length > 0 ? trailCache[0] : null;
+    const fallbackX = headTrail && Number.isFinite(headTrail.x) ? headTrail.x : null;
+    const fallbackY = headTrail && Number.isFinite(headTrail.y) ? headTrail.y : null;
+    const patch = {
+      x: leader && Number.isFinite(leader.x) ? leader.x : fallbackX,
+      y: leader && Number.isFinite(leader.y) ? leader.y : fallbackY,
+      direction: headTrail && Number.isFinite(headTrail.direction) ? headTrail.direction : null,
+      followers: Number.isFinite(followerCountCache) ? followerCountCache : null
+    };
+    if (
+      patch.x == null &&
+      patch.y == null &&
+      patch.direction == null &&
+      patch.followers == null
+    ) {
+      return;
+    }
+    writePlayerState(patch);
+  } catch (err) {
+    if (typeof console !== 'undefined' && console.warn) {
+      console.warn('[partyTrailAdapter] failed to sync ECS player snapshot', err);
+    }
+  }
 }
 
 function createEventStream(extractor) {
