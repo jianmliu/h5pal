@@ -70,6 +70,7 @@ export default function renderEventObjectSystem(context = {}) {
   const sceneEventObjects = Array.isArray(context.sceneEventObjects)
     ? context.sceneEventObjects
     : null;
+  const includeOffscreen = context.includeOffscreen === true;
   if (sceneEventObjects && sceneEventObjects.length > 0) {
     for (let idx = 0; idx < sceneEventObjects.length; idx++) {
       const entry = sceneEventObjects[idx];
@@ -107,17 +108,23 @@ export default function renderEventObjectSystem(context = {}) {
       }
 
       const screenX = SHORT(eventObj.x) - viewportX - ~~(frame.width / 2);
-      if (screenX >= 320 || screenX < -frame.width) {
+      if (!includeOffscreen && (screenX >= 320 || screenX < -frame.width)) {
         continue;
       }
       const layerValue = eventObj.layer || 0;
       const screenY = SHORT(eventObj.y) - viewportY + layerValue * 8 + 9;
       const vy = screenY - frame.height - layerValue * 8 + 2;
-      if (vy >= 200 || vy < -frame.height) {
+      if (!includeOffscreen && (vy >= 200 || vy < -frame.height)) {
         continue;
       }
 
-      const spriteEntry = addToDrawList(frame, screenX, screenY, layerValue * 8 + 2);
+      const layerOffset = layerValue * 8 + 2;
+      const spriteEntry = addToDrawList(frame, screenX, screenY, layerOffset, {
+        kind: 'npc',
+        worldX: screenX + viewportX,
+        worldY: screenY - frame.height - layerOffset + viewportY,
+        frame
+      });
       if (spriteEntry && calcCoverTiles) {
         calcCoverTiles(spriteEntry);
       }
@@ -170,17 +177,23 @@ export default function renderEventObjectSystem(context = {}) {
     }
 
     const screenX = SHORT(eventObj.x) - viewportX - ~~(frame.width / 2);
-    if (screenX >= 320 || screenX < -frame.width) {
+    if (!includeOffscreen && (screenX >= 320 || screenX < -frame.width)) {
       continue;
     }
     const layerValue = eventObj.layer || 0;
     const screenY = SHORT(eventObj.y) - viewportY + layerValue * 8 + 9;
     const vy = screenY - frame.height - layerValue * 8 + 2;
-    if (vy >= 200 || vy < -frame.height) {
+    if (!includeOffscreen && (vy >= 200 || vy < -frame.height)) {
       continue;
     }
 
-    const spriteEntry = addToDrawList(frame, screenX, screenY, layerValue * 8 + 2);
+    const layerOffset = layerValue * 8 + 2;
+    const spriteEntry = addToDrawList(frame, screenX, screenY, layerOffset, {
+      kind: 'npc',
+      worldX: screenX + viewportX,
+      worldY: screenY - frame.height - layerOffset + viewportY,
+      frame
+    });
     if (spriteEntry && calcCoverTiles) {
       calcCoverTiles(spriteEntry);
     }

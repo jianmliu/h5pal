@@ -20,6 +20,7 @@ var ui = {
   destDict: {}
 };
 var surface = null;
+var panoramaHandler = null;
 
 /**
  * 初始化
@@ -34,6 +35,10 @@ ui.init = function*(surf, services) {
   const resource = (ui.services && ui.services.resource) || resourceService;
   surface = surf;
   ui.surface = surf;
+  panoramaHandler = ui.services && ui.services.panorama;
+  if (surface && panoramaHandler) {
+    surface.panoramaHandler = panoramaHandler;
+  }
   yield resource.loadMKF('DATA', 'FBP');
   var data = ui.data = resource.getMKF('DATA');
   ui.sprite = new Sprite(data.readChunk(ui.CHUNKNUM_SPRITEUI));

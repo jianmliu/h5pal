@@ -14,6 +14,9 @@ import battleService from '../../services/battle-service.js';
 import sceneEventAdapter from '../../services/scene-event-adapter.js';
 import createBattleSystemManager from '../../services/battle-systems.js';
 import worldService from '../../services/world-service.js';
+import panoramaRenderer from './panorama-renderer';
+import panoramaDialog from './panorama-dialog';
+import config from './config';
 import gameDataAdapter from '../../services/game-data-adapter.js';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import { getSceneEventObjectRange as getSceneEventObjectRangeSnapshot } from '../../services/scene-data-adapter.js';
@@ -45,6 +48,18 @@ import {
 
 log.trace('battle module load');
 
+const localOverlayState = { depth: 0, shouldRestore: false };
+
+function getOverlayState() {
+  if (typeof window !== 'undefined') {
+    if (!window.__PAL_CLASSIC_OVERLAY__) {
+      window.__PAL_CLASSIC_OVERLAY__ = { depth: 0, shouldRestore: false };
+    }
+    return window.__PAL_CLASSIC_OVERLAY__;
+  }
+  return localOverlayState;
+}
+
 var battle = {
   playerPos: [
     [[240, 170]],                         // one player
@@ -54,6 +69,111 @@ var battle = {
 };
 
 battleService.bindModule(battle);
+
+function setLegacyCanvasVisible(show = true) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  const canvas = document.getElementById('cvs');
+  if (canvas) {
+    canvas.style.display = show ? '' : 'none';
+  }
+}
+
+function disablePanoramaOverlay() {
+  const guard = getOverlayState();
+  if (guard.depth === 0) {
+    const overlayMode = typeof window !== 'undefined' ? window.PAL_OVERLAY_ACTIVE : null;
+    const rendererActive = panoramaRenderer && typeof panoramaRenderer.getMode === 'function'
+      ? panoramaRenderer.getMode() === 'panorama'
+      : false;
+    guard.shouldRestore = config.enablePanorama && (overlayMode === 'panorama' || rendererActive);
+    if (guard.shouldRestore) {
+      if (typeof window !== 'undefined' && typeof window.PAL_SET_OVERLAY_MODE === 'function') {
+        window.PAL_SET_OVERLAY_MODE('off');
+      } else if (rendererActive && typeof panoramaRenderer.setMode === 'function') {
+        panoramaRenderer.setMode('off');
+      }
+      if (panoramaDialog && typeof panoramaDialog.setMode === 'function') {
+        panoramaDialog.setMode('off');
+      }
+    }
+    setLegacyCanvasVisible(true);
+    refreshClassicSurface();
+  }
+  guard.depth += 1;
+  return { shouldRestore: guard.shouldRestore };
+}
+
+function restorePanoramaOverlay(state) {
+  const guard = getOverlayState();
+  guard.depth = Math.max(0, guard.depth - 1);
+  if (!state || !state.shouldRestore || guard.depth > 0) {
+    return;
+  }
+  if (typeof window !== 'undefined' && typeof window.PAL_SET_OVERLAY_MODE === 'function') {
+    window.PAL_SET_OVERLAY_MODE('panorama');
+  } else {
+    if (panoramaRenderer && typeof panoramaRenderer.setMode === 'function') {
+      panoramaRenderer.setMode('panorama');
+    }
+    if (panoramaDialog && typeof panoramaDialog.setMode === 'function') {
+      panoramaDialog.setMode('panorama');
+    }
+  }
+  guard.shouldRestore = false;
+  setLegacyCanvasVisible(false);
+}
+
+function runGenerator(iterator) {
+  if (!iterator || typeof iterator.next !== 'function') {
+    return Promise.resolve(iterator);
+  }
+  return new Promise((resolve, reject) => {
+    function step(nextFn, arg) {
+      let result;
+      try {
+        result = nextFn.call(iterator, arg);
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      if (!result || result.done) {
+        resolve(result && result.value);
+        return;
+      }
+      Promise.resolve(result.value).then(
+        (value) => step(iterator.next, value),
+        (err) => step(iterator.throw, err)
+      );
+    }
+    step(iterator.next, undefined);
+  });
+}
+
+function refreshClassicSurface() {
+  if (!scene || typeof scene.makeScene !== 'function') {
+    return;
+  }
+  try {
+    const iterator = scene.makeScene();
+    if (!iterator || typeof iterator.next !== 'function') {
+      return;
+    }
+    runGenerator(iterator)
+      .then(() => {
+        const targetSurface = scene.surface || surface;
+        if (targetSurface && typeof targetSurface.updateScreen === 'function') {
+          targetSurface.updateScreen(null);
+        }
+      })
+      .catch((err) => {
+        console.warn('[battle] refreshClassicSurface failed', err);
+      });
+  } catch (err) {
+    console.warn('[battle] refreshClassicSurface threw', err);
+  }
+}
 
 function BATTLE() {
   const state = battleService.getState && battleService.getState();
@@ -1348,6 +1468,7 @@ battle.start = function*(enemyTeam, isBoss) {
   }
 
   worldService.setInBattle(true);
+  const overlayToken = disablePanoramaOverlay();
   if (overviewController && typeof overviewController.setSuspended === 'function') {
     overviewController.setSuspended(true);
   }
@@ -1417,6 +1538,7 @@ battle.start = function*(enemyTeam, isBoss) {
   }
 
   worldService.setInBattle(false);
+  restorePanoramaOverlay(overlayToken);
   if (overviewController && typeof overviewController.setSuspended === 'function') {
     overviewController.setSuspended(false);
   }

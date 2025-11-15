@@ -14,17 +14,44 @@ var SPRITENUM_SPLASH_TITLE = 0x47;
 var SPRITENUM_SPLASH_CRANE = 0x49;
 var NUM_RIX_TITLE          = 0x5;
 
+function getOverlayPreference() {
+  if (typeof window !== 'undefined' && typeof window.PAL_OVERLAY_PREFERENCE === 'string') {
+    return window.PAL_OVERLAY_PREFERENCE;
+  }
+  return 'off';
+}
+
+function setOverlayMode(mode) {
+  if (typeof window !== 'undefined' && typeof window.PAL_SET_OVERLAY_MODE === 'function') {
+    window.PAL_SET_OVERLAY_MODE(mode);
+  }
+}
+
+function withOverlaySuspended(generatorFn) {
+  return function* overlayWrapper(surface) {
+    const preferred = getOverlayPreference();
+    setOverlayMode('off');
+    try {
+      return yield generatorFn.call(this, surface);
+    } finally {
+      if (preferred && preferred !== 'off') {
+        setOverlayMode(preferred);
+      }
+    }
+  };
+}
+
 var welcome = {};
 
-welcome.trademarkScreen = function*(surface) {
+welcome.trademarkScreen = withOverlaySuspended(function*(surface) {
   var palette = Palette.get(3).day;
   surface.setPalette(palette);
   yield rng.play(6, 0, 1000, 25);
   yield sleep(1000);
   yield surface.fadeOut(1);
-};
+});
 
-welcome.splashScreen = function*(surface) {
+welcome.splashScreen = withOverlaySuspended(function*(surface) {
   yield resourceService.loadMKF('FBP', 'PAT', 'MGO');
   var fbp = resourceService.getMKF('FBP');
   var pat = resourceService.getMKF('PAT');
@@ -170,6 +197,6 @@ welcome.splashScreen = function*(surface) {
   titleSprite = null;
   titleBitmap = null;
   craneSprite = null;
-};
+});
 
 export default welcome;

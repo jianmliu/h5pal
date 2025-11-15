@@ -113,13 +113,13 @@ h5pal
 - `npcMap.exportMap({ sceneIds: [1, 2, 16] })`：仅扫描指定场景。
 - `npcMap.exportMap({ filename: 'li_family-npcs.json', maxDialoguesPerEvent: 3 })`：自定义文件名及每个事件附带的对白数量。
 
-### 迷宫扩展视图（Phase A）
+### 迷宫扩展视图 / Panorama 模式
 
-1. 在 `pal-assets/exported-assets/map-overview/` 下放置场景截图（例如 `scene-123.png` 或 `123.png`），尺寸建议 640×400。
-2. 在 `PAL_CONFIG` 中加入 `enableOverviewMode: true`，或运行后在控制台执行 `PAL_OVERVIEW.toggle()`。
-3. 没有对应截图的场景会自动退回原始模式，兼容旧版本。
-4. 可使用 `npm run export:overviews -- --maps=1,2,3 --zoom=1` 批量生成（默认输出到 `pal-assets/exported-assets/map-overview/scene-<mapId>.png`，并自动为这些地图对应的场景 ID 复制一份 `scene-<sceneId>.png`；`--maps` 留空则导出全部 MAP chunk）。
-5. Phase B（实验性）：启用后界面会自动在 640×400 画面背后展示该 PNG，并在中央镂空 + 提示当前视口位置。
+1. 使用 `PAL_CONFIG.mapOverlayMode` 控制显示方式：`'off'`（默认）、`'gps'`（右下角迷你图，等价于旧 `enableOverviewMode`）、`'panorama'`（以整块遮罩显示完整迷宫，适合 MMO 观察视角）。运行中也可以在控制台调用 `PAL_OVERVIEW.setMode('panorama')` 等命令动态切换。
+2. 在 `pal-assets/exported-assets/map-overview/` 下放置场景截图（例如 `scene-123.png` 或 `123.png`）。`npm run export:overviews -- --zoom=2` 会读取 MAP/GOP 并输出高分辨率全景 PNG，同时生成 `map-overview-manifest.json` 供运行时定位。
+3. Panorama 模式现在会调用运行时渲染器，将整张地图绘制到独立画布（实验中，仅底图，后续会叠加 NPC/玩家）；迷你 GPS 模式仍使用 220×220 的角落浮层。
+4. 没有覆盖的场景会自动隐藏该层，回退到原始渲染，因此不需要一次性导出全部。
+5. 提示：导出的 `scene-<mapId>.png` 会在 manifest 中一对多映射到所有引用该 MAP 的场景；如需自定义截图，可手动替换文件并更新 manifest。
 
 # 其他
 

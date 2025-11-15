@@ -10,6 +10,7 @@ import input from './input';
 import music from './music';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';
+import scene from './scene';
 import scriptObjectAdapter from '../../services/script-object-adapter.js';
 import gameDataAdapter from '../../services/game-data-adapter.js';
 import {
@@ -35,6 +36,126 @@ import { statusSignals } from '../../state/slices/status-matrices.js';
 import { audioResourceSignals } from '../../state/slices/audio-resources.js';
 import { timeFlagSignals } from '../../state/slices/time-flags.js';
 import { viewportSignals } from '../../state/slices/viewport.js';
+import overviewController from './overview-controller';
+import panoramaRenderer from './panorama-renderer';
+import panoramaControls from './panorama-controls';
+import panoramaDialog from './panorama-dialog';
+import config from './config';
+
+function runGenerator(iterator) {
+  if (typeof iterator === 'function') {
+    try {
+      iterator = iterator();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }
+  if (!iterator || typeof iterator.next !== 'function') {
+    return Promise.resolve(iterator);
+  }
+  return new Promise((resolve, reject) => {
+    function step(nextFn, arg) {
+      let result;
+      try {
+        result = nextFn.call(iterator, arg);
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      if (!result || result.done) {
+        resolve(result && result.value);
+        return;
+      }
+      Promise.resolve(result.value).then(
+        (value) => step(iterator.next, value),
+        (err) => step(iterator.throw, err)
+      );
+    }
+    step(iterator.next, undefined);
+  });
+}
+
+const localOverlayState = { depth: 0, shouldRestore: false };
+
+function getOverlayState() {
+  if (typeof window !== 'undefined') {
+    if (!window.__PAL_CLASSIC_OVERLAY__) {
+      window.__PAL_CLASSIC_OVERLAY__ = { depth: 0, shouldRestore: false };
+    }
+    return window.__PAL_CLASSIC_OVERLAY__;
+  }
+  return localOverlayState;
+}
+
+function setLegacyCanvasVisible(show = true) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+  const canvas = document.getElementById('cvs');
+  if (canvas) {
+    canvas.style.display = show ? '' : 'none';
+  }
+}
+
+function enterClassicOverlay() {
+  const state = getOverlayState();
+  if (state.depth === 0) {
+    const overlayActive = typeof window !== 'undefined' && window.PAL_OVERLAY_ACTIVE === 'panorama';
+    const rendererActive = panoramaRenderer && typeof panoramaRenderer.getMode === 'function'
+      ? panoramaRenderer.getMode() === 'panorama'
+      : false;
+    state.shouldRestore = config.enablePanorama && (overlayActive || rendererActive);
+    if (state.shouldRestore) {
+      if (typeof window !== 'undefined' && typeof window.PAL_SET_OVERLAY_MODE === 'function') {
+        window.PAL_SET_OVERLAY_MODE('off');
+      } else if (rendererActive && typeof panoramaRenderer.setMode === 'function') {
+        panoramaRenderer.setMode('off');
+      }
+      if (panoramaDialog && typeof panoramaDialog.setMode === 'function') {
+        panoramaDialog.setMode('off');
+      }
+    }
+    setLegacyCanvasVisible(true);
+    runGenerator(refreshClassicView()).catch((err) => {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[uigame] refreshClassicView failed', err);
+      }
+    });
+  }
+  state.depth += 1;
+  return { shouldRestore: state.shouldRestore };
+}
+
+function exitClassicOverlay(state) {
+  const guard = getOverlayState();
+  guard.depth = Math.max(0, guard.depth - 1);
+  if (!state || !state.shouldRestore || guard.depth > 0) {
+    return;
+  }
+  if (typeof window !== 'undefined' && typeof window.PAL_SET_OVERLAY_MODE === 'function') {
+    window.PAL_SET_OVERLAY_MODE('panorama');
+  } else {
+    if (panoramaRenderer && typeof panoramaRenderer.setMode === 'function') {
+      panoramaRenderer.setMode('panorama');
+    }
+    if (panoramaDialog && typeof panoramaDialog.setMode === 'function') {
+      panoramaDialog.setMode('panorama');
+    }
+  }
+  guard.shouldRestore = false;
+  setLegacyCanvasVisible(false);
+}
+
+function* refreshClassicView() {
+  if (scene && typeof scene.makeScene === 'function') {
+    yield* scene.makeScene();
+  }
+  if (surface && typeof surface.updateScreen === 'function') {
+    surface.updateScreen(null);
+  } else if (scene && scene.surface && typeof scene.surface.updateScreen === 'function') {
+    scene.surface.updateScreen(null);
+  }
+}
 
 function getGlobalObject() {
   if (typeof global !== 'undefined') {
@@ -284,7 +405,28 @@ uigame.drawOpeningMenuBackground = function*() {
  * 开场菜单
  * @return {Promise}
  */
+function suspendPanorama(flag) {
+  if (typeof window !== 'undefined' && window.PAL_OVERLAY_PREFERENCE) {
+    window.PAL_OVERLAY_SUSPENDED = flag;
+  }
+  const services = global && global.services ? global.services : null;
+  const overview = services && services.overview ? services.overview : overviewController;
+  const panorama = services && services.panorama ? services.panorama : panoramaRenderer;
+  const controls = services && services.panoramaControls ? services.panoramaControls : panoramaControls;
+  if (flag) {
+    if (overview && typeof overview.setMode === 'function') overview.setMode('off');
+    if (panorama && typeof panorama.setMode === 'function') panorama.setMode('off');
+    if (controls && typeof controls.setMode === 'function') controls.setMode('off');
+  } else {
+    const pref = (typeof window !== 'undefined' && window.PAL_OVERLAY_PREFERENCE) || 'off';
+    if (overview && typeof overview.setMode === 'function') overview.setMode(pref);
+    if (panorama && typeof panorama.setMode === 'function') panorama.setMode(pref);
+    if (controls && typeof controls.setMode === 'function') controls.setMode(pref);
+  }
+}
+
 uigame.openingMenu = function*() {
+  suspendPanorama(true);
   music.play(ui.RIX_NUM_OPENINGMENU, true, 1);
   yield uigame.drawOpeningMenuBackground();
 
@@ -296,9 +438,11 @@ uigame.openingMenu = function*() {
   var uimenu = yield ui.readMenu(null, menu, 0, ui.MENUITEM_COLOR, true);
 
   if (uimenu == 0) {
+    suspendPanorama(false);
     return 0;
   } else {
     var slmenu = yield uigame.saveSlotMenu(1);
+    suspendPanorama(false);
     if (slmenu === ui.MENUITEM_VALUE_CANCELLED) {
       return 1;
     } else {
@@ -312,6 +456,8 @@ uigame.openingMenu = function*() {
  * @return {Promise}
  */
 uigame.saveSlotMenu = function*(defaultSlot) {
+  suspendPanorama(true);
+  try {
   var boxes = [],
       menu = [],
       rect = new RECT(195, 7, 120, 190);
@@ -345,8 +491,11 @@ uigame.saveSlotMenu = function*(defaultSlot) {
     boxes[i].free();
   }
 
-  surface.updateScreen(rect);
-  return slot;
+    surface.updateScreen(rect);
+    return slot;
+  } finally {
+    suspendPanorama(false);
+  }
 };
 
 /**
@@ -354,6 +503,8 @@ uigame.saveSlotMenu = function*(defaultSlot) {
  * @return {Promise}
  */
 uigame.confirmMenu = function*() {
+  suspendPanorama(true);
+  try {
   var boxes = [];
 
   // Create menu items
@@ -375,10 +526,13 @@ uigame.confirmMenu = function*() {
 
   surface.updateScreen();
 
-  if (menu === ui.MENUITEM_VALUE_CANCELLED || menu === 0) {
-    return false;
-  } else {
-    return true;
+    if (menu === ui.MENUITEM_VALUE_CANCELLED || menu === 0) {
+      return false;
+    } else {
+      return true;
+    }
+  } finally {
+    suspendPanorama(false);
   }
 };
 
@@ -388,6 +542,8 @@ uigame.confirmMenu = function*() {
  * @return {Promise}
  */
 uigame.switchMenu = function*(enabled) {
+  suspendPanorama(true);
+  try {
   var boxes = [];
 
   // Create menu items
@@ -410,10 +566,13 @@ uigame.switchMenu = function*(enabled) {
 
   //surface.updateScreen(); // box.free调用surface.putRect已经更新了屏幕
 
-  if (menu === ui.MENUITEM_VALUE_CANCELLED) {
-    return enabled;
-  } else {
-    return (menu === 0 ? false : true);
+    if (menu === ui.MENUITEM_VALUE_CANCELLED) {
+      return enabled;
+    } else {
+      return (menu === 0 ? false : true);
+    }
+  } finally {
+    suspendPanorama(false);
   }
 };
 
@@ -477,6 +636,9 @@ uigame.systemMenu_onItemChange = function(currentItem) {
  * @return {Promise}
  */
 uigame.systemMenu = function*() {
+  const overlayToken = enterClassicOverlay();
+  try {
+    yield* refreshClassicView();
   // Create menu items
   var menuitems = [];
   if (PAL_CLASSIC) {
@@ -604,9 +766,15 @@ uigame.systemMenu = function*() {
   }
   box.free();
   return true;
+  } finally {
+    exitClassicOverlay(overlayToken);
+  }
 };
 
 uigame.inGameMagicMenu = function*() {
+  const overlayToken = enterClassicOverlay();
+  try {
+    yield* refreshClassicView();
   var rect = new RECT(35, 62, 95, 90);
   // Draw the player info boxes
   var y = 45;
@@ -783,9 +951,15 @@ uigame.inGameMagicMenu = function*() {
       y += 78;
     }
   }
+  } finally {
+    exitClassicOverlay(overlayToken);
+  }
 };
 
 uigame.inventoryMenu = function*() {
+  const overlayToken = enterClassicOverlay();
+  try {
+    yield* refreshClassicView();
   var rect = new RECT(30, 60, 75, 60);
   var menuitems = [
     new ui.MenuItem(1, ui.INVMENU_LABEL_USE,   true, PAL_XY(43, 73)),
@@ -805,6 +979,9 @@ uigame.inventoryMenu = function*() {
       yield play.equipItem();
       break;
   }
+  } finally {
+    exitClassicOverlay(overlayToken);
+  }
 };
 
 uigame.inGameMenu_onItemChange = function(currentItem) {
@@ -812,6 +989,9 @@ uigame.inGameMenu_onItemChange = function(currentItem) {
 };
 
 uigame.inGameMenu = function*() {
+  const overlayToken = enterClassicOverlay();
+  try {
+    yield* refreshClassicView();
   var result;
   var rect = new RECT(0, 0, 150, 185);
 
@@ -877,9 +1057,15 @@ uigame.inGameMenu = function*() {
     surface.updateScreen(rect);
   }
   out();
+  } finally {
+    exitClassicOverlay(overlayToken);
+  }
 };
 
 uigame.playerStatus = function*() {
+  const overlayToken = enterClassicOverlay();
+  try {
+    yield* refreshClassicView();
   var equipPos = [
     [190, 0],[248, 40], [252, 102], [202, 134], [142, 142], [82, 126]
   ];
@@ -986,6 +1172,9 @@ uigame.playerStatus = function*() {
       }
       yield sleepByFrame(1);
     }
+  }
+  } finally {
+    exitClassicOverlay(overlayToken);
   }
 };
 

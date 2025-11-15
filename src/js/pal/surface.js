@@ -27,14 +27,16 @@ var Surface = function(cvs, width, height, debugcvs) {
   this.height = cvs.height = height || 200;
   if (debugcvs) {
     this.debugcvs = debugcvs;
-    debugcvs.width = 640;
-    debugcvs.height = 400;
+    debugcvs.width = (width || 320);
+    debugcvs.height = (height || 200);
     this.debugctx = debugcvs.getContext('2d');
   }
 
+  this.panoramaHandler = null;
   this.len = this.width * this.height;
   this.palette = defaultPalette;
   this.renderObjects = [];
+  this.panoramaHandler = null;
 
   this.lastRefresh = hrtime();
 
@@ -70,6 +72,16 @@ utils.extend(Surface.prototype, {
     rect = rect || new RECT(0, 0, this.width, this.height);
     //this.__debugClear(rect.x, rect.y, rect.w, rect.h);
     log.trace('[VIDEO] updateScreen(%d, %d, %d, %d)', rect.x, rect.y, rect.w, rect.h);
+
+    if (this.panoramaHandler) {
+      const shouldCapture = typeof this.panoramaHandler.shouldCaptureUi === 'function'
+        ? this.panoramaHandler.shouldCaptureUi()
+        : (this.panoramaHandler.isActive && this.panoramaHandler.isActive());
+      if (shouldCapture && typeof this.panoramaHandler.renderUiBuffer === 'function') {
+        this.panoramaHandler.renderUiBuffer(rect, this);
+        return;
+      }
+    }
 
     var ctx = this.ctx,
         imgdata = ctx.getImageData(rect.x, rect.y, rect.w, rect.h),

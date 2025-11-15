@@ -43,6 +43,8 @@ import {
   getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex
 } from '../../services/player-state-adapter.js';
 import worldService from '../../services/world-service.js';
+import panoramaRenderer from './panorama-renderer';
+import panoramaDialog from './panorama-dialog';
 
 const autoBattleFlagSignal = autoBattleSignal();
 const audioResourceSlice = audioResourceSignals();
@@ -3761,3 +3763,23 @@ battle.calcMagicDamage = function(magicStrength, defense, elementalResistance, p
 fight.updateTimeChargingUnit = updateTimeChargingUnit;
 
 export default fight;
+function disablePanoramaOverlay() {
+  if (panoramaRenderer && typeof panoramaRenderer.setMode === 'function') {
+    panoramaRenderer.setMode('off');
+  }
+  if (panoramaDialog && typeof panoramaDialog.setMode === 'function') {
+    panoramaDialog.setMode('off');
+  }
+}
+
+function restorePanoramaOverlay() {
+  if (!config.enablePanorama) {
+    return;
+  }
+  if (panoramaRenderer && typeof panoramaRenderer.setMode === 'function') {
+    panoramaRenderer.setMode('panorama');
+  }
+  if (panoramaDialog && typeof panoramaDialog.setMode === 'function') {
+    panoramaDialog.setMode('panorama');
+  }
+}

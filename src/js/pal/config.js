@@ -18,6 +18,8 @@ var defaults = {
   modAssetBaseUrl: './pal-assets/exported-assets/',
   modSpriteBaseUrl: './pal-assets/exported-sprites/',
   enableOverviewMode: false,
+  enablePanorama: true,
+  mapOverlayMode: 'gps',
   showEventObjectLabels: false,
   enableAIControl: false,
   enableNPCBehaviours: false,
@@ -44,6 +46,17 @@ baseConfig.modAssetBaseUrl = normalizeBase(baseConfig.modAssetBaseUrl || default
 baseConfig.modSpriteBaseUrl = normalizeBase(baseConfig.modSpriteBaseUrl || defaults.modSpriteBaseUrl);
 baseConfig.enableModAssets = baseConfig.enableModAssets !== false;
 baseConfig.enableOverviewMode = baseConfig.enableOverviewMode === true;
+baseConfig.enablePanorama = baseConfig.enablePanorama === true;
+const normalizedOverlayMode = (baseConfig.mapOverlayMode || (baseConfig.enableOverviewMode ? 'gps' : 'off'));
+const overlayMode = typeof normalizedOverlayMode === 'string'
+  ? normalizedOverlayMode.toLowerCase()
+  : (normalizedOverlayMode ? 'gps' : 'off');
+if (overlayMode === 'panorama') {
+  baseConfig.enablePanorama = true;
+}
+if (overlayMode === 'gps') {
+  baseConfig.enableOverviewMode = true;
+}
 baseConfig.enableAIControl = baseConfig.enableAIControl === true;
 baseConfig.enableNPCBehaviours = baseConfig.enableNPCBehaviours === true;
 baseConfig.enableMud = baseConfig.enableMud === true;

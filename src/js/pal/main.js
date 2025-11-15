@@ -16,6 +16,9 @@ import '../../tools/storygraph-export.js';
 import '../../tools/npc-map-export.js';
 import config from './config';
 import overviewController from './overview-controller';
+import panoramaRenderer from './panorama-renderer';
+import panoramaControls from './panorama-controls';
+import panoramaDialog from './panorama-dialog';
 
 traceModuleLoad('main module load');
 
@@ -56,6 +59,9 @@ main.start = function() {
 
     global.services = services;
     services.world.init();
+    if (typeof window !== 'undefined') {
+      window.services = services;
+    }
 
     if (config.enableMud && services.mud && typeof services.mud.start === 'function') {
       try {
@@ -70,22 +76,67 @@ main.start = function() {
 
     Palette.init(Files.PAT);
 
-    if (overviewController && typeof overviewController.setEnabled === 'function') {
-      overviewController.setEnabled(!!config.enableOverviewMode);
+    const panoramaPreferred = !!config.enablePanorama;
+    const gpsPreferred = !!config.enableOverviewMode;
+    const applyPanoramaMode = (enabled) => {
+      const targetMode = enabled ? 'panorama' : 'off';
+      if (panoramaRenderer && typeof panoramaRenderer.setMode === 'function') {
+        panoramaRenderer.setMode(targetMode);
+      }
+      if (panoramaControls && typeof panoramaControls.init === 'function') {
+        panoramaControls.init();
+        panoramaControls.setMode(targetMode);
+      }
+      if (panoramaDialog && typeof panoramaDialog.setMode === 'function') {
+        panoramaDialog.setMode(targetMode);
+      }
+      if (typeof window !== 'undefined') {
+        window.PAL_OVERLAY_ACTIVE = targetMode;
+      }
+      return targetMode;
+    };
+    const applyGpsOverlay = (enabled) => {
+      if (overviewController && typeof overviewController.setMode === 'function') {
+        overviewController.setMode(enabled ? 'gps' : 'off');
+      } else if (overviewController && typeof overviewController.setEnabled === 'function') {
+        overviewController.setEnabled(!!enabled);
+      }
+      return !!enabled;
+    };
+
+    let currentPanoramaMode = applyPanoramaMode(false);
+    let gpsOverlayEnabled = applyGpsOverlay(false);
+    if (typeof window !== 'undefined') {
+      window.PAL_OVERLAY_PREFERENCE = panoramaPreferred ? 'panorama' : 'off';
+      window.PAL_SET_OVERLAY_MODE = (mode) => applyPanoramaMode(mode === 'panorama');
+      window.PAL_SET_GPS_MODE = (flag) => applyGpsOverlay(flag !== false);
+      window.PAL_GPS_ENABLED = gpsPreferred;
+    }
+    if (!services.panorama) {
+      services.panorama = panoramaRenderer;
+    }
+    services.panoramaDialog = panoramaDialog;
+    if (panoramaRenderer && typeof panoramaRenderer.ensureCanvas === 'function') {
+      panoramaRenderer.ensureCanvas();
     }
 
     if (modService && typeof modService.prepare === 'function') {
       yield modService.prepare();
     }
 
+    const baseWidth = 320;
+    const baseHeight = 200;
     var surf = new Surface(
       document.getElementById('cvs'),
-      320,
-      200,
+      baseWidth,
+      baseHeight,
       document.getElementById('debug')
     );
 
     yield ui.init(surf, services); // 初始化UI，内含初始化文字
+    if (panoramaDialog && typeof panoramaDialog.init === 'function') {
+      panoramaDialog.init({ dialogService: services.dialog });
+    }
 
     yield rng.init(surf);
 
@@ -96,6 +147,13 @@ main.start = function() {
     yield welcome.splashScreen(surf); // 开场动画
 
     yield scene.init(surf); // 初始化场景
+
+    if (panoramaPreferred && currentPanoramaMode !== 'panorama') {
+      currentPanoramaMode = applyPanoramaMode(true);
+    }
+    if (gpsPreferred !== gpsOverlayEnabled) {
+      gpsOverlayEnabled = applyGpsOverlay(gpsPreferred);
+    }
 
     input.init();
 

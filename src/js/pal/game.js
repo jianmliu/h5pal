@@ -10,6 +10,11 @@ import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';
 import worldService from '../../services/world-service.js';
 import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import overviewController from './overview-controller';
+import panoramaRenderer from './panorama-renderer';
+import panoramaControls from './panorama-controls';
+import panoramaDialog from './panorama-dialog';
+import config from './config';
 import {
   getPlayerRolesSnapshot,
   getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
@@ -53,6 +58,25 @@ var game = {};
 
 const inventorySlice = inventorySignals();
 const cashSignal = inventorySlice.cash;
+const overlayDefaultMode = config.enablePanorama ? 'panorama' : 'off';
+let overlayCurrentMode = overlayDefaultMode;
+function setOverlayMode(mode) {
+  const normalized = mode === 'panorama' ? 'panorama' : 'off';
+  if (overlayCurrentMode === normalized) {
+    return normalized;
+  }
+  if (panoramaRenderer && typeof panoramaRenderer.setMode === 'function') {
+    panoramaRenderer.setMode(normalized);
+  }
+  if (panoramaControls && typeof panoramaControls.setMode === 'function') {
+    panoramaControls.setMode(normalized);
+  }
+  if (panoramaDialog && typeof panoramaDialog.setMode === 'function') {
+    panoramaDialog.setMode(normalized);
+  }
+  overlayCurrentMode = normalized;
+  return normalized;
+}
 
 function normaliseSaveBuffer(buffer) {
   var size = (typeof SaveData !== 'undefined' && SaveData && typeof SaveData.size === 'number')
@@ -557,10 +581,17 @@ game.start = function*() {
  * The game entry routine.
  */
 game.main = function*() {
+  const overlayPreference = overlayDefaultMode;
+  if (overlayPreference === 'panorama') {
+    setOverlayMode('off');
+  }
   var slot = yield uigame.openingMenu(); // 主菜单
   //var slot = 5;
   worldService.setCurrentSaveSlot(slot);
   yield game.initGameData(slot); // 加载游戏
+  if (overlayPreference !== 'off') {
+    setOverlayMode(overlayPreference);
+  }
 
   if (slot === 0) {
     dialogService.setAwaitingInput(true, { reason: 'intro' });

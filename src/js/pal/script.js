@@ -3266,7 +3266,7 @@ script.runTriggerScript = function*(scriptEntry, eventObjectID) {
         dialogService.publishChoice({
           type: 'confirm',
           scriptEntry,
-          eventObjectId,
+          eventObjectId: eventObjectID,
           options: [
             { label: 'No', value: false },
             { label: 'Yes', value: true }

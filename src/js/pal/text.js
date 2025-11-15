@@ -171,6 +171,7 @@ text.init = function*(surf, _ui) {
   textLib.dialogTextPos = PAL_XY(44, 26);
   textLib.dialogPosition = DialogPosition.Upper;
   textLib.userSkip = false;
+  textLib.currentSpeakerName = null;
 
   textLib.dialogIconsBuf = DATA.readChunk(12);
   textLib.dialogIcons = new Sprite(textLib.dialogIconsBuf);
@@ -435,16 +436,49 @@ text.init = function*(surf, _ui) {
    * @return {Promise}
    */
 function* renderDialogBuffer(buf) {
+  buf = toUint8Array(buf);
   var len = buf.length;
   log.trace('[TEXT] showDialogText (%d)', len);
 
   input.clear();
   textLib.icon = 0;
-  dialogService.publishLine({
-    text: decodeDialogBuffer(buf),
-    position: textLib.dialogPosition,
-      line: textLib.currentDialogLine
+  var speakerCandidate = null;
+  var decodedText = decodeDialogBuffer(buf);
+  var publishText = decodedText;
+  var isSpeakerLine = false;
+  if (textLib.currentDialogLine === 0 &&
+      textLib.dialogPosition !== DialogPosition.Center &&
+      textLib.dialogPosition !== DialogPosition.CenterWindow &&
+      len >= 2) {
+    var lastByte = buf[len - 1];
+    var prevByte = buf[len - 2];
+    var hasColon = (lastByte === 0x47 && prevByte === 0xA1) || lastByte === 0x3A;
+    if (hasColon) {
+      var sliceLength = len - (lastByte === 0x3A ? 1 : 2);
+      if (sliceLength > 0) {
+        var slice = buf.subarray(0, sliceLength);
+        var decodedSpeaker = decodeDialogBuffer(slice).trim();
+        if (decodedSpeaker) {
+          speakerCandidate = decodedSpeaker;
+          textLib.currentSpeakerName = decodedSpeaker;
+          isSpeakerLine = true;
+        }
+      }
+    }
+  }
+  var speakerSource = textLib.currentSpeakerName || speakerCandidate || null;
+  var normalizedContent = publishText ? publishText.replace(/[：:]+\s*$/u, '').trim() : '';
+  if (isSpeakerLine) {
+    publishText = normalizedContent;
+  }
+  if (!isSpeakerLine || normalizedContent.length > 0) {
+    dialogService.publishLine({
+      text: publishText,
+      position: textLib.dialogPosition,
+      line: textLib.currentDialogLine,
+      source: speakerSource
     });
+  }
 
     if (worldService.isInBattle() && !text.updatedInBattle) {
       // Update the screen in battle, or the graphics may seem messed up
@@ -480,7 +514,7 @@ function* renderDialogBuffer(buf) {
       var rect = new RECT(
         PAL_X(pos),
         PAL_Y(pos),
-        320 - PAL_X(pos) * 2 + 32,
+        surface.width - PAL_X(pos) * 2 + 32,
         64
       );
 
@@ -678,6 +712,7 @@ function* renderDialogBuffer(buf) {
     textLib.currentFontColor = FontColor.DEFAULT;
     textLib.dialogPosition = DialogPosition.Upper;
     textLib.userSkip = false;
+    textLib.currentSpeakerName = null;
     textLib.playingRNG = false;
     dialogService.clearDialog('endDialog');
   };

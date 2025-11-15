@@ -25,6 +25,15 @@ const MAP_WIDTH = 64 * 32;
 const MAP_HEIGHT = 128 * 16;
 const VIEWPORT_WIDTH = 320;
 const VIEWPORT_HEIGHT = 200;
+const VALID_MODES = ['off', 'gps', 'panorama'];
+
+function normalizeMode(mode) {
+  if (typeof mode !== 'string') {
+    return 'off';
+  }
+  const lowered = mode.toLowerCase();
+  return VALID_MODES.includes(lowered) ? lowered : 'off';
+}
 
 function createLayerElement() {
   if (!HAS_DOM) return null;
@@ -58,6 +67,14 @@ function createVeilElement() {
   const veil = document.createElement('div');
   veil.id = VEIL_ID;
   veil.style.display = 'none';
+  veil.style.position = 'absolute';
+  veil.style.left = '0';
+  veil.style.top = '0';
+  veil.style.right = '0';
+  veil.style.bottom = '0';
+  veil.style.pointerEvents = 'none';
+  veil.style.background = 'rgba(0, 0, 0, 0.35)';
+  veil.style.zIndex = '3';
   wrap.appendChild(veil);
   return veil;
 }
@@ -308,6 +325,7 @@ function loadImageForScene(sceneId, manifest) {
 class OverviewController {
   constructor() {
     this.enabled = false;
+    this.mode = 'off';
     this.layer = null;
     this.veil = null;
     this.indicator = null;
@@ -371,6 +389,7 @@ class OverviewController {
     if (this.layer && this.indicator && this.indicator.parentElement !== this.layer) {
       this.layer.appendChild(this.indicator);
     }
+    this._applyModeStyles();
     if (this.sceneId) {
       this.showForScene(this.sceneId);
     }
@@ -378,6 +397,20 @@ class OverviewController {
 
   toggle() {
     this.setEnabled(!this.enabled);
+  }
+
+  setMode(mode) {
+    this.mode = normalizeMode(mode);
+    if (this.mode === 'gps') {
+      this.setEnabled(true);
+    } else {
+      this.setEnabled(false);
+      this.hideLayer();
+    }
+  }
+
+  getMode() {
+    return this.mode;
   }
 
   setSuspended(flag) {
@@ -457,6 +490,7 @@ class OverviewController {
     if (!this.layer) {
       return;
     }
+    this._applyModeStyles();
     this.activeImage = url;
     this.layer.style.backgroundImage = url ? `url('${url}')` : '';
     if (url) {
@@ -467,10 +501,20 @@ class OverviewController {
         this.layer.style.opacity = '1';
       });
       if (this.veil) {
-        this.veil.style.display = 'block';
-        this.veil.style.opacity = '1';
+        if (this.mode === 'panorama') {
+          this.veil.style.display = 'block';
+          this.veil.style.opacity = '1';
+        } else {
+          this.veil.style.display = 'none';
+          this.veil.style.opacity = '0';
+        }
       }
-      this.updateIndicatorPosition();
+      if (this.mode === 'gps') {
+        this.updateIndicatorPosition();
+      } else if (this.indicator) {
+        this.indicator.style.display = 'none';
+        this.indicator.style.opacity = '0';
+      }
     } else {
       this.hideLayer();
     }
@@ -519,11 +563,16 @@ class OverviewController {
   }
 
   updateIndicatorPosition() {
-    if (!this.enabled || this.suspended || !this.layer || !this.indicator || !this.activeImage) {
+    if (this.mode !== 'gps' || !this.indicator) {
       if (this.indicator) {
         this.indicator.style.opacity = '0';
         this.indicator.style.display = 'none';
       }
+      return;
+    }
+    if (!this.enabled || this.suspended || !this.layer || !this.activeImage) {
+      this.indicator.style.opacity = '0';
+      this.indicator.style.display = 'none';
       return;
     }
     const resolvedViewport = this._resolveViewportValue(this.viewportValue);
@@ -653,6 +702,57 @@ class OverviewController {
     }
     this.showForScene(sceneId);
   }
+
+  _applyModeStyles() {
+    if (!this.layer) {
+      return;
+    }
+    const isPanorama = this.mode === 'panorama';
+    this.layer.style.pointerEvents = 'none';
+    this.layer.style.backgroundSize = 'contain';
+    if (isPanorama) {
+      this.layer.style.left = '0';
+      this.layer.style.top = '0';
+      this.layer.style.right = '0';
+      this.layer.style.bottom = '0';
+      this.layer.style.width = '100%';
+      this.layer.style.height = '100%';
+      this.layer.style.zIndex = '4';
+    } else {
+      this.layer.style.left = 'auto';
+      this.layer.style.top = 'auto';
+      this.layer.style.right = `${OVERVIEW_OFFSET}px`;
+      this.layer.style.bottom = `${OVERVIEW_OFFSET}px`;
+      this.layer.style.width = `${OVERVIEW_WIDTH}px`;
+      this.layer.style.height = `${OVERVIEW_HEIGHT}px`;
+      this.layer.style.zIndex = '5';
+    }
+    if (this.indicator) {
+      this.indicator.style.display = this.mode === 'gps' ? 'block' : 'none';
+      this.indicator.style.opacity = this.mode === 'gps' ? '1' : '0';
+    }
+    if (this.veil) {
+      if (isPanorama) {
+        this.veil.style.display = 'block';
+        this.veil.style.opacity = '1';
+      } else {
+        this.veil.style.display = 'none';
+        this.veil.style.opacity = '0';
+      }
+    }
+  }
+}
+
+function applyPanoramaBindings(mode) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  if (window.PAL_PANORAMA && typeof window.PAL_PANORAMA.__applyMode === 'function') {
+    window.PAL_PANORAMA.__applyMode(mode);
+  }
+  if (window.PAL_PANORAMA_UI && typeof window.PAL_PANORAMA_UI.setMode === 'function') {
+    window.PAL_PANORAMA_UI.setMode(mode);
+  }
 }
 
 const controller = new OverviewController();
@@ -664,6 +764,16 @@ if (typeof window !== 'undefined') {
     disable: () => controller.setEnabled(false),
     toggle: () => controller.toggle(),
     setEnabled: (flag) => controller.setEnabled(flag),
+    setMode: (mode) => {
+      controller.setMode(mode);
+      applyPanoramaBindings(mode);
+      return controller.getMode();
+    },
+    __syncFromPanorama: (mode) => {
+      controller.setMode(mode);
+      applyPanoramaBindings(mode);
+      return controller.getMode();
+    },
     suspend: (flag) => controller.setSuspended(flag)
   };
 }

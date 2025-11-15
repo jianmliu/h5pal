@@ -28,6 +28,9 @@ import {
   getSceneEventObjectRange as getSceneEventObjectRangeSnapshot
 } from '../../services/scene-data-adapter.js';
 import overviewController from './overview-controller';
+import panoramaRenderer from './panorama-renderer';
+import panoramaControls from './panorama-controls';
+import config from './config';
 
 log.trace('scene module load');
 
@@ -114,10 +117,11 @@ var floor = Math.floor;
 var round = Math.round;
 
 // for hidden class
-function SpriteToDraw(frame, x, y, layer) {
+function SpriteToDraw(frame, x, y, layer, meta) {
   this.frame = frame;
   this.pos = PAL_XY(x, y);
   this.layer = layer;
+  this.meta = meta || null;
 }
 
 function compareByYASC(a, b) {
@@ -170,6 +174,16 @@ scene.makeScene = function*() {
     }
     if (overviewController && typeof overviewController.applyScene === 'function') {
       overviewController.applyScene(sceneId);
+    }
+    const mapMetaForPanorama = typeof worldService.getMapMetaComponent === 'function'
+      ? worldService.getMapMetaComponent()
+      : null;
+    const fallbackMapId = activeScene && typeof activeScene.mapNum === 'number' ? activeScene.mapNum : null;
+    const panoramaMapId = mapMetaForPanorama && typeof mapMetaForPanorama.mapId === 'number'
+      ? mapMetaForPanorama.mapId
+      : fallbackMapId;
+    if (panoramaRenderer && typeof panoramaRenderer.applyScene === 'function') {
+      panoramaRenderer.applyScene(sceneId, panoramaMapId);
     }
   }
   yield activeScene.render();
@@ -636,8 +650,8 @@ utils.extend(Scene.prototype, {
     return cached;
     //return gpResources->lppEventObjectSprites[wEventObjectID];
   },
-  addToDrawList: function(frame, x, y, layer) {
-    var obj = new SpriteToDraw(frame, x, y, layer);
+  addToDrawList: function(frame, x, y, layer, meta) {
+    var obj = new SpriteToDraw(frame, x, y, layer, meta || null);
     var drawList = this.drawList || (this.drawList = []);
     this.drawList.push(obj);
     //surface.__debugStr([y].join(','),
@@ -702,7 +716,8 @@ utils.extend(Scene.prototype, {
                 tile,
                 dx * 32 + dh * 16 - 16 - viewportX,
                 dy * 16 + dh * 8 + 7 + l + tileHeight * 8 - viewportY,
-                tileHeight * 8 + l
+                tileHeight * 8 + l,
+                { kind: 'cover' }
               );
             }
           }
@@ -745,7 +760,9 @@ utils.extend(Scene.prototype, {
       mapId: resolvedMapId
     });
   },
-  renderSprites: function() {
+  renderSprites: function(options = {}) {
+    const skipBlit = options.skipBlit === true;
+    const includeOffscreen = options.includeOffscreen === true;
     ensurePartyTrailSubscription();
     worldService.runSystems(['collision', 'movement'], {
       mapCache: scene.mapCache,
@@ -796,12 +813,24 @@ utils.extend(Scene.prototype, {
     player.frame = frameIndex;
 
       // Add it to our array
+      var drawX = player.x - ~~(bitmap.width / 2);
+      var drawY = player.y + layer + 10;
       var obj = this.addToDrawList(
         bitmap,
-        player.x - ~~(bitmap.width / 2),
-        player.y + layer + 10,
-        layer + 6
+        drawX,
+        drawY,
+        layer + 6,
+        { kind: 'player' }
       );
+      if (obj) {
+        const worldX = drawX + viewportX;
+        const worldY = drawY - bitmap.height - (layer + 6) + viewportY;
+        obj.meta = Object.assign({}, obj.meta, {
+          worldX,
+          worldY,
+          frame: bitmap
+        });
+      }
       // Calculate covering tiles on the map
       this.calcCoverTiles(obj);
     }
@@ -812,19 +841,22 @@ utils.extend(Scene.prototype, {
       addToDrawList: this.addToDrawList.bind(this),
       calcCoverTiles: this.calcCoverTiles.bind(this),
       getEventObjectSprite: this.getEventObjectSprite.bind(this),
-      sceneEventObjects: sceneEventAdapter.getEventObjects()
+      sceneEventObjects: sceneEventAdapter.getEventObjects(),
+      includeOffscreen
     });
 
     // All sprites are now in our array; sort them by their vertical positions.
     drawList.sort(compareSprite); // 按Y升序
     // Draw all the sprites to the screen.
-    for (var i = 0; i < drawList.length; ++i) {
-      var obj = drawList[i];
-      var frame = obj.frame,
-          layer = obj.layer,
-          x = PAL_X(obj.pos),
-          y = PAL_Y(obj.pos) - frame.height - layer;
-      surface.blitRLE(frame, PAL_XY(x, y));
+    if (!skipBlit) {
+      for (var i = 0; i < drawList.length; ++i) {
+        var obj = drawList[i];
+        var frame = obj.frame,
+            layer = obj.layer,
+            x = PAL_X(obj.pos),
+            y = PAL_Y(obj.pos) - frame.height - layer;
+        surface.blitRLE(frame, PAL_XY(x, y));
+      }
     }
   },
   render: function*() {
@@ -837,16 +869,89 @@ utils.extend(Scene.prototype, {
       return;
     }
     scene.surface = surface = surf;
-    surface.clear(); // 因为后面会renderMap所以似乎不需要clear了
-    // Step 1: Draw the complete map, for both of the layers.
-    this.renderMap();
-    // Step 2: Apply screen waving effects.
-    scene.applyWave(surface.byteBuffer);
-    // Step 3: Draw all the sprites.
+    const overlayMode = overviewController && typeof overviewController.getMode === 'function'
+      ? overviewController.getMode()
+      : 'off';
+    const panoramaActive = panoramaRenderer && typeof panoramaRenderer.getMode === 'function'
+      ? panoramaRenderer.getMode() === 'panorama'
+      : overlayMode === 'panorama';
+    const skipSceneRender = panoramaActive && panoramaRenderer;
+
+    if (skipSceneRender) {
+      surface.ctx.clearRect(0, 0, surface.width, surface.height);
+      if (panoramaRenderer && typeof panoramaRenderer.beginUiFrame === 'function') {
+        panoramaRenderer.beginUiFrame(surface);
+      }
+    }
     if (!this.drawList) this.drawList = [];
     this.drawList.length = 0;
-    //surface.__debugClear(0, 0, 320, 200);
-    this.renderSprites();
+    if (!skipSceneRender) {
+      this.renderMap();
+      scene.applyWave(surface.byteBuffer);
+      this.renderSprites();
+    } else {
+      this.renderSprites({ skipBlit: true, includeOffscreen: true });
+    }
+    const shouldHideLegacyCanvas = panoramaActive && skipSceneRender;
+    if (scene.surface && scene.surface.cvs) {
+      scene.surface.cvs.style.display = shouldHideLegacyCanvas ? 'none' : '';
+    }
+    if (panoramaRenderer && typeof panoramaRenderer.render === 'function') {
+      if (panoramaActive) {
+        if (!panoramaRenderer.canvas) {
+          console.log('[panorama] initializing canvas');
+        }
+        const mapMeta = typeof worldService.getMapMetaComponent === 'function'
+          ? worldService.getMapMetaComponent()
+          : null;
+        const resolvedMapId = mapMeta && typeof mapMeta.mapId === 'number'
+          ? mapMeta.mapId
+          : this.mapNum;
+        const activeMapInstance = this.getMap ? this.getMap() : null;
+        let panoramaOverlays = null;
+        const viewportSnapshot = getViewportSnapshot();
+        const viewportX = PAL_X(viewportSnapshot);
+        const viewportY = PAL_Y(viewportSnapshot);
+        if (Array.isArray(this.drawList) && this.drawList.length) {
+          panoramaOverlays = this.drawList
+            .filter((entry) => entry && entry.meta && (entry.meta.kind === 'player' || entry.meta.kind === 'npc'))
+            .map((entry) => {
+              const meta = entry.meta || {};
+              const frameRef = meta.frame || entry.frame;
+              const screenX = PAL_X(entry.pos);
+              const screenY = PAL_Y(entry.pos);
+              const worldX = typeof meta.worldX === 'number' ? meta.worldX : screenX + viewportX;
+              const worldY = typeof meta.worldY === 'number'
+                ? meta.worldY
+                : screenY - entry.frame.height - entry.layer + viewportY;
+              return {
+                frame: frameRef,
+                worldX,
+                worldY,
+                kind: meta.kind || 'entity'
+              };
+            });
+        }
+        panoramaRenderer.applyScene(scene.currentSceneId, resolvedMapId);
+        const renderResult = panoramaRenderer.render({
+          sceneId: scene.currentSceneId,
+          mapId: resolvedMapId,
+          paletteId: getPaletteIdSnapshot(),
+          mapInstance: activeMapInstance,
+          overlays: panoramaOverlays,
+          uiCanvas: null
+        });
+        if (scene.surface && scene.surface.cvs) {
+          scene.surface.cvs.style.opacity = '';
+        }
+      } else {
+        panoramaRenderer.hide();
+        if (scene.surface && scene.surface.cvs) {
+          scene.surface.cvs.style.opacity = '';
+        }
+      }
+    }
+
     // Check if we need to fade in.
     var needToFadeIn = shouldFadeIn();
     if (needToFadeIn) {

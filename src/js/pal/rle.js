@@ -39,16 +39,22 @@ function recordRLEStats(alreadyDecorated, buffer) {
  */
 var RLEMixin = {
   width: {
+    configurable: true,
+    enumerable: false,
     get: function() {
       return this.reader.getUint16(0);
     }
   },
   height: {
+    configurable: true,
+    enumerable: false,
     get: function() {
       return this.reader.getUint16(2);
     }
   },
   content: {
+    configurable: true,
+    enumerable: false,
     get: function() {
       return this.tmp.subarray(4);
     }
