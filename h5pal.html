@@ -18,38 +18,56 @@
       <canvas id="cvs"></canvas>
       <canvas id="debug"></canvas>
       <div id="debugLayer"></div>
+      <div id="pal-overview-layer"></div>
+      <div id="pal-overview-veil"></div>
       <audio autoplay loop id="bg-music">
         <source id="bg-music-source" type="audio/mpeg">
         Your browser does not support the audio element.
       </audio>
     </div>
-    <div class="control-panel">
-      <input type="button" id="save" value="SAVE" />
-      <input type="button" id="load" value="LOAD" />
-      <input type="button" id="connect-wallet" value="Connect Wallet" style="display:none" />
-      <label for="invincible">无敌<input type="checkbox" id="invincible" /></label>
-      <label for="superAttack">超强攻击力<input type="checkbox" id="superAttack" /></label>
-      <label for="superDefense">超强防御力<input type="checkbox" id="superDefense" /></label>
-    </div>
   </div>
   <script>
-  window.PAL_CONFIG = {
-    assetBaseUrl: "./pal-assets/",
-    audioBaseUrl: "./pal-assets/MP3/",
-    enableAudio: true,
-    enableOverviewMode: true,
-    enableMud: true,
-    mud: {
+  (function bootstrapPalConfig() {
+    function readParentConfig() {
+      try {
+        if (window !== window.parent && window.parent && window.parent.__PAL_GAME_CONFIG) {
+          return window.parent.__PAL_GAME_CONFIG;
+        }
+      } catch (err) {
+        console.warn('[h5pal] unable to read parent config', err);
+      }
+      return null;
+    }
+    var injected = window.PAL_CONFIG || readParentConfig() || {};
+    var defaultMudConfig = {
       rpcUrl: "http://127.0.0.1:8545",
       wsUrl: "ws://127.0.0.1:8545",
       worldAddress: "0x012a31a98Ea3D2611E281f88899b6b52eACF00c0",
       privateKey: null
-    }
-  };
+    };
+    var mergedMud = Object.assign({}, defaultMudConfig, injected.mud || {});
+    var defaults = {
+      assetBaseUrl: "./pal-assets/",
+      audioBaseUrl: "./pal-assets/MP3/",
+      enableAudio: true,
+      enableOverviewMode: true,
+      enablePanorama: true,
+      mapOverlayMode: "gps",
+      enableMud: true,
+      enableNPCBehaviours: false,
+      llmModel: null,
+      npcLLM: {}
+    };
+    var merged = Object.assign({}, defaults, injected);
+    merged.mud = mergedMud;
+    merged.npcLLM = Object.assign({}, injected.npcLLM || {});
+    window.PAL_CONFIG = merged;
+  })();
   </script>
   <script src="lib/requirejs/require.js"></script>
   <script>
   require.config({
+    urlArgs: 'bust=' + Date.now(),
     baseUrl: 'js',
     waitSeconds: 5,
     paths: {
@@ -87,60 +105,87 @@
   </script>
   <script>
   require(['jquery', 'h5pal'], function(pal) {
-    $('#save').click(function() {
-      var me = $(this), text = me.val();
-      me.val(text + '...');
-      co(function*() {
-        var ok = game.saveGame(1);
-        me.val(ok ? text + '...Done!' : text + '...Failed');
-        yield sleep(1000);
-        me.val(text);
-      })
-    });
-    $('#load').click(function() {
-      co(function*() {
-        try {
-          yield game.initGameData(1);
-        } catch(ex) {
-          alert('failed');
-        }
-      });
-    });
-    $.fn.checked = function(f) {
-      if (typeof f === 'undefined') {
-        return $(this).prop('checked');
+    const cheatKeys = ['invincible', 'superAttack', 'superDefense'];
+    const cheatVarMap = cheatKeys.reduce((map, key) => {
+      map[key] = key.replace(/[A-Z]/g, function ($0) { return '_' + $0; }).toUpperCase();
+      return map;
+    }, {});
+    const coroutineRunner = typeof window.co === 'function' ? window.co : null;
+
+    function ensureCheat(key) {
+      const variable = cheatVarMap[key];
+      if (!variable || typeof window[variable] === 'undefined') {
+        throw new Error('Unknown cheat flag: ' + key);
       }
-      return $(this).prop('checked', f);
-    };
-    ['invincible', 'superAttack', 'superDefense'].forEach(function(key) {
-      var variable = key.replace(/[A-Z]/g, function($0) { return '_' + $0; }).toUpperCase();
-      var checkbox = $('#' + key);
-      checkbox.checked(window[variable]);
-      checkbox.change(function(e) {
-        var me = $(this);
-        window[variable] = me.checked();
-      });
+      return variable;
+    }
+
+    function setCheatState(key, enabled) {
+      const variable = ensureCheat(key);
+      window[variable] = !!enabled;
+      return !!window[variable];
+    }
+
+    function getCheatState(key) {
+      const variable = cheatVarMap[key];
+      if (!variable || typeof window[variable] === 'undefined') {
+        return null;
+      }
+      return !!window[variable];
+    }
+
+    function runCoroutine(task) {
+      if (typeof coroutineRunner === 'function') {
+        return coroutineRunner(task);
+      }
+      return Promise.reject(new Error('Coroutine runner unavailable'));
+    }
+
+    window.PAL_UI = Object.assign({}, window.PAL_UI || {}, {
+      saveGame(slot = 1) {
+        return runCoroutine(function* () {
+          if (typeof window.game?.saveGame !== 'function') {
+            throw new Error('game.saveGame unavailable');
+          }
+          const targetSlot = Number(slot) || 1;
+          return window.game.saveGame(targetSlot);
+        });
+      },
+      loadGame(slot = 1) {
+        return runCoroutine(function* () {
+          if (typeof window.game?.initGameData !== 'function') {
+            throw new Error('game.initGameData unavailable');
+          }
+          const targetSlot = Number(slot) || 1;
+          yield window.game.initGameData(targetSlot);
+          return true;
+        });
+      },
+      connectWallet(requestOpts = {}) {
+        if (!window.mudBridge || typeof window.mudBridge.connectWallet !== 'function') {
+          return Promise.reject(new Error('Mud services not ready'));
+        }
+        return window.mudBridge.connectWallet(requestOpts);
+      },
+      disconnectWallet() {
+        if (window.mudBridge && typeof window.mudBridge.disconnectWallet === 'function') {
+          return window.mudBridge.disconnectWallet();
+        }
+        console.warn('[PAL_UI] disconnectWallet not implemented; resetting UI state only');
+        return Promise.resolve(true);
+      },
+      setCheatState(key, enabled) {
+        return setCheatState(key, enabled);
+      },
+      getCheatState(key) {
+        return getCheatState(key);
+      },
+      cheatKeys: cheatKeys.slice()
     });
 
-    var mudEnabled = window.PAL_CONFIG && window.PAL_CONFIG.enableMud === true;
-    if (mudEnabled) {
-      $('#connect-wallet').show();
-      $('#connect-wallet').click(async function () {
-        if (!window.mudBridge || typeof window.mudBridge.connectWallet !== 'function') {
-          alert('Mud services not ready');
-          return;
-        }
-        try {
-          $(this).prop('disabled', true).val('Connecting...');
-          await window.mudBridge.connectWallet();
-          $(this).val('Wallet Connected');
-        } catch (err) {
-          console.error('[UI] wallet connect failed', err);
-          alert('Failed to connect wallet. Please check MetaMask or injected provider.');
-          $(this).prop('disabled', false).val('Connect Wallet');
-        }
-      });
-    }
+    try {
+      window.dispatchEvent(new CustomEvent('pal-ui-ready', { detail: { cheatKeys } }));
+    } catch (err) { /* ignore */ }
   });
   </script>
 </body>

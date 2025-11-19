@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>PAL 控制台</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      --card-bg: rgba(255, 255, 255, 0.8);
+      --border-color: rgba(0, 0, 0, 0.1);
+    }
+    body {
+      margin: 0;
+      padding: 24px;
+      background: #10131a;
+      color: #f5f5f5;
+    }
+    h1 {
+      margin-top: 0;
+      font-size: 1.8rem;
+    }
+    .layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+    @media (max-width: 980px) {
+      .layout {
+        grid-template-columns: 1fr;
+      }
+    }
+    .config-card {
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+      background: var(--card-bg);
+      color: #111;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+    }
+    .config-card h3 {
+      margin: 0 0 12px 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.9rem;
+      margin-bottom: 12px;
+    }
+    label.inline {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+    }
+    input[type="text"],
+    select {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+      font-size: 0.95rem;
+    }
+    #launch-btn {
+      width: 100%;
+      margin-top: 8px;
+      padding: 10px 12px;
+      font-size: 1rem;
+      border-radius: 8px;
+      border: none;
+      background: #4c8bf5;
+      color: #fff;
+      cursor: pointer;
+    }
+    #launch-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .preview-card {
+      background: #0f1624;
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      min-height: 400px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+    }
+    .preview-card header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    iframe {
+      width: 640px;
+      height: 400px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 8px;
+      background: #000;
+      margin: 0 auto;
+      display: block;
+    }
+    .hint {
+      font-size: 0.85rem;
+      color: #c5c5c5;
+    }
+    .action-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .action-row button {
+      flex: 1 1 auto;
+      min-width: 120px;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .tabs button {
+      background: rgba(255, 255, 255, 0.12);
+      color: #f5f5f5;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .tabs button.active {
+      background: #4c8bf5;
+      border-color: #4c8bf5;
+      color: #fff;
+    }
+    .tab-panel {
+      display: none;
+      animation: fadeIn 150ms ease;
+    }
+    .tab-panel.active {
+      display: block;
+    }
+    .tab-content {
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.05);
+      margin-bottom: 16px;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    pre {
+      background: rgba(0, 0, 0, 0.4);
+      padding: 12px;
+      border-radius: 8px;
+      overflow: auto;
+      max-height: 240px;
+      margin: 0;
+      font-size: 0.85rem;
+    }
+  </style>
+</head>
+<body>
+  <h1>PAL H5 控制台</h1>
+  <p>通过右侧 UI 配置 <code>PAL_CONFIG</code> 并点击“启动游戏”即可在下方 iframe 中加载 <code>h5pal.html</code>。</p>
+  <div class="layout">
+    <form id="config-form">
+      <div class="tabs">
+        <button type="button" data-tab="tab-resources" class="active">资源</button>
+        <button type="button" data-tab="tab-map">地图</button>
+        <button type="button" data-tab="tab-controls">操作</button>
+        <button type="button" data-tab="tab-npc">NPC / LLM</button>
+        <button type="button" data-tab="tab-mud">MUD</button>
+      </div>
+      <div class="tab-content">
+        <div class="tab-panel active" id="tab-resources">
+          <div class="config-card">
+            <h3>资源 / 音频</h3>
+            <label>
+              资源目录（assetBaseUrl）
+              <input type="text" name="asset-base-url" value="./pal-assets/">
+            </label>
+            <label>
+              音频目录（audioBaseUrl）
+              <input type="text" name="audio-base-url" value="./pal-assets/MP3/">
+            </label>
+            <label class="inline">
+              <input type="checkbox" name="enable-audio" checked>
+              开启音乐
+            </label>
+          </div>
+        </div>
+        <div class="tab-panel" id="tab-map">
+          <div class="config-card">
+            <h3>地图 & Panorama</h3>
+            <label class="inline">
+              <input type="checkbox" name="gps-enabled" checked>
+              开启 GPS（小地图）
+            </label>
+            <label class="inline">
+              <input type="checkbox" name="force-panorama" checked>
+              开启 Panorama 全景
+            </label>
+            <label>
+              缩放倍率
+              <input type="range" name="panorama-scale" min="0.75" max="2" step="0.05" value="1">
+            </label>
+            <div class="hint">当前倍率：<span id="panorama-scale-display">1.00x</span></div>
+          </div>
+        </div>
+        <div class="tab-panel" id="tab-controls">
+          <div class="config-card">
+            <h3>即时操作</h3>
+            <label class="inline">
+              <input type="checkbox" name="cheat-invincible">
+              无敌
+            </label>
+            <label class="inline">
+              <input type="checkbox" name="cheat-superAttack">
+              超强攻击力
+            </label>
+            <label class="inline">
+              <input type="checkbox" name="cheat-superDefense">
+              超强防御力
+            </label>
+          </div>
+        </div>
+        <div class="tab-panel" id="tab-npc">
+          <div class="config-card">
+            <h3>NPC / LLM</h3>
+            <label class="inline">
+              <input type="checkbox" name="npc-enabled">
+              NPC 行为自动启动
+            </label>
+            <label class="inline">
+              <input type="checkbox" name="ai-autopilot" checked>
+              启用 AI 控制
+            </label>
+            <label>
+              LLM 模型
+              <input type="text" name="llm-model" list="llm-presets" value="qwen3:8b" placeholder="例如 qwen3:8b">
+            </label>
+            <datalist id="llm-presets">
+              <option value="qwen3:8b"></option>
+              <option value="qwen-plus"></option>
+              <option value="glm-4"></option>
+              <option value="moonshot-v1-8k"></option>
+            </datalist>
+          </div>
+        </div>
+        <div class="tab-panel" id="tab-mud">
+          <div class="config-card">
+            <h3>MUD 设置</h3>
+            <div class="action-row">
+              <button type="button" id="action-wallet">连接钱包</button>
+            </div>
+            <label>
+              RPC URL
+              <input type="text" name="mud-rpc" value="http://127.0.0.1:8545">
+            </label>
+            <label>
+              WS URL
+              <input type="text" name="mud-ws" value="ws://127.0.0.1:8545">
+            </label>
+            <label>
+              World Address
+              <input type="text" name="mud-world" value="0x012a31a98Ea3D2611E281f88899b6b52eACF00c0">
+            </label>
+          </div>
+        </div>
+      </div>
+      <button id="launch-btn" type="submit">启动游戏</button>
+    </form>
+    <section class="preview-card">
+      <header>
+        <strong>h5pal 预览</strong>
+        <small id="status-label">未启动</small>
+      </header>
+      <iframe id="game-frame" title="PAL 运行时"></iframe>
+      <div>
+        <strong>当前配置</strong>
+        <pre id="config-preview">{}</pre>
+      </div>
+    </section>
+  </div>
+  <script>
+    const frame = document.getElementById('game-frame');
+    const configPreview = document.getElementById('config-preview');
+    const statusLabel = document.getElementById('status-label');
+    const form = document.getElementById('config-form');
+    const panoramaScaleInput = document.querySelector('input[name="panorama-scale"]');
+    const panoramaScaleDisplay = document.getElementById('panorama-scale-display');
+    const actionButtons = {
+      wallet: document.getElementById('action-wallet')
+    };
+    const cheatInputs = {
+      invincible: document.querySelector('input[name="cheat-invincible"]'),
+      superAttack: document.querySelector('input[name="cheat-superAttack"]'),
+      superDefense: document.querySelector('input[name="cheat-superDefense"]')
+    };
+    const tabButtons = document.querySelectorAll('.tabs button');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-tab');
+        tabButtons.forEach((b) => b.classList.toggle('active', b === btn));
+        tabPanels.forEach((panel) => panel.classList.toggle('active', panel.id === target));
+      });
+    });
+    let lastPanoramaScale = panoramaScaleInput ? Number(panoramaScaleInput.value) || 1 : 1;
+    let walletConnected = false;
+
+    function setWalletButtonState(connected) {
+      walletConnected = !!connected;
+      if (actionButtons.wallet) {
+        actionButtons.wallet.textContent = connected ? '断开钱包' : '连接钱包';
+      }
+    }
+
+    const defaultConfig = {
+      assetBaseUrl: './pal-assets/',
+      audioBaseUrl: './pal-assets/MP3/',
+      enableAudio: true,
+      enableOverviewMode: true,
+      enablePanorama: true,
+      mapOverlayMode: 'gps',
+      enableAIControl: true,
+      enableNPCBehaviours: false,
+      llmModel: 'qwen3:8b',
+      enableMud: false,
+      mud: {
+        rpcUrl: 'http://127.0.0.1:8545',
+        wsUrl: 'ws://127.0.0.1:8545',
+        worldAddress: '0x012a31a98Ea3D2611E281f88899b6b52eACF00c0',
+        privateKey: null
+      },
+      npcLLM: {
+        enabled: false,
+        model: 'qwen3:8b'
+      }
+    };
+
+    function formatScale(value) {
+      return `${value.toFixed(2)}x`;
+    }
+
+    function updatePanoramaScaleLabel(value) {
+      if (panoramaScaleDisplay) {
+        panoramaScaleDisplay.textContent = formatScale(value);
+      }
+    }
+
+    function getGameWindow() {
+      return frame && frame.contentWindow ? frame.contentWindow : null;
+    }
+
+    function withGameWindow(callback) {
+      const targetWindow = getGameWindow();
+      if (!targetWindow || typeof callback !== 'function') {
+        return;
+      }
+      try {
+        callback(targetWindow);
+      } catch (err) {
+        console.warn('[index] panorama callback failed', err);
+      }
+    }
+
+    function applyPanoramaScaleToFrame(value) {
+      withGameWindow((win) => {
+        const api = (win.PAL_PANORAMA && typeof win.PAL_PANORAMA.setScale === 'function')
+          ? win.PAL_PANORAMA
+          : (win.PAL_PANORAMA_UI && typeof win.PAL_PANORAMA_UI.setScale === 'function'
+            ? win.PAL_PANORAMA_UI
+            : null);
+        if (api && typeof api.setScale === 'function') {
+          api.setScale(value);
+        }
+      });
+    }
+
+    function syncPanoramaScaleFromFrame() {
+      withGameWindow((win) => {
+        const api = win.PAL_PANORAMA_UI && typeof win.PAL_PANORAMA_UI.getScale === 'function'
+          ? win.PAL_PANORAMA_UI
+          : (win.PAL_PANORAMA && typeof win.PAL_PANORAMA.getScale === 'function'
+            ? win.PAL_PANORAMA
+            : null);
+        if (api && typeof api.getScale === 'function') {
+          const value = Number(api.getScale());
+          if (Number.isFinite(value) && panoramaScaleInput) {
+            panoramaScaleInput.value = String(value);
+            lastPanoramaScale = value;
+            updatePanoramaScaleLabel(value);
+          }
+        }
+      });
+    }
+
+    async function callPalUi(method, ...args) {
+      const targetWindow = getGameWindow();
+      if (!targetWindow || !targetWindow.PAL_UI) {
+        throw new Error('游戏未准备好');
+      }
+      const api = targetWindow.PAL_UI;
+      if (!api[method] || typeof api[method] !== 'function') {
+        throw new Error(`不支持的操作: ${method}`);
+      }
+      return await api[method](...args);
+    }
+
+    function syncCheatStates() {
+      withGameWindow((win) => {
+        const api = win.PAL_UI;
+        if (!api || typeof api.getCheatState !== 'function') {
+          return;
+        }
+        Object.entries(cheatInputs).forEach(([key, input]) => {
+          if (!input) return;
+          try {
+            input.checked = !!api.getCheatState(key);
+          } catch (err) {
+            console.warn('[index] sync cheat failed', key, err);
+          }
+        });
+      });
+    }
+
+    async function runAction(button, workingText, task) {
+      if (!button || typeof task !== 'function') {
+        return;
+      }
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = workingText;
+      try {
+        await task();
+      } catch (err) {
+        console.error('[index] action failed', err);
+        alert(err?.message || '操作失败，请查看控制台');
+      } finally {
+        button.disabled = false;
+        button.textContent = original;
+      }
+    }
+
+    function bindActionButtons() {
+      if (actionButtons.wallet) {
+        setWalletButtonState(false);
+        actionButtons.wallet.addEventListener('click', () => {
+          if (!walletConnected) {
+            runAction(actionButtons.wallet, '连接中...', async () => {
+              await callPalUi('connectWallet');
+              setWalletButtonState(true);
+            });
+          } else {
+            runAction(actionButtons.wallet, '断开中...', async () => {
+              await callPalUi('disconnectWallet');
+              setWalletButtonState(false);
+            });
+          }
+        });
+      }
+      Object.entries(cheatInputs).forEach(([key, input]) => {
+        if (!input) return;
+        input.addEventListener('change', async () => {
+          try {
+            await callPalUi('setCheatState', key, input.checked);
+          } catch (err) {
+            console.error('[index] cheat toggle failed', err);
+            alert(err?.message || '切换失败');
+            input.checked = !input.checked;
+          }
+        });
+      });
+    }
+
+    function readBool(formData, name) {
+      return formData.get(name) === 'on';
+    }
+
+    function buildConfig() {
+      const data = new FormData(form);
+      const gpsOn = readBool(data, 'gps-enabled');
+      const panoramaOn = readBool(data, 'force-panorama');
+      const llmModel = (data.get('llm-model') || '').trim() || null;
+      const npcEnabled = readBool(data, 'npc-enabled');
+      const config = {
+        assetBaseUrl: data.get('asset-base-url')?.trim() || defaultConfig.assetBaseUrl,
+        audioBaseUrl: data.get('audio-base-url')?.trim() || defaultConfig.audioBaseUrl,
+        enableAudio: readBool(data, 'enable-audio'),
+        mapOverlayMode: panoramaOn ? 'panorama' : (gpsOn ? 'gps' : 'off'),
+        enableOverviewMode: gpsOn,
+        enablePanorama: panoramaOn,
+        enableAIControl: readBool(data, 'ai-autopilot'),
+        enableNPCBehaviours: npcEnabled,
+        llmModel,
+        enableMud: walletConnected,
+        mud: {
+          rpcUrl: data.get('mud-rpc')?.trim() || defaultConfig.mud.rpcUrl,
+          wsUrl: data.get('mud-ws')?.trim() || defaultConfig.mud.wsUrl,
+          worldAddress: data.get('mud-world')?.trim() || defaultConfig.mud.worldAddress,
+          privateKey: null
+        },
+        npcLLM: {
+          enabled: npcEnabled,
+          model: llmModel,
+          temperature: 0.7,
+          cooldownMs: 5000
+        }
+      };
+      return config;
+    }
+
+    function applyConfig(config) {
+      window.__PAL_GAME_CONFIG = JSON.parse(JSON.stringify(config));
+      configPreview.textContent = JSON.stringify(config, null, 2);
+    }
+
+    function reloadGame() {
+      const config = buildConfig();
+      applyConfig(config);
+      statusLabel.textContent = '载入中...';
+      const url = 'h5pal.html?_=' + Date.now();
+      frame.src = url;
+    }
+
+    bindActionButtons();
+
+    if (panoramaScaleInput) {
+      updatePanoramaScaleLabel(lastPanoramaScale);
+      panoramaScaleInput.addEventListener('input', (event) => {
+        const value = Number(event.target.value);
+        if (!Number.isFinite(value)) {
+          return;
+        }
+        lastPanoramaScale = value;
+        updatePanoramaScaleLabel(value);
+        applyPanoramaScaleToFrame(value);
+      });
+    }
+
+    frame.addEventListener('load', () => {
+      setWalletButtonState(false);
+      if (frame.src && /h5pal\.html/.test(frame.src)) {
+        statusLabel.textContent = '运行中';
+      } else {
+        statusLabel.textContent = '空闲';
+      }
+      setTimeout(() => {
+        applyPanoramaScaleToFrame(lastPanoramaScale);
+        syncPanoramaScaleFromFrame();
+        syncCheatStates();
+      }, 300);
+    });
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      reloadGame();
+    });
+
+    // 初始化显示默认配置并直接加载一次
+    applyConfig(defaultConfig);
+    reloadGame();
+  </script>
+</body>
+</html>

@@ -3,6 +3,7 @@ import { getViewportValue as getViewportSnapshot, viewport$ } from '../../servic
 
 const HAS_DOM = typeof window !== 'undefined' && typeof document !== 'undefined';
 const DEFAULT_FOLDER = 'map-overview';
+const EXPORTED_FOLDER = 'exported-assets/map-overview';
 const LAYER_ID = 'pal-overview-layer';
 const VEIL_ID = 'pal-overview-veil';
 const INDICATOR_ID = 'pal-overview-indicator';
@@ -142,6 +143,10 @@ function buildCandidatesForRelative(relativePath, metaRelative) {
 
 function buildLegacySceneCandidates(sceneId) {
   const names = [
+    `${EXPORTED_FOLDER}/map-${sceneId}.png`,
+    `${EXPORTED_FOLDER}/scene-${sceneId}.png`,
+    `${EXPORTED_FOLDER}/${sceneId}.png`,
+    `${DEFAULT_FOLDER}/map-${sceneId}.png`,
     `${DEFAULT_FOLDER}/scene-${sceneId}.png`,
     `${DEFAULT_FOLDER}/${sceneId}.png`
   ];
@@ -203,16 +208,24 @@ function buildSceneCandidates(sceneId, manifest) {
   const candidates = [];
   const manifestEntry = resolveSceneFromManifest(manifest, sceneId);
   if (manifestEntry) {
-    const relativeImage = `${DEFAULT_FOLDER}/${manifestEntry.image}`;
-    const pairs = buildCandidatesForRelative(relativeImage);
-    pairs.forEach((pair) => {
-      candidates.push({
-        imageUrl: pair.imageUrl,
-        meta: {
-          mapId: manifestEntry.mapId,
-          bounds: manifestEntry.bounds,
-          imageSize: manifestEntry.imageSize
-        }
+    const normalizedImageName = (manifestEntry.image && manifestEntry.image.startsWith('map-'))
+      ? manifestEntry.image
+      : `map-${manifestEntry.image}`;
+    const relativeImages = [
+      `${EXPORTED_FOLDER}/${normalizedImageName}`,
+      `${DEFAULT_FOLDER}/${normalizedImageName}`
+    ];
+    relativeImages.forEach((relativeImage) => {
+      const pairs = buildCandidatesForRelative(relativeImage);
+      pairs.forEach((pair) => {
+        candidates.push({
+          imageUrl: pair.imageUrl,
+          meta: {
+            mapId: manifestEntry.mapId,
+            bounds: manifestEntry.bounds,
+            imageSize: manifestEntry.imageSize
+          }
+        });
       });
     });
   }
@@ -759,7 +772,7 @@ const controller = new OverviewController();
 controller._initViewportSubscription();
 
 if (typeof window !== 'undefined') {
-  window.PAL_OVERVIEW = {
+  window.PAL_OVERVIEW = Object.assign({}, window.PAL_OVERVIEW, {
     enable: () => controller.setEnabled(true),
     disable: () => controller.setEnabled(false),
     toggle: () => controller.toggle(),
@@ -775,7 +788,7 @@ if (typeof window !== 'undefined') {
       return controller.getMode();
     },
     suspend: (flag) => controller.setSuspended(flag)
-  };
+  });
 }
 
 export default controller;

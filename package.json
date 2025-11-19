@@ -42,7 +42,7 @@
   },
   "scripts": {
     "test": "vitest",
-    "test:ci": "NODE_OPTIONS=--experimental-global-webcrypto vitest run",
+    "test:ci": "vitest run",
     "export:sprites": "node scripts/export-sprites.cjs",
     "export:overviews": "node --experimental-loader ./scripts/node-relative-loader.mjs scripts/export-overviews.cjs",
     "export:storygraphs": "node --experimental-loader ./scripts/node-relative-loader.mjs scripts/export-storygraphs.mjs",

@@ -46,7 +46,7 @@ function style() {
 // Copy HTML files
 function html() {
   console.log('Copying HTML files...');
-  return gulp.src(['h5pal.html', 'pal.ico'])
+  return gulp.src(['h5pal.html', 'index.html', 'pal.ico'])
     .pipe(gulp.dest('dist/'));
 }
 
@@ -107,14 +107,57 @@ function serve() {
 function watchFiles() {
   console.log('Watching files for changes...');
   gulp.watch(['src/js/**'], { interval: 500, debounceDelay: 1000 }, js);
-  gulp.watch(['src/**/*.html'], html); // Watch for HTML changes
+  gulp.watch(['src/**/*.html', 'h5pal.html', 'index.html'], html); // Watch for HTML changes
   gulp.watch(['src/stylus/*.styl', 'src/css/**/*.css'], style); // Watch for CSS changes
 }
 
+
+function symlinkAssets(done) {
+  const src = path.resolve('pal-assets');
+  const dest = path.resolve('dist/pal-assets');
+  import('fs').then(({ default: fs }) => {
+    fs.access(src, (err) => {
+      if (err) {
+        console.warn('[symlinkAssets] missing pal-assets directory, skipping link');
+        done();
+        return;
+      }
+      const removeExisting = (callback) => {
+        fs.lstat(dest, (statErr, stats) => {
+          if (statErr) {
+            callback();
+            return;
+          }
+          fs.rm(dest, { recursive: true, force: true }, (rmErr) => {
+            if (rmErr) {
+              console.warn('[symlinkAssets] failed to remove existing target', rmErr);
+            }
+            callback();
+          });
+        });
+      };
+      const createLink = () => {
+        fs.symlink(src, dest, 'dir', (linkErr) => {
+          if (linkErr && linkErr.code !== 'EEXIST') {
+            console.error('[symlinkAssets] failed to create symlink', linkErr);
+          } else {
+            console.log('[symlinkAssets] linked pal-assets -> dist/pal-assets');
+          }
+          done();
+        });
+      };
+      removeExisting(createLink);
+    });
+  }).catch((err) => {
+    console.error('[symlinkAssets] fs import failed', err);
+    done(err);
+  });
+}
+
 // Define tasks
-const build = gulp.series(exportGameDataTask, buildLib, gulp.parallel(js, style, html));
+const build = gulp.series(exportGameDataTask, buildLib, gulp.parallel(js, style, html), symlinkAssets);
 const dev = gulp.series(build, gulp.parallel(serve, watchFiles));
 const defaultTask = gulp.series(clean, build);
 
 // Export tasks
-export { clean, js, style, html, buildLib, build, serve, dev, exportGameDataTask, defaultTask as default };
+export { clean, js, style, html, buildLib, build, serve, dev, exportGameDataTask, symlinkAssets, defaultTask as default };

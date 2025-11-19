@@ -80,7 +80,8 @@ function shouldUseModOverride(path) {
     lowered.endsWith('.asc') ||
     lowered.endsWith('.fon') ||
     lowered.endsWith('.dat') ||
-    lowered.endsWith('.msg')
+    lowered.endsWith('.msg') ||
+    lowered.endsWith('.rpg')
   ) {
     return false;
   }
