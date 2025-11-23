@@ -6,12 +6,6 @@ traceModuleLoad('music module load');
 
 var music = {};
 
-function pad(num, size) {
-  var s = num+"";
-  while (s.length < size) s = "0" + s;
-  return s;
-}
-
 music.play = function() {
   worldService.setMusicTrack(arguments[0]);
   var args = toArray(arguments);
@@ -26,7 +20,7 @@ music.play = function() {
     log.warn('[MUSIC] audio element not ready, skip');
     return;
   }
-  var target = config.resolveAudioPath(pad(arguments[0], 3) + ".mp3");
+  var target = config.resolveAudioPath(String(arguments[0]) + ".mp3");
   if (!target) {
     log.trace('[MUSIC] audio path unavailable');
     return;

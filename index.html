@@ -209,7 +209,7 @@
               开启 GPS（小地图）
             </label>
             <label class="inline">
-              <input type="checkbox" name="force-panorama" checked>
+              <input type="checkbox" name="force-panorama">
               开启 Panorama 全景
             </label>
             <label>
@@ -244,7 +244,7 @@
               NPC 行为自动启动
             </label>
             <label class="inline">
-              <input type="checkbox" name="ai-autopilot" checked>
+              <input type="checkbox" name="ai-autopilot">
               启用 AI 控制
             </label>
             <label>
@@ -288,15 +288,10 @@
         <small id="status-label">未启动</small>
       </header>
       <iframe id="game-frame" title="PAL 运行时"></iframe>
-      <div>
-        <strong>当前配置</strong>
-        <pre id="config-preview">{}</pre>
-      </div>
     </section>
   </div>
   <script>
     const frame = document.getElementById('game-frame');
-    const configPreview = document.getElementById('config-preview');
     const statusLabel = document.getElementById('status-label');
     const form = document.getElementById('config-form');
     const panoramaScaleInput = document.querySelector('input[name="panorama-scale"]');
@@ -333,9 +328,9 @@
       audioBaseUrl: './pal-assets/MP3/',
       enableAudio: true,
       enableOverviewMode: true,
-      enablePanorama: true,
+      enablePanorama: false,
       mapOverlayMode: 'gps',
-      enableAIControl: true,
+      enableAIControl: false,
       enableNPCBehaviours: false,
       llmModel: 'qwen3:8b',
       enableMud: false,
@@ -525,7 +520,6 @@
 
     function applyConfig(config) {
       window.__PAL_GAME_CONFIG = JSON.parse(JSON.stringify(config));
-      configPreview.textContent = JSON.stringify(config, null, 2);
     }
 
     function reloadGame() {

@@ -51,6 +51,8 @@
     "embeddings:all": "STORY_EMBED_OUTPUT=pal-assets/storygraph-embeddings.json node scripts/build-story-embeddings.mjs",
     "export:npc-map": "node scripts/export-npc-map.mjs",
     "mud:deploy": "node scripts/mud-deploy.mjs",
-    "mud:codegen": "node scripts/mud-codegen.mjs"
+    "mud:codegen": "node scripts/mud-codegen.mjs",
+    "export:midi": "node scripts/export-midi.js",
+    "export:mp3": "node scripts/convert-midi-to-mp3.js"
   }
 }
