@@ -1,15 +1,25 @@
 import traceModuleLoad from './util-trace';
 
+/** @typedef {import('../../types/pal').PalConfig} PalConfig */
+/** @typedef {import('../../types/pal').PartialPalConfig} PartialPalConfig */
+
 traceModuleLoad('config module load');
 
+/**
+ * Normalize a base URL so it always ends with a single '/'.
+ * @param {string | null | undefined} url
+ * @returns {string}
+ */
 function normalizeBase(url) {
   if (!url) return '';
   return url.replace(/\/+$/, '') + '/';
 }
 
-var globalConfig = (typeof window !== 'undefined' && window.PAL_CONFIG) || {};
+/** @type {PartialPalConfig} */
+const globalConfig = (typeof window !== 'undefined' && window.PAL_CONFIG) || {};
 
-var defaults = {
+/** @type {PartialPalConfig} */
+const defaults = {
   assetBaseUrl: './pal-assets/',
   audioBaseUrl: null,
   enableTouch: true,
@@ -29,13 +39,14 @@ var defaults = {
   llmModel: null
 };
 
-var baseConfig = {};
-for (var key in defaults) {
-    if (Object.prototype.hasOwnProperty.call(defaults, key)) {
-        baseConfig[key] = defaults[key];
-    }
+/** @type {PartialPalConfig} */
+const baseConfig = {};
+for (const key in defaults) {
+  if (Object.prototype.hasOwnProperty.call(defaults, key)) {
+    baseConfig[key] = defaults[key];
+  }
 }
-for (var cfgKey in globalConfig) {
+for (const cfgKey in globalConfig) {
   if (Object.prototype.hasOwnProperty.call(globalConfig, cfgKey)) {
     baseConfig[cfgKey] = globalConfig[cfgKey];
   }
@@ -64,7 +75,7 @@ baseConfig.embeddingSource = baseConfig.embeddingSource || defaults.embeddingSou
 baseConfig.embeddingModel = baseConfig.embeddingModel || defaults.embeddingModel;
 baseConfig.llmModel = baseConfig.llmModel || defaults.llmModel;
 
-var audioConfigured = typeof baseConfig.audioBaseUrl === 'string' && baseConfig.audioBaseUrl.length > 0;
+const audioConfigured = typeof baseConfig.audioBaseUrl === 'string' && baseConfig.audioBaseUrl.length > 0;
 if (audioConfigured || baseConfig.enableAudio) {
   baseConfig.enableAudio = true;
   baseConfig.audioBaseUrl = normalizeBase(baseConfig.audioBaseUrl || (baseConfig.assetBaseUrl + 'MP3/'));
@@ -74,7 +85,7 @@ if (audioConfigured || baseConfig.enableAudio) {
 }
 
 function shouldUseModOverride(path) {
-  var lowered = (path || '').toLowerCase();
+  const lowered = (path || '').toLowerCase();
   if (
     lowered.endsWith('.mkf') ||
     lowered.endsWith('.asc') ||
@@ -88,23 +99,35 @@ function shouldUseModOverride(path) {
   return true;
 }
 
+/**
+ * @param {string} path
+ * @returns {string}
+ */
 function resolveAssetPath(path) {
   path = path || '';
   if (path.charAt(0) === '/') {
     path = path.substring(1);
   }
-  return baseConfig.assetBaseUrl + path;
+  return /** @type {string} */ (baseConfig.assetBaseUrl) + path;
 }
 
+/**
+ * @param {string} path
+ * @returns {string | null}
+ */
 function resolveAudioPath(path) {
   path = path || '';
   if (!baseConfig.audioBaseUrl) return null;
   if (path.charAt(0) === '/') {
     path = path.substring(1);
   }
-  return baseConfig.audioBaseUrl + path;
+  return /** @type {string} */ (baseConfig.audioBaseUrl) + path;
 }
 
+/**
+ * @param {string} path
+ * @returns {string | null}
+ */
 function resolveModAssetPath(path) {
   path = path || '';
   if (!baseConfig.enableModAssets || !baseConfig.modAssetBaseUrl) return null;
@@ -114,6 +137,10 @@ function resolveModAssetPath(path) {
   return baseConfig.modAssetBaseUrl + path;
 }
 
+/**
+ * @param {string} path
+ * @returns {string | null}
+ */
 function resolveModSpritePath(path) {
   path = path || '';
   if (!baseConfig.enableModAssets || !baseConfig.modSpriteBaseUrl) return null;
@@ -131,19 +158,27 @@ function normalizeRelativePath(path) {
   return path;
 }
 
+/**
+ * @param {string} path
+ * @returns {string[]}
+ */
 function resolveAssetPathCandidates(path) {
-  var normalized = normalizeRelativePath(path);
-  var list = [];
+  const normalized = normalizeRelativePath(path);
+  const list = [];
   if (baseConfig.enableModAssets && baseConfig.modAssetBaseUrl && shouldUseModOverride(normalized)) {
     list.push(baseConfig.modAssetBaseUrl + normalized);
   }
-  list.push(baseConfig.assetBaseUrl + normalized);
+  list.push(/** @type {string} */ (baseConfig.assetBaseUrl) + normalized);
   return list;
 }
 
+/**
+ * @param {string} path
+ * @returns {string[]}
+ */
 function resolveAudioPathCandidates(path) {
-  var normalized = normalizeRelativePath(path);
-  var list = [];
+  const normalized = normalizeRelativePath(path);
+  const list = [];
   if (baseConfig.enableModAssets && baseConfig.modAssetBaseUrl && shouldUseModOverride(normalized)) {
     list.push(baseConfig.modAssetBaseUrl + normalized);
   }
@@ -160,4 +195,6 @@ baseConfig.resolveModSpritePath = resolveModSpritePath;
 baseConfig.resolveAssetPathCandidates = resolveAssetPathCandidates;
 baseConfig.resolveAudioPathCandidates = resolveAudioPathCandidates;
 
-export default baseConfig;
+const config = /** @type {PalConfig} */ (baseConfig);
+
+export default config;

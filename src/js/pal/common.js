@@ -17,6 +17,7 @@ global.DEBUG = {
   ShowSpriteSize: false,
 };
 
+/** @type {any} */
 var log = global.log = {
   level: 2,
   write: function(level) {
@@ -254,3 +255,5 @@ Promise.prototype.spread = function(resolve, reject) {
       return resolve.apply(this, array);
   }, reject);
 };
+
+export {};

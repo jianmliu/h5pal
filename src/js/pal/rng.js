@@ -1,3 +1,4 @@
+// @ts-nocheck
 import yj_1 from './yj_1';
 import resourceService from '../../services/resource-service.js';
 import worldService from '../../services/world-service.js';

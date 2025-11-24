@@ -1,0 +1,55 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Node",
+    "allowJs": true,
+    "checkJs": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": false,
+    "types": [
+      "node"
+    ],
+    "typeRoots": [
+      "./src/types",
+      "./node_modules/@types"
+    ],
+    "noResolve": true
+  },
+  "files": [
+    "src/types/pal.d.ts",
+    "src/types/rxjs-stub.d.ts",
+    "src/js/pal/config.js",
+    "src/js/pal/common.js",
+    "src/js/pal/util-trace.js",
+    "src/js/pal/utils.js",
+    "src/js/pal/music.js",
+    "src/js/pal/rng.js",
+    "src/js/pal/ajax.js",
+    "src/services/environment-adapter.js",
+    "src/services/dialog-service.js",
+    "src/services/game-flags-adapter.js",
+    "src/services/adapter-helpers.js",
+    "src/services/save-data-adapter.js",
+    "src/services/scene-state-adapter.js",
+    "src/services/scene-event-adapter.js",
+    "src/services/player-state-adapter.js",
+    "src/services/party-trail-adapter.js",
+    "src/services/game-data-adapter.js",
+    "src/services/state-service.js",
+    "src/services/resource-service.js",
+    "src/services/storage-service.js"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "pal-assets",
+    "scripts/**/*",
+    "tools/**/*",
+    "test/**/*"
+  ]
+}

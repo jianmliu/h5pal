@@ -19,6 +19,13 @@ class StorageService extends EventBus {
     this.storage = getStorage();
   }
 
+  fire(event, payload) {
+    if (typeof super.fire === 'function') {
+      return super.fire(event, payload);
+    }
+    return undefined;
+  }
+
   isAvailable() {
     return !!this.storage;
   }

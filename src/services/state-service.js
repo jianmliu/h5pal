@@ -1,11 +1,13 @@
 import EventBus from './event-bus.js';
 
 function resolveGlobalStore() {
-  if (typeof globalThis !== 'undefined' && globalThis.Global) {
-    return globalThis.Global;
+  if (typeof globalThis !== 'undefined') {
+    const g = /** @type {any} */ (globalThis);
+    if (g && g.Global) return g.Global;
   }
-  if (typeof global !== 'undefined' && global.Global) {
-    return global.Global;
+  if (typeof global !== 'undefined') {
+    const g = /** @type {any} */ (global);
+    if (g && g.Global) return g.Global;
   }
   return null;
 }
@@ -14,17 +16,19 @@ function ensureGlobalStore() {
   let store = resolveGlobalStore();
   if (!store && typeof globalThis !== 'undefined') {
     store = {};
-    globalThis.Global = store;
+    /** @type {any} */ (globalThis).Global = store;
   }
   return store;
 }
 
 function resolveGameDataStore() {
-  if (typeof globalThis !== 'undefined' && globalThis.GameData) {
-    return globalThis.GameData;
+  if (typeof globalThis !== 'undefined') {
+    const g = /** @type {any} */ (globalThis);
+    if (g && g.GameData) return g.GameData;
   }
-  if (typeof global !== 'undefined' && global.GameData) {
-    return global.GameData;
+  if (typeof global !== 'undefined') {
+    const g = /** @type {any} */ (global);
+    if (g && g.GameData) return g.GameData;
   }
   return null;
 }
@@ -33,12 +37,19 @@ function ensureGameDataStore() {
   let store = resolveGameDataStore();
   if (!store && typeof globalThis !== 'undefined') {
     store = {};
-    globalThis.GameData = store;
+    /** @type {any} */ (globalThis).GameData = store;
   }
   return store;
 }
 
 class StateService extends EventBus {
+  fire(event, payload) {
+    if (typeof super.fire === 'function') {
+      return super.fire(event, payload);
+    }
+    return undefined;
+  }
+
   getGlobal(key) {
     const store = resolveGlobalStore();
     if (!store) return undefined;

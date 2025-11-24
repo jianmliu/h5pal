@@ -314,3 +314,4 @@ const dialogService = {
 };
 
 export default dialogService;
+// @ts-nocheck

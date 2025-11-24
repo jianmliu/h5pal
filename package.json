@@ -31,12 +31,14 @@
     "@rollup/plugin-commonjs": "^26.0.3",
     "@rollup/plugin-json": "^6.1.0",
     "@rollup/plugin-node-resolve": "^15.2.3",
+    "@types/node": "^24.10.1",
     "fancy-log": "^2.0.0",
     "gulp-babel": "^8.0.0",
     "jsdom": "^24.0.0",
     "pngjs": "^7.0.0",
     "rollup": "^4.52.5",
     "stylus": "^0.64.0",
+    "typescript": "^5.9.3",
     "vite-node": "^5.0.0",
     "vitest": "^1.5.3"
   },
@@ -53,6 +55,7 @@
     "mud:deploy": "node scripts/mud-deploy.mjs",
     "mud:codegen": "node scripts/mud-codegen.mjs",
     "export:midi": "node scripts/export-midi.js",
-    "export:mp3": "node scripts/convert-midi-to-mp3.js"
+    "export:mp3": "node scripts/convert-midi-to-mp3.js",
+    "typecheck": "tsc --noEmit"
   }
 }

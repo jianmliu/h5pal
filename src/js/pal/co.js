@@ -1,4 +1,4 @@
-
+// @ts-nocheck
 /**
  * slice() reference.
  */
@@ -233,3 +233,6 @@ function isObject(val) {
 co['default'] = co.co = co;
 
 export default co;
+// @ts-nocheck
+// @ts-nocheck
+// eslint-disable-next-line

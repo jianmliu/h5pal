@@ -37,10 +37,16 @@ function ensureArray(value) {
   if (Array.isArray(value)) {
     return value;
   }
-  if (ArrayBuffer.isView(value) && typeof value.slice === 'function') {
-    return Array.from(value.slice());
+  if (ArrayBuffer.isView(value)) {
+    const view = toUint8Array(value);
+    return Array.from(view);
   }
   return [];
+}
+
+function toUint8Array(view) {
+  if (view instanceof Uint8Array) return view;
+  return new Uint8Array(view.buffer, view.byteOffset || 0, view.byteLength || view.length || 0);
 }
 
 function toUnsignedWord(highByte, lowByte) {
@@ -181,9 +187,9 @@ export function getPoisonStatusMatrix() {
 }
 
 export function getMaxPartyMemberIndex() {
-  const legacyGlobal = (typeof globalThis !== 'undefined' && globalThis.Global)
-    ? globalThis.Global
-    : (typeof global !== 'undefined' ? global.Global : null);
+  const legacyGlobal = (typeof globalThis !== 'undefined' && /** @type {any} */ (globalThis).Global)
+    ? /** @type {any} */ (globalThis).Global
+    : (typeof global !== 'undefined' ? /** @type {any} */ (global).Global : null);
   if (legacyGlobal && typeof legacyGlobal.maxPartyMemberIndex === 'number') {
     return legacyGlobal.maxPartyMemberIndex;
   }
@@ -423,10 +429,11 @@ export function getPlayerRoleWord(fieldIndex, roleId, fallback = 0) {
   if (buffer && maxRoles > 0) {
     const offset = (fieldIndex * maxRoles + roleId) * 2;
     if (ArrayBuffer.isView(buffer)) {
-      const byteLength = buffer.byteLength || buffer.length || 0;
+      const viewArray = toUint8Array(buffer);
+      const byteLength = viewArray.byteLength;
       if (offset >= 0 && offset + 2 <= byteLength) {
         try {
-          const view = new DataView(buffer.buffer, buffer.byteOffset || 0, byteLength);
+          const view = new DataView(viewArray.buffer, viewArray.byteOffset, byteLength);
           return view.getUint16(offset, false);
         } catch (err) {
           // fall through to array read

@@ -51,16 +51,27 @@ const levelUpMagicStream = reactiveContext.signalToObservable(
   () => getLevelUpMagicTable()
 );
 
+/**
+ * Resolve the global GameData store (browser or Node globals).
+ * @returns {any | null}
+ */
 function getGameDataStore() {
-  if (typeof globalThis !== 'undefined' && globalThis.GameData) {
-    return globalThis.GameData;
+  if (typeof globalThis !== 'undefined') {
+    const g = /** @type {any} */ (globalThis);
+    if (g && g.GameData) return g.GameData;
   }
-  if (typeof global !== 'undefined' && global.GameData) {
-    return global.GameData;
+  if (typeof global !== 'undefined') {
+    const g = /** @type {any} */ (global);
+    if (g && g.GameData) return g.GameData;
   }
   return null;
 }
 
+/**
+ * Deep-ish clone for arrays, typed arrays, and plain objects.
+ * @param {any} value
+ * @returns {any}
+ */
 function clone(value) {
   if (!value) {
     return value;
@@ -69,7 +80,7 @@ function clone(value) {
     return value.map((entry) => clone(entry));
   }
   if (entryIsTypedArray(value)) {
-    return value.slice();
+    return toUint8Array(value).slice();
   }
   if (typeof value === 'object') {
     const result = {};
@@ -82,7 +93,17 @@ function clone(value) {
 }
 
 function entryIsTypedArray(entry) {
-  return ArrayBuffer.isView(entry) && typeof entry.slice === 'function';
+  return ArrayBuffer.isView(entry);
+}
+
+/**
+ * Normalize any ArrayBufferView to a Uint8Array for safe slicing.
+ * @param {ArrayBufferView} view
+ * @returns {Uint8Array}
+ */
+function toUint8Array(view) {
+  if (view instanceof Uint8Array) return view;
+  return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
 }
 
 function refreshMagicCache() {

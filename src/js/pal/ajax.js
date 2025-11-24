@@ -1,3 +1,4 @@
+// @ts-nocheck
 import traceModuleLoad from './util-trace';
 import utils from './utils';
 import Global from './pal-global';
@@ -173,3 +174,5 @@ var loadMKF = ajax.loadMKF = function(mkfList) {
 };
 
 export default ajax;
+// @ts-nocheck
+// @ts-nocheck

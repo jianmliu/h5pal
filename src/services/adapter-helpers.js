@@ -74,4 +74,3 @@ export function attachAdapterObservable(target, options) {
   target.label = observable.label;
   return target;
 }
-

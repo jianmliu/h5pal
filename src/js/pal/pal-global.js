@@ -1086,3 +1086,4 @@ global.Files = {};
 
 export default Global;
 // TODO 还有一部分旧代码没迁移过来
+// @ts-nocheck

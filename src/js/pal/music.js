@@ -1,3 +1,4 @@
+// @ts-nocheck
 import traceModuleLoad from './util-trace';
 import config from './config';
 import worldService from '../../services/world-service.js';

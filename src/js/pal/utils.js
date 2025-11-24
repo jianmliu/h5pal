@@ -197,7 +197,7 @@ utils.Events = {
  * 返回一个this上下文固定的函数
  * @method
  * @param  {Function} fn
- * @param  {Any}   thisObj
+ * @param  {*}   thisObj
  * @return {Function}
  */
 utils.proxy = function(fn, thisObj) {
@@ -256,10 +256,10 @@ utils.raf = function(fn) {
 /**
  * 保持帧数的循环
  * @method
- * @param  {Function(elapsed, realElapsed)} callback 每帧回调，参数为距离上一帧游戏时间，距离上一帧真实时间
- * @param  {int}   fps
- * @param  {int}   err 允许误差，默认为每帧时间/20
- * @return {int}   ID
+ * @param  {(elapsed: number, realElapsed: number) => void} callback 每帧回调，参数为距离上一帧游戏时间，距离上一帧真实时间
+ * @param  {number}   fps
+ * @param  {number}   err 允许误差，默认为每帧时间/20
+ * @return {number}   ID
  */
 utils.keepFPS = function(callback, fps, err) {
   var lastFrameTime = 0,//utils.hrtime(),
@@ -273,7 +273,7 @@ utils.keepFPS = function(callback, fps, err) {
       lastFrameTime = now;
     }
   }, 0);
-  return id;
+  return Number(id);
 };
 /**
  * 取消保持帧数的循环
