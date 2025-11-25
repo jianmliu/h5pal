@@ -5,7 +5,20 @@
  * @namespace Const
  * @type {Object}
  */
-var Const = global.Const = {
+import './binary-helper.js';
+
+const GLOBAL_SCOPE = (typeof globalThis !== 'undefined'
+  ? globalThis
+  : (typeof global !== 'undefined' ? global : {}));
+/** @type {any} */
+const defineStruct = GLOBAL_SCOPE.defineStruct;
+/** @type {any} */
+const globalRef = GLOBAL_SCOPE;
+/** @type {any} */
+const globalAny = GLOBAL_SCOPE;
+const PAL_CLASSIC = !!globalRef.PAL_CLASSIC;
+
+var Const = globalRef.Const = {
   /**
    * maximum number of players in party
    * @memberof Const
@@ -84,9 +97,9 @@ var Const = global.Const = {
 /**
  * 按键定义
  * @global
- * @enum
+ * @enum {number}
  */
-global.Key = {
+globalAny.Key = {
   Menu:             1, // (1 << 0),
   Search:           2, // (1 << 1),
   Down:             4, // (1 << 2),
@@ -108,9 +121,9 @@ global.Key = {
 /**
  * 方向定义
  * @global
- * @enum
+ * @enum {number}
  */
-global.Direction = {
+globalAny.Direction = {
   South:    0,
   West:     1,
   North:    2,
@@ -121,9 +134,9 @@ global.Direction = {
 /**
  * 角色状态定义
  * @global
- * @enum
+ * @enum {number}
  */
-global.PlayerStatus = {
+globalAny.PlayerStatus = {
   /** 狂乱 */
   Confused:      0,          // attack friends r
   /** 瘫痪 PAL_CLASSIC */
@@ -152,9 +165,9 @@ global.PlayerStatus = {
  * 物体状态定义
  * state of event object, used by the sState field of the EVENTOBJECT struct
  * @global
- * @enum
+ * @enum {number}
  */
-global.ObjectState = {
+globalAny.ObjectState = {
   Hidden:        0,
   Normal:        1,
   Blocker:       2
@@ -163,9 +176,9 @@ global.ObjectState = {
 /**
  * 身体部位定义
  * @global
- * @enum
+ * @enum {number}
  */
-global.BodyPart = {
+globalAny.BodyPart = {
   Head:          0,
   Body:          1,
   Shoulder:      2,
@@ -178,9 +191,9 @@ global.BodyPart = {
 /**
  * 触发模式定义
  * @global
- * @enum
+ * @enum {number}
  */
-global.TriggerMode = {
+globalAny.TriggerMode = {
   None:          0,
   SearchNear:    1,
   SearchNormal:  2,
@@ -200,9 +213,9 @@ global.TriggerMode = {
  * 圣灵珠：293H = 1+2+16+128+512，
  * 所以圣灵珠可使用，可装备，不可投掷，使用不损耗，无须选择对象，不可典当，赵灵儿和巫后可装备
  * @global
- * @enum
+ * @enum {number}
  */
-global.ItemFlag = {
+globalAny.ItemFlag = {
   /** 可使用，在“使用”菜单里亮白显示 */
   Usable:                            1, // (1 << 0),
   /** 可装备，在“装备”菜单里亮白显示 */
@@ -232,9 +245,9 @@ global.ItemFlag = {
 /**
  * 法术标识位定义
  * @global
- * @enum
+ * @enum {number}
  */
-global.MagicFlag = {
+globalAny.MagicFlag = {
   /** 平时可施放，在地图上可施放 */
   UsableOutsideBattle:         1, // (1 << 0),
   /** 战时可施放，在战场上可施放 */
@@ -250,9 +263,9 @@ global.MagicFlag = {
 /**
  * 法术类型定义
  * @global
- * @enum
+ * @enum {number}
  */
-global.MagicType = {
+globalAny.MagicType = {
   Normal:            0,
   AttackAll:         1,  // draw the effect on each of the enemies
   AttackWhole:       2,  // draw the effect on the whole enemy team
@@ -266,9 +279,9 @@ global.MagicType = {
 /**
  * 颜色定义（UI用）
  * @global
- * @enum
+ * @enum {number}
  */
-global.NumColor = {
+globalAny.NumColor = {
   Yellow:  0,
   Blue:    1,
   Cyan:    2
@@ -277,9 +290,9 @@ global.NumColor = {
 /**
  * 对齐定义
  * @global
- * @enum
+ * @enum {number}
  */
-global.NumAlign = {
+globalAny.NumAlign = {
   Left:   0,
   Mid:    1,
   Right:  2
@@ -288,9 +301,9 @@ global.NumAlign = {
 /**
  * 对话框位置定义
  * @global
- * @enum
+ * @enum {number}
  */
-global.DialogPosition = {
+globalAny.DialogPosition = {
   Upper:        0,
   Center:       1,
   Lower:        2,
@@ -300,7 +313,7 @@ global.DialogPosition = {
 /**
  * 战斗指令
  * @global
- * @enum
+ * @enum {number}
  */
 global.BattleAction = {
 };
@@ -308,16 +321,16 @@ global.BattleAction = {
 /**
  * 战斗状态
  * @global
- * @enum
+ * @enum {number}
  */
-global.FighterState = {
+globalAny.FighterState = {
 
 };
 
 /**
  * 资源加载标识位
  * @global
- * @enum
+ * @enum {number}
  */
 global.LoadFlag = {
   Scene          : (1 << 0),    // load a scene
@@ -450,6 +463,7 @@ global.ObjectUnion = defineStruct(
   'ObjectUnion',
   'data|WORD*6'
 );
+const ObjectUnion = globalRef.ObjectUnion;
 'PlayerObject ItemObject MagicObject EnemyObject PoisonObject'.split(' ').forEach(function(type){
   var name = type.toLowerCase().substr(0, type.length - 6);
   var key = '__' + name + '__';
@@ -815,7 +829,7 @@ global.AllExperience = defineStruct(
 );
 global.AllExperience.types = experienceTypes;
 
-global.PoisonStatus = defineStruct(
+globalAny.PoisonStatus = defineStruct(
   /*
   WORD              wPoisonID;       // kind of the poison
   WORD              wPoisonScript;   // script entry
@@ -1025,7 +1039,7 @@ var GlobalVars = defineStruct(
 Object.defineProperties(GlobalVars.prototype, {
 });
 
-var Global = global.Global = new GlobalVars();
+var Global = globalAny.Global = new GlobalVars();
 //var Global = global.Global = {};
 
 var DEFAULT_MAX_SPRITE_TO_DRAW = 2048;
@@ -1033,9 +1047,7 @@ var MAX_SPRITE_STATE_KEY = 'MAX_SPRITE_TO_DRAW';
 var LEGACY_SPRITE_LIMIT_KEY = '__PAL_LEGACY_MAX_SPRITE__';
 
 var legacyMaxSpriteLimit = DEFAULT_MAX_SPRITE_TO_DRAW;
-var legacyStore = (typeof globalThis !== 'undefined' && globalThis.Global)
-  ? globalThis.Global
-  : ((typeof global !== 'undefined' && global.Global) ? global.Global : null);
+var legacyStore = (globalAny && globalAny.Global) ? globalAny.Global : null;
 if (legacyStore && typeof legacyStore[MAX_SPRITE_STATE_KEY] === 'number' && Number.isFinite(legacyStore[MAX_SPRITE_STATE_KEY])) {
   legacyMaxSpriteLimit = Math.trunc(legacyStore[MAX_SPRITE_STATE_KEY]);
 }
@@ -1081,8 +1093,8 @@ Object.defineProperty(Global, 'MAX_SPRITE_TO_DRAW', {
 });
 
 // game data which is available in data files.
-global.GameData = {};
-global.Files = {};
+globalAny.GameData = {};
+globalAny.Files = {};
 
 export default Global;
 // TODO 还有一部分旧代码没迁移过来

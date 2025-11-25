@@ -4,6 +4,7 @@
  * we transition the rest of the codebase.
  */
 
+// @ts-nocheck
 import { BehaviorSubject, Subject, Observable } from 'rxjs';
 
 function getTimestamp() {

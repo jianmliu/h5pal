@@ -196,6 +196,8 @@ type EcsRegistry = {
   createEntity: (...args: any[]) => any;
   addComponent: (entity: any, component: any, data: any) => void;
   getComponent: (entity: any, component: any) => any;
+  hasEntity?: (entity: any) => boolean;
+  destroyEntity?: (entity: any) => void;
   clear: () => void;
 };
 
@@ -377,6 +379,10 @@ class BattleService extends EventBus {
       this.state = backingValue;
       this._syncBattleFlags('battleService:globalAccessor');
     }
+  }
+
+  fire(event: string, payload?: StateChangedPayload | StateMutatedPayload | Record<string, unknown>): unknown {
+    return super.fire(event, payload);
   }
 
   getModule() {

@@ -1,13 +1,7 @@
 import utils from '../js/pal/utils.js';
+import type { EventDispatcher } from '../js/pal/events-shim';
 
-type EventDispatcher = {
-  fire?: (...args: unknown[]) => unknown;
-  on?: (...args: unknown[]) => unknown;
-  off?: (...args: unknown[]) => unknown;
-  extend?: (target: unknown, source: unknown) => void;
-};
-
-const utilsAny: EventDispatcher & { Events?: EventDispatcher } = utils as any;
+const utilsAny: EventDispatcher & { Events?: EventDispatcher } = utils as unknown as EventDispatcher & { Events?: EventDispatcher };
 
 class EventBus {
   constructor() {

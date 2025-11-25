@@ -6,7 +6,7 @@ import {
   getPartyValue,
   getTrailValue,
   getFollowerCountValue
-} from '../state/slices/party-trail.js';
+} from '../state/slices/party-trail.ts';
 import stateService from './state-service.js';
 import worldService from './world-service';
 import { createAdapterObservable } from './adapter-helpers.js';

@@ -3,7 +3,7 @@ import reactiveContext from '../state/reactive-context.js';
 import { party$ as partyStream, followerCount$ } from './party-trail-adapter.js';
 import playerStateAdapter from './player-state-adapter.js';
 import { sceneEventObjects$, sceneId$ } from './scene-event-adapter.js';
-import dialogService from './dialog-service.js';
+import dialogService from './dialog-service.ts';
 import { createMudClient } from './mud-client.js';
 import { getMudConfig } from './mud-config.js';
 

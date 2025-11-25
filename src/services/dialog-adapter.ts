@@ -1,5 +1,5 @@
 import reactiveContext from '../state/reactive-context.js';
-import dialogService from './dialog-service.js';
+import dialogService from './dialog-service.ts';
 import { createAdapterObservable } from './adapter-helpers.js';
 
 type DialogLine = (typeof dialogService.signals.currentLine)['value'];

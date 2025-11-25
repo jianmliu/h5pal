@@ -2,8 +2,8 @@
 
 import stateService from './state-service.js';
 import reactiveContext from '../state/reactive-context.js';
-import { playerStateSignals, updatePlayerRolesValue } from '../state/slices/player-state.js';
-import { statusSignals } from '../state/slices/status-matrices.js';
+import { playerStateSignals, updatePlayerRolesValue } from '../state/slices/player-state.ts';
+import { statusSignals } from '../state/slices/status-matrices.ts';
 import { viewportSignals } from '../state/slices/viewport.js';
 import { createAdapterObservable } from './adapter-helpers.js';
 

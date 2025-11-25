@@ -1,4 +1,3 @@
-//
 // PAL DOS compress format (YJ_1) library
 //
 // Author: Lou Yihua <louyihua@21cn.com>
@@ -31,6 +30,17 @@
  * @module yj_1
  */
 import utils from './utils';
+import './binary-helper.js';
+
+const GLOBAL_SCOPE = typeof globalThis !== 'undefined'
+  ? globalThis
+  : (typeof global !== 'undefined' ? global : {});
+/** @type {typeof globalThis & { readString?: any; read4Bytes?: any; read2Bytes?: any; SWAP16?: any; }} */
+const helpers = /** @type {any} */ (GLOBAL_SCOPE);
+const readString = helpers.readString;
+const read4Bytes = helpers.read4Bytes;
+const read2Bytes = helpers.read2Bytes;
+const SWAP16 = helpers.SWAP16;
 
 var TreeNode = function() {
   /*
@@ -210,7 +220,7 @@ var yj_1 = {};
  */
 yj_1.decompress = function(Source) {
   utils.startTiming('Decompress:' + Source.length);
-  var hdr = new YJ_1_FILEHEADER(Source, 0);
+  var hdr = new YJ_1_FILEHEADER(Source);
   var src = Source,
       Destination = new Uint8Array(hdr.UncompressedLength),
       dest = Destination,

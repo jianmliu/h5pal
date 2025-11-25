@@ -19,8 +19,8 @@ import {
   createCollisionStateComponent
 } from '../ecs/index.js';
 import createWorldSystemManager from './world-systems.js';
-import { updateAutoBattle, getAutoBattleValue } from '../state/slices/auto-battle.js';
-import { updateFrameCount, getFrameCountValue } from '../state/slices/frame-count.js';
+import { updateAutoBattle, getAutoBattleValue } from '../state/slices/auto-battle.ts';
+import { updateFrameCount, getFrameCountValue } from '../state/slices/frame-count.ts';
 import {
   updateMainMenuIndex,
   getMainMenuIndexValue,
@@ -32,7 +32,7 @@ import {
   getNoMusicFlagValue,
   updateNoSoundFlag,
   getNoSoundFlagValue
-} from '../state/slices/menu-selections.js';
+} from '../state/slices/menu-selections.ts';
 import {
   updateViewportValue,
   getViewportValue,
@@ -42,13 +42,13 @@ import {
   getPartyDirectionValue,
   updateMaxPartyIndexValue,
   getMaxPartyIndexValue
-} from '../state/slices/viewport.js';
+} from '../state/slices/viewport.ts';
 import {
   updateInventoryValue,
   updateCashValue,
   updateLastUnequippedValue,
   updateInventoryCapacityValue
-} from '../state/slices/inventory.js';
+} from '../state/slices/inventory.ts';
 import {
   updatePlayerStatusMatrix,
   mutatePlayerStatusMatrix,
@@ -56,14 +56,14 @@ import {
   updatePoisonStatusMatrix,
   mutatePoisonStatusMatrix,
   getPoisonStatusMatrixValue
-} from '../state/slices/status-matrices.js';
+} from '../state/slices/status-matrices.ts';
 import {
   updatePartyValue as updatePartySliceValue,
   updateTrailValue as updateTrailSliceValue,
   updateFollowerCountValue as updateFollowerCountSliceValue,
   getTrailValue,
   getFollowerCountValue
-} from '../state/slices/party-trail.js';
+} from '../state/slices/party-trail.ts';
 import {
   updateSceneIdValue,
   updateEventObjectsValue,
@@ -71,7 +71,7 @@ import {
   getSceneIdValue,
   getEventObjectsValue,
   getCollisionStateValue
-} from '../state/slices/scene-events.js';
+} from '../state/slices/scene-events.ts';
 import {
   updateMusicTrackValue,
   updateBattleMusicTrackValue,
@@ -85,32 +85,32 @@ import {
   getNightPaletteValue,
   getLayerValue,
   resetAudioResourceSlice
-} from '../state/slices/audio-resources.js';
+} from '../state/slices/audio-resources.ts';
 import {
   updateWaveProgressionValue,
   updateNeedToFadeInValue,
   getWaveProgressionValue,
   getNeedToFadeInValue
-} from '../state/slices/time-flags.js';
+} from '../state/slices/time-flags.ts';
 import {
   updateScriptEntriesValue,
   updateObjectTableValue,
   updateObjectDescValue,
   resetScriptObjectSlice,
   scriptObjectSignals
-} from '../state/slices/script-objects.js';
+} from '../state/slices/script-objects.ts';
 import {
   updateEnemyTeamValue,
   updateEnemyPositionValue,
   updateBattleFieldValue,
   resetBattleFormationSlice
-} from '../state/slices/battle-formation.js';
+} from '../state/slices/battle-formation.ts';
 import {
   updatePlayerRolesValue,
   updateEquipmentEffectValue,
   resetPlayerStateSlice,
   playerStateSignals
-} from '../state/slices/player-state.js';
+} from '../state/slices/player-state.ts';
 import {
   updateMagicTableValue,
   updateStoreTableValue,
@@ -120,7 +120,7 @@ import {
   updateLevelUpExpTableValue,
   updateLevelUpMagicTableValue,
   getLevelUpExpTableValue
-} from '../state/slices/game-data.js';
+} from '../state/slices/game-data.ts';
 import {
   updateCollectValue,
   updateChaseRangeValue,
@@ -130,7 +130,7 @@ import {
   getChaseRangeValue as getChaseRangeFlagValue,
   getChaseSpeedCyclesValue as getChaseSpeedFlagValue,
   getBattleSpeedValue as getBattleSpeedFlagValue
-} from '../state/slices/game-flags.js';
+} from '../state/slices/game-flags.ts';
 import type { PlayerRoles } from '../types/pal.js';
 
 function getGlobalStore(): Record<string, unknown> | null {
@@ -422,6 +422,10 @@ class WorldService extends EventBus {
     this._maxSpriteDrawLimit = DEFAULT_MAX_SPRITE_TO_DRAW;
   }
 
+  fire(event: string, payload?: WorldEventPayload): unknown {
+    return super.fire(event, payload);
+  }
+
   init() {
     if (this._initialised) {
       this.syncAll();
@@ -703,7 +707,8 @@ class WorldService extends EventBus {
       }
     });
 
-    updatePartySliceValue(party, { source: 'worldService:syncParty' });
+    const normalizedParty = Array.isArray(party) ? (party as Record<string, unknown>[]) : [];
+    updatePartySliceValue(normalizedParty, { source: 'worldService:syncParty' });
     this.fire('partySynced', { size: party.length });
   }
 
@@ -711,6 +716,7 @@ class WorldService extends EventBus {
     this._ensureInitialised();
     const registry = this.registry;
     const trail = stateService.getGlobal('trail') || null;
+    const normalizedTrail = Array.isArray(trail) ? (trail as Record<string, unknown>[]) : [];
     let entityId = this.entityMaps.trail;
     if (!entityId) {
       entityId = registry.createEntity();
@@ -724,7 +730,7 @@ class WorldService extends EventBus {
         component.stateRef = trail;
       }
     }
-    updateTrailSliceValue(trail, { source: 'worldService:syncTrail' });
+    updateTrailSliceValue(normalizedTrail, { source: 'worldService:syncTrail' });
     this.fire('trailSynced', { trail });
   }
 
@@ -789,12 +795,12 @@ class WorldService extends EventBus {
     const viewportValue = globalStore && typeof globalStore.viewport !== 'undefined'
       ? globalStore.viewport
       : stateService.getGlobal('viewport') || 0;
-    updateViewportValue(viewportValue, { emitEvent: false, source: 'worldService:sync' });
+    updateViewportValue(Number(viewportValue) || 0, { emitEvent: false, source: 'worldService:sync' });
 
     const partyOffsetValue = globalStore && typeof (globalStore as GlobalStoreLoose).partyOffset !== 'undefined'
       ? (globalStore as GlobalStoreLoose).partyOffset
       : stateService.getGlobal('partyOffset') || 0;
-    updatePartyOffsetValue(partyOffsetValue, { emitEvent: false, source: 'worldService:sync' });
+    updatePartyOffsetValue(Number(partyOffsetValue) || 0, { emitEvent: false, source: 'worldService:sync' });
 
     const partyDirectionValue = globalStore && typeof (globalStore as GlobalStoreLoose).partyDirection !== 'undefined'
       ? (globalStore as GlobalStoreLoose).partyDirection
@@ -809,12 +815,12 @@ class WorldService extends EventBus {
     const partyValue = globalStore && Array.isArray((globalStore as GlobalStoreLoose).party)
       ? (globalStore as GlobalStoreLoose).party
       : (stateService.getGlobal('party') || []);
-    updatePartySliceValue(partyValue, { emitEvent: false, source: 'worldService:sync' });
+    updatePartySliceValue(Array.isArray(partyValue) ? partyValue : [], { emitEvent: false, source: 'worldService:sync' });
 
     const trailValue = globalStore && Array.isArray((globalStore as GlobalStoreLoose).trail)
       ? (globalStore as GlobalStoreLoose).trail
       : (stateService.getGlobal('trail') || []);
-    updateTrailSliceValue(trailValue, { emitEvent: false, source: 'worldService:sync' });
+    updateTrailSliceValue(Array.isArray(trailValue) ? trailValue : [], { emitEvent: false, source: 'worldService:sync' });
 
     const looseStore = globalStore as GlobalStoreLoose | null;
     const followerCountValue = looseStore && typeof looseStore.numFollower !== 'undefined'
@@ -1159,14 +1165,16 @@ class WorldService extends EventBus {
     const objectDesc = stateService.getGlobal('objectDesc');
     updateObjectDescValue((typeof objectDesc === 'undefined' ? null : objectDesc) as any);
     const expState = stateService.getGlobal('exp');
-    updateExpStateValue(() => expState || null);
+    const normalizedExp = expState && typeof expState === 'object' ? (expState as any) : null;
+    updateExpStateValue(normalizedExp);
   }
 
 
   syncPlayerRoles() {
     this._ensureInitialised();
     const store = getGameDataStore();
-    updatePlayerRolesValue(store && store.playerRoles ? store.playerRoles : null);
+    const roles = store && store.playerRoles && typeof store.playerRoles === 'object' ? store.playerRoles : null;
+    updatePlayerRolesValue(roles as any);
   }
 
   syncStatusMatrices() {
@@ -2519,8 +2527,8 @@ class WorldService extends EventBus {
       return cached as EquipmentEffectTable;
     }
     const store = getGlobalStore();
-    const effects = store && store.equipmentEffect ? store.equipmentEffect : null;
-    updateEquipmentEffectValue(effects || []);
+    const effects = store && Array.isArray((store as any).equipmentEffect) ? (store as any).equipmentEffect : null;
+    updateEquipmentEffectValue(Array.isArray(effects) ? effects : []);
     return effects as EquipmentEffectTable | null;
   }
 
@@ -2746,7 +2754,8 @@ class WorldService extends EventBus {
   getExpState() {
     this._ensureInitialised();
     const expState = stateService.getGlobal('exp');
-    updateExpStateValue(expState || null);
+    const normalized = expState && typeof expState === 'object' ? (expState as any) : null;
+    updateExpStateValue(normalized);
     return expState;
   }
 
@@ -2758,13 +2767,15 @@ class WorldService extends EventBus {
       }
       return exp;
     });
-    updateExpStateValue(result || null);
+    const normalized = result && typeof result === 'object' ? (result as any) : null;
+    updateExpStateValue(normalized);
     return result;
   }
 
   setExpStruct(struct: any) {
     const resolved = this._copyStructIntoGlobal('exp', struct);
-    updateExpStateValue(resolved || null);
+    const normalized = resolved && typeof resolved === 'object' ? (resolved as any) : null;
+    updateExpStateValue(normalized);
     return resolved;
   }
 
@@ -3294,56 +3305,56 @@ class WorldService extends EventBus {
         break;
       case 'party':
         this.syncPartyMembers();
-        updatePartySliceValue(stateService.getGlobal('party') || [], { source: 'worldService:legacyGlobal' });
+        updatePartySliceValue(Array.isArray(stateService.getGlobal('party')) ? stateService.getGlobal('party') as any[] : [], { source: 'worldService:legacyGlobal' });
         break;
       case 'trail':
         this.syncTrail();
-        updateTrailSliceValue(stateService.getGlobal('trail') || [], { source: 'worldService:legacyGlobal' });
+        updateTrailSliceValue(Array.isArray(stateService.getGlobal('trail')) ? stateService.getGlobal('trail') as any[] : [], { source: 'worldService:legacyGlobal' });
         break;
       case 'viewport':
-        updateViewportValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateViewportValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'partyOffset':
-        updatePartyOffsetValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updatePartyOffsetValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'partyDirection':
-        updatePartyDirectionValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updatePartyDirectionValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'maxPartyMemberIndex':
-        updateMaxPartyIndexValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateMaxPartyIndexValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'curMainMenuItem':
-        updateMainMenuIndex(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateMainMenuIndex(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'curSystemMenuItem':
-        updateSystemMenuIndex(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateSystemMenuIndex(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'curInvMenuItem':
-        updateInventoryMenuIndex(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateInventoryMenuIndex(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'noMusic':
-        updateNoMusicFlag(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateNoMusicFlag(!!payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'noSound':
-        updateNoSoundFlag(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateNoSoundFlag(!!payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'inventory':
         updateInventoryValue(Array.isArray(payload.value) ? payload.value : [], { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'cash':
-        updateCashValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateCashValue(typeof payload.value === 'number' ? payload.value : 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'lastUnequippedItem':
-        updateLastUnequippedValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateLastUnequippedValue(typeof payload.value === 'number' ? payload.value : 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'collectValue':
-        updateCollectValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateCollectValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'chaseRange':
-        updateChaseRangeValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateChaseRangeValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'chaseSpeedChangeCycles':
-        updateChaseSpeedCyclesValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateChaseSpeedCyclesValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'playerStatus':
       case 'poisonStatus':
@@ -3353,40 +3364,40 @@ class WorldService extends EventBus {
         updateObjectDescValue(typeof payload.value === 'undefined' ? null : (payload.value as any));
         break;
       case 'equipmentEffect':
-        updateEquipmentEffectValue(payload.value || []);
+        updateEquipmentEffectValue(Array.isArray(payload.value) ? payload.value : []);
         break;
       case 'musicNum':
-        updateMusicTrackValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateMusicTrackValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'numBattleMusic':
-        updateBattleMusicTrackValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateBattleMusicTrackValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'numBattleField':
-        updateBattleFieldIdValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateBattleFieldIdValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'battleSpeed':
-        updateBattleSpeedValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateBattleSpeedValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'screenWave':
-        updateScreenWaveValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateScreenWaveValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'waveProgression':
-        updateWaveProgressionValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateWaveProgressionValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'needToFadeIn':
-        updateNeedToFadeInValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateNeedToFadeInValue(!!payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'numPalette':
-        updatePaletteIdValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updatePaletteIdValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'nightPalette':
-        updateNightPaletteValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateNightPaletteValue(!!payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'layer':
-        updateLayerValue(payload.value, { emitEvent: false, source: 'worldService:legacyGlobal' });
+        updateLayerValue(Number(payload.value) || 0, { emitEvent: false, source: 'worldService:legacyGlobal' });
         break;
       case 'numFollower':
-        updateFollowerCountSliceValue(payload.value, { source: 'worldService:legacyGlobal' });
+        updateFollowerCountSliceValue(typeof payload.value === 'number' ? payload.value : 0, { source: 'worldService:legacyGlobal' });
         break;
       case 'autoBattle':
         this._syncAutoBattleFlag(payload.value);
@@ -3397,7 +3408,13 @@ class WorldService extends EventBus {
         this.syncMapTiles();
         this.syncEventObjects();
         this.ensureCollisionState();
-        updateSceneIdValue(typeof payload.value === 'number' ? payload.value : (this.getSceneId() || 0), { source: 'worldService:legacyGlobal' });
+        {
+          const rawSceneId = Number(payload.value);
+          const sceneId: number = Number.isFinite(rawSceneId)
+            ? rawSceneId
+            : Number(this.getSceneId() || 0);
+          updateSceneIdValue(sceneId, { source: 'worldService:legacyGlobal' });
+        }
         break;
       case 'frameNum':
         this._syncFrameCountValue(payload.value);

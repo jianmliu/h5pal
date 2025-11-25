@@ -132,7 +132,7 @@ export function getSceneTable(): SceneTableEntry[] {
   return [];
 }
 
-const sceneTableSignalRef = sceneTableSignal<SceneTableEntry[]>([]);
+const sceneTableSignalRef = sceneTableSignal([]);
 const sceneTableStream = reactiveContext.signalToObservable(sceneTableSignalRef, () => getSceneTable());
 
 export const sceneTable$ = createAdapterObservable<SceneTableEntry[], SceneTableEntry[]>({

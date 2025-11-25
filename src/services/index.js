@@ -4,7 +4,7 @@ import resourceService from './resource-service.js';
 import scriptService from './script-service.ts';
 import battleService from './battle-service.ts';
 import worldService from './world-service.ts';
-import dialogService from './dialog-service.js';
+import dialogService from './dialog-service.ts';
 import environmentAdapter from './environment-adapter.js';
 import partyTrailAdapter from './party-trail-adapter.js';
 import playerStateAdapter from './player-state-adapter.js';

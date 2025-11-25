@@ -1,6 +1,6 @@
 import worldService from './world-service';
 import reactiveContext from '../state/reactive-context.js';
-import { scriptObjectSignals } from '../state/slices/script-objects.js';
+import { scriptObjectSignals } from '../state/slices/script-objects.ts';
 import { createAdapterObservable } from './adapter-helpers.js';
 
 type SignalSubscription = { unsubscribe?: () => void } | (() => void) | null | undefined;

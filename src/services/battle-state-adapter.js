@@ -1,4 +1,4 @@
-import { battleFormationSignals } from '../state/slices/battle-formation.js';
+import { battleFormationSignals } from '../state/slices/battle-formation.ts';
 import { audioResourceSignals } from '../state/slices/audio-resources.js';
 import { autoBattleSignal } from '../state/slices/auto-battle.js';
 import { Observable } from 'rxjs';

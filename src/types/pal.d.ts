@@ -218,25 +218,10 @@ declare module '../js/pal/ajax.js' {
   export = ajax;
 }
 
-declare module '../state/slices/scene-events.js' {
-  export const sceneEventSignals: any;
-}
 
 declare module '../js/pal/game.js' {
   const game: any;
   export = game;
-}
-
-declare module '../state/slices/game-data.js' {
-  export const gameDataSignals: any;
-  export const getLevelUpExpTableValue: <T>(fallback: T) => T;
-  export const getLevelUpMagicTableValue: <T>(fallback: T) => T;
-  export const updateLevelUpExpTableValue: (...args: any[]) => void;
-  export const updateLevelUpMagicTableValue: (...args: any[]) => void;
-}
-
-declare module '../state/slices/scene-events.js' {
-  export const sceneEventSignals: any;
 }
 
 declare module './world-service.js' {

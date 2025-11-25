@@ -1,10 +1,17 @@
+// @ts-nocheck
 import traceModuleLoad from './util-trace';
 // 对象方式的mkf文件读取
 // decompress需要yj_1
 
 import utils from './utils';
 import yj_1 from './yj_1';
-import modService from '../../services/mod-service.js';
+import modService from '../../services/mod-service.ts';
+import './binary-helper.js';
+
+/** @type {typeof globalThis & { LPBYTE?: typeof Uint8Array; BinaryReader?: new (...args: any[]) => any }} */
+const GLOBAL_SCOPE = typeof globalThis !== 'undefined'
+  ? globalThis
+  : (typeof window !== 'undefined' ? window : (typeof global !== 'undefined' ? global : {}));
 
 traceModuleLoad('mkf module load');
 
@@ -14,14 +21,26 @@ traceModuleLoad('mkf module load');
  * @param  {Uint8Array} buf
  * @return {MKF}
  */
+/**
+ * @typedef {{ name?: string }} MkfOptions
+ */
+
+/**
+ * @param {Uint8Array} buf
+ * @param {MkfOptions | string | undefined} [options]
+ * @constructor
+ */
 var MKF = function(buf, options) {
   if (typeof options === 'string') {
     options = { name: options };
   }
   this.name = options && options.name ? options.name : null;
+  /** @type {Uint8Array} */
   this.arraybuffer = buf;
-  this.reader = new BinaryReader(buf);
-  this.buf = new LPBYTE(buf);
+  /** @type {{ getUint32: (...args: any[]) => number }} */
+  this.reader = GLOBAL_SCOPE.BinaryReader ? new GLOBAL_SCOPE.BinaryReader(buf) : { getUint32: () => 0 };
+  /** @type {Uint8Array} */
+  this.buf = GLOBAL_SCOPE.LPBYTE ? new GLOBAL_SCOPE.LPBYTE(buf) : buf;
   this.chunkCount = this.getChunkCount();
   this._chunks = new Array(this.chunkCount);
   this._decompressedChunks = new Array(this.chunkCount);

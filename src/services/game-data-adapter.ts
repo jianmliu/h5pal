@@ -6,7 +6,7 @@ import {
   getLevelUpMagicTableValue,
   updateLevelUpExpTableValue,
   updateLevelUpMagicTableValue
-} from '../state/slices/game-data.js';
+} from '../state/slices/game-data.ts';
 import { createAdapterObservable } from './adapter-helpers.js';
 
 type MagicEntry = Record<string, unknown>;
@@ -204,7 +204,7 @@ function refreshLevelUpCache() {
   if (store && Array.isArray(store.levelUpExp) && store.levelUpExp.length > 0) {
     levelUpTableCache = store.levelUpExp.slice();
     const snapshot = levelUpTableCache ? levelUpTableCache.slice() : [];
-    updateLevelUpExpTableValue(() => snapshot);
+    updateLevelUpExpTableValue(snapshot);
     return levelUpTableCache;
   }
   const signals = gameDataSignals();
@@ -213,14 +213,16 @@ function refreshLevelUpCache() {
     levelUpTableCache = latest.slice();
     return levelUpTableCache;
   }
-  const fallback = getLevelUpExpTableValue([]);
+  const fallback = getLevelUpExpTableValue([] as number[]) as number[];
   if (Array.isArray(fallback) && fallback.length > 0) {
-    levelUpTableCache = fallback.slice();
+    levelUpTableCache = fallback.map((n) => (typeof n === 'number' ? n : 0));
     const snapshot = levelUpTableCache ? levelUpTableCache.slice() : [];
-    updateLevelUpExpTableValue(() => snapshot);
+    updateLevelUpExpTableValue(snapshot);
     return levelUpTableCache;
   }
-  levelUpTableCache = Array.isArray(fallback) ? fallback : [];
+  levelUpTableCache = Array.isArray(fallback)
+    ? fallback.map((n) => (typeof n === 'number' ? n : 0))
+    : [];
   return levelUpTableCache;
 }
 
@@ -231,7 +233,7 @@ function refreshLevelUpMagicCache() {
     const snapshot = Array.isArray(levelUpMagicTableCache)
       ? levelUpMagicTableCache.slice()
       : [];
-    updateLevelUpMagicTableValue(() => snapshot);
+    updateLevelUpMagicTableValue(snapshot);
     return levelUpMagicTableCache;
   }
   const signals = gameDataSignals();
@@ -240,11 +242,11 @@ function refreshLevelUpMagicCache() {
     levelUpMagicTableCache = latest as LevelUpMagicTable;
     return levelUpMagicTableCache;
   }
-  const fallback = getLevelUpMagicTableValue([]);
+  const fallback = getLevelUpMagicTableValue([] as LevelUpMagicTable) as LevelUpMagicTable;
   levelUpMagicTableCache = Array.isArray(fallback) ? (fallback as LevelUpMagicTable) : [];
   if (Array.isArray(levelUpMagicTableCache) && levelUpMagicTableCache.length > 0) {
     const snapshot = levelUpMagicTableCache.slice();
-    updateLevelUpMagicTableValue(() => snapshot);
+    updateLevelUpMagicTableValue(snapshot);
   }
   return levelUpMagicTableCache;
 }
@@ -337,10 +339,16 @@ function subscribe(listener: (event: SnapshotEvent) => void) {
       storeTable: storeTableCache,
       enemyTable: enemyTableCache,
       battleEffectTable: battleEffectTableCache,
-    expState: expStateCache,
-    levelUpExpTable: getLevelUpExpTableValue([]),
-    levelUpMagicTable: getLevelUpMagicTableValue([])
-  };
+      expState: expStateCache,
+      levelUpExpTable: (getLevelUpExpTableValue([] as number[]) as unknown[]).map((n) =>
+        typeof n === 'number' ? n : 0
+      ),
+      levelUpMagicTable: Array.isArray(getLevelUpMagicTableValue([] as LevelUpMagicTable))
+        ? (getLevelUpMagicTableValue([] as LevelUpMagicTable) as LevelUpMagicTable).map((entry) =>
+            entry && typeof entry === 'object' ? { ...(entry as Record<string, unknown>) } : entry
+          )
+        : []
+    };
   listener(snapshot);
   return () => {
     listeners.delete(listener);
