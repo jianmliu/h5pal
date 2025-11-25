@@ -1,6 +1,6 @@
 import '../js/pal/binary-helper.js';
 import '../js/pal/pal-global.js';
-import worldService from './world-service.js';
+import worldService from './world-service.ts';
 
 const SSS_KEY = 'SSS';
 const DATA_KEY = 'DATA';

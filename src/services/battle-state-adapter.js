@@ -2,8 +2,8 @@ import { battleFormationSignals } from '../state/slices/battle-formation.js';
 import { audioResourceSignals } from '../state/slices/audio-resources.js';
 import { autoBattleSignal } from '../state/slices/auto-battle.js';
 import { Observable } from 'rxjs';
-import battleService from './battle-service.js';
-import worldService from './world-service.js';
+import battleService from './battle-service.ts';
+import worldService from './world-service.ts';
 import { createAdapterObservable } from './adapter-helpers.js';
 
 const stateListeners = new Set();

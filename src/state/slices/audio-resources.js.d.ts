@@ -1,0 +1,13 @@
+export const audioResourceSignals: any;
+export const getLayerValue: <T>(fallback: T, options?: any) => T;
+export const resetAudioResourceSlice: () => void;
+export const updateScreenWaveValue: (value: any, options?: any) => void;
+export const updatePaletteIdValue: (value: any, options?: any) => void;
+export const updateNightPaletteValue: (value: any, options?: any) => void;
+export const updateLayerValue: (value: any, options?: any) => void;
+export const getScreenWaveValue: <T>(fallback: T, options?: any) => T;
+export const getPaletteIdValue: <T>(fallback: T, options?: any) => T;
+export const getNightPaletteValue: <T>(fallback: T, options?: any) => T;
+export const updateMusicTrackValue: (value: any, options?: any) => void;
+export const updateBattleMusicTrackValue: (value: any, options?: any) => void;
+export const updateBattleFieldIdValue: (value: any, options?: any) => void;

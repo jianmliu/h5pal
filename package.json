@@ -56,6 +56,6 @@
     "mud:codegen": "node scripts/mud-codegen.mjs",
     "export:midi": "node scripts/export-midi.js",
     "export:mp3": "node scripts/convert-midi-to-mp3.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit --allowJs"
   }
 }

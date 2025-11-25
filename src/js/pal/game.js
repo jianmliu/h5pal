@@ -4,7 +4,7 @@ import uigame from './uigame';
 import input from './input';
 import play from './play';
 import dialogService from '../../services/dialog-service.js';
-import script from '../../services/script-service.js';
+import script from '../../services/script-service.ts';
 import res from './res';
 import resourceService from '../../services/resource-service.js';
 import storageService from '../../services/storage-service.js';

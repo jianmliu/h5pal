@@ -1,0 +1,10 @@
+export const gameDataSignals: any;
+export const getLevelUpExpTableValue: <T>(fallback: T) => T;
+export const getLevelUpMagicTableValue: <T>(fallback: T) => T;
+export const updateLevelUpExpTableValue: (updater: ((current: any) => any) | any, options?: any) => void;
+export const updateLevelUpMagicTableValue: (updater: ((current: any) => any) | any, options?: any) => void;
+export const updateMagicTableValue: (updater: ((current: any) => any) | any, options?: any) => void;
+export const updateStoreTableValue: (updater: ((current: any) => any) | any, options?: any) => void;
+export const updateExpStateValue: (updater: ((current: any) => any) | any, options?: any) => void;
+export const updateEnemyTableValue: (updater: ((current: any) => any) | any, options?: any) => void;
+export const updateBattleEffectTableValue: (updater: ((current: any) => any) | any, options?: any) => void;

@@ -1,0 +1,13 @@
+export function getPlayerRolesSnapshot(): unknown;
+export function getPlayerHP(roleId: number): number;
+export function getPlayerMP(roleId: number): number;
+export function getPlayerLevel(roleId: number): number;
+export function getPlayerMaxHP(roleId: number): number;
+export function getPlayerMaxMP(roleId: number): number;
+export function getPlayerAttackStrength(roleId: number): number;
+export function getPlayerMagicStrength(roleId: number): number;
+export function getPlayerDefense(roleId: number): number;
+export function getPlayerDexterity(roleId: number): number;
+export function getPlayerFleeRate(roleId: number): number;
+export function getPlayerStatusRow(roleId: number): unknown;
+export function getMaxPartyMemberIndex(): number;

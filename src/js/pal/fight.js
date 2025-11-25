@@ -1,11 +1,11 @@
 import input from './input';
-import script from '../../services/script-service.js';
+import script from '../../services/script-service.ts';
 import Sprite from './sprite';
 import uibattle from './uibattle';
 import sound from './sound';
 import resourceService from '../../services/resource-service.js';
 import utils from './utils';
-import battleService from '../../services/battle-service.js';
+import battleService from '../../services/battle-service.ts';
 import dialogService from '../../services/dialog-service.js';
 import { recomputeTimeChargingUnit } from '../../services/battle-systems.js';
 import { BattleComponents } from '../../ecs/index.js';

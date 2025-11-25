@@ -1,6 +1,6 @@
 import EventBus from './event-bus.js';
-import scriptService from './script-service.js';
-import worldService from './world-service.js';
+import scriptService from './script-service.ts';
+import worldService from './world-service.ts';
 import sceneEventAdapter from './scene-event-adapter.js';
 import partyTrailAdapter from './party-trail-adapter.js';
 import {

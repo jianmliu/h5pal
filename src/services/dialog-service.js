@@ -1,3 +1,5 @@
+// @ts-check
+
 import reactiveContext from '../state/reactive-context.js';
 import { writeDialogState } from '../state/ecs-context.js';
 

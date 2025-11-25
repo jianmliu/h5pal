@@ -1,5 +1,5 @@
 import { buildStoryGraphForScene } from './storygraph-export.js';
-import stateService from '../services/state-service.js';
+import stateService from '../services/state-service.ts';
 
 const DEFAULT_FILENAME = 'npc-event-map.json';
 const DEFAULT_MAX_DIALOGS_PER_EVENT = 5;

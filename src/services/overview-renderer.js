@@ -1,6 +1,6 @@
 import Surface from '../js/pal/surface.js';
 import renderMapSystem from '../ecs/systems/render-map-system.js';
-import worldService from './world-service.js';
+import worldService from './world-service.ts';
 
 const DEFAULT_WIDTH = 640;
 const DEFAULT_HEIGHT = 400;

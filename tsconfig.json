@@ -10,13 +10,15 @@
     "skipLibCheck": true,
     "noEmit": true,
     "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
     "strict": false,
     "types": [
       "node"
     ],
     "typeRoots": [
       "./src/types",
-      "./node_modules/@types"
+      "./node_modules/@types",
+      "./src/types"
     ],
     "noResolve": true
   },
@@ -30,19 +32,24 @@
     "src/js/pal/music.js",
     "src/js/pal/rng.js",
     "src/js/pal/ajax.js",
-    "src/services/environment-adapter.js",
+    "src/services/event-bus.ts",
+    "src/services/environment-adapter.ts",
     "src/services/dialog-service.js",
-    "src/services/game-flags-adapter.js",
-    "src/services/adapter-helpers.js",
-    "src/services/save-data-adapter.js",
-    "src/services/scene-state-adapter.js",
-    "src/services/scene-event-adapter.js",
-    "src/services/player-state-adapter.js",
-    "src/services/party-trail-adapter.js",
-    "src/services/game-data-adapter.js",
-    "src/services/state-service.js",
-    "src/services/resource-service.js",
-    "src/services/storage-service.js"
+    "src/services/game-flags-adapter.ts",
+    "src/services/adapter-helpers.ts",
+    "src/services/save-data-adapter.ts",
+    "src/services/scene-state-adapter.ts",
+    "src/services/scene-event-adapter.ts",
+    "src/services/dialog-adapter.ts",
+    "src/services/player-state-adapter.ts",
+    "src/services/party-trail-adapter.ts",
+    "src/services/game-data-adapter.ts",
+    "src/services/state-service.ts",
+    "src/services/resource-service.ts",
+    "src/services/storage-service.ts",
+    "src/services/scene-data-adapter.ts",
+    "src/services/script-service.ts",
+    "src/services/battle-service.ts"
   ],
   "exclude": [
     "node_modules",
