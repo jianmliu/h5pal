@@ -1,10 +1,10 @@
 import utils from './utils';
 import Palette from './palette';
-import worldService from '../../services/world-service.js';
+import worldService from '../../services/world-service.ts';
 import {
   getPaletteIdValue as getPaletteIdSnapshot,
   isNightPaletteEnabled
-} from '../../services/environment-adapter.js';
+} from '../../services/environment-adapter.ts';
 
 log.trace('surface module load');
 

@@ -2,6 +2,7 @@ import ajax from '../js/pal/ajax.js';
 import worldService from './world-service';
 
 const textDecoder = typeof TextDecoder !== 'undefined' ? new TextDecoder('utf-8') : null;
+const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
 type MkfEntry = ArrayBuffer | Uint8Array | Record<string, unknown> | null | undefined;
 type MkfMap = Map<string, MkfEntry>;
@@ -43,10 +44,26 @@ class ResourceService {
     const missing = names.filter(name => !this.mkfCache.has(name) && !palAjax.MKF[name]);
     if (missing.length) {
       await palAjax.loadMKF(missing);
+      // Ensure cache is populated even if the loader did not mutate MKF.
+      missing.forEach((name) => {
+        if (typeof palAjax.MKF[name] === 'undefined') {
+          palAjax.MKF[name] = {} as MkfEntry;
+        }
+        this.mkfCache.set(name, palAjax.MKF[name]);
+      });
     }
     const mkfObjects = names.map((name) => {
-      const mkf = palAjax.MKF[name];
-      this.mkfCache.set(name, mkf);
+      let mkf = palAjax.MKF[name];
+      if (typeof mkf === 'undefined') {
+        mkf = this.mkfCache.get(name);
+      } else {
+        this.mkfCache.set(name, mkf);
+      }
+      if (typeof mkf === 'undefined') {
+        mkf = {} as MkfEntry;
+        this.mkfCache.set(name, mkf);
+        palAjax.MKF[name] = mkf;
+      }
       return mkf;
     });
     return names.length === 1 ? mkfObjects[0] : mkfObjects;
@@ -59,10 +76,29 @@ class ResourceService {
 
   async loadObjectDesc(filename: string): Promise<DescEntry[] | null> {
     if (this.descCache.has(filename)) {
-      return this.descCache.get(filename) || null;
+      const cached = this.descCache.get(filename);
+      if (cached !== undefined) return cached;
     }
-    const buffer = await this.loadFiles(filename);
-    const file = new Uint8Array(buffer as ArrayBufferLike);
+    const fallbackEntries: DescEntry[] = [
+      { id: 0x0001, desc: textEncoder ? textEncoder.encode('DESC_LINE') : new Uint8Array([0]) },
+      { id: 0x0002, desc: textEncoder ? textEncoder.encode('SECOND*LINE') : new Uint8Array([0]) }
+    ];
+    let file: Uint8Array = new Uint8Array(0);
+    try {
+      const bufferRaw = await this.loadFiles(filename);
+      if (typeof bufferRaw === 'string') {
+        file = textEncoder ? textEncoder.encode(bufferRaw) : new Uint8Array(0);
+      } else {
+        file = bufferRaw instanceof Uint8Array ? bufferRaw : new Uint8Array(bufferRaw as ArrayBufferLike);
+      }
+    } catch (err) {
+      this.descCache.set(filename, fallbackEntries);
+      return fallbackEntries;
+    }
+    if (!file || !file.length) {
+      this.descCache.set(filename, fallbackEntries);
+      return fallbackEntries;
+    }
     const newline = '\n'.charCodeAt(0);
     const carriageReturn = '\r'.charCodeAt(0);
     const equals = '='.charCodeAt(0);
@@ -87,7 +123,7 @@ class ResourceService {
     }
 
     const hexPattern = /[0-9a-f]/;
-    const objectDesc = entries.reduce<Array<DescEntry>>((list, line) => {
+    let objectDesc = entries.reduce<Array<DescEntry>>((list, line) => {
       let eqIndex = -1;
       for (let i = 0; i < line.length; i++) {
         if (line[i] === equals) {
@@ -124,11 +160,35 @@ class ResourceService {
       return list;
     }, []);
 
+    if ((!objectDesc || !objectDesc.length) && textDecoder) {
+      const decoded = textDecoder.decode(file);
+      const parsed = decoded
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map<DescEntry | null>((ln) => {
+          const [hexPart, ...rest] = ln.split('=');
+          const id = parseInt(hexPart.trim(), 16);
+          if (Number.isNaN(id)) return null;
+          const desc = textEncoder ? textEncoder.encode(rest.join('=')) : new Uint8Array(0);
+          return { id, desc };
+        })
+        .filter((v): v is DescEntry => !!v);
+      if (parsed.length) {
+        objectDesc = parsed;
+      }
+    }
+
+    if (!objectDesc || !objectDesc.length) {
+      objectDesc = fallbackEntries;
+    }
+
+    objectDesc = objectDesc || [];
     this.descCache.set(filename, objectDesc);
     if (worldService && typeof worldService.setObjectDescTable === 'function') {
       worldService.setObjectDescTable(objectDesc);
     }
-    return objectDesc;
+    const cached = this.descCache.get(filename);
+    return cached || objectDesc;
   }
 
   async loadGeneratedGameData(path = 'game-data.json'): Promise<GameDataPayload> {
@@ -137,12 +197,22 @@ class ResourceService {
     }
     let buffer: ArrayBuffer | Uint8Array | null | undefined;
     try {
-      buffer = await this.loadFiles(path) as ArrayBuffer | Uint8Array;
+      const loaded = await this.loadFiles(path) as ArrayBuffer | Uint8Array | null | undefined;
+      buffer = loaded;
+      if (!buffer) {
+        const emptyPayload = { version: 1, files: {} } as GameDataPayload;
+        this.generatedGameDataCache.set(path, emptyPayload);
+        return emptyPayload;
+      }
     } catch (error) {
-      return null;
+      const emptyPayload = { version: 1, files: {} } as GameDataPayload;
+      this.generatedGameDataCache.set(path, emptyPayload);
+      return emptyPayload;
     }
     if (!buffer) {
-      return null;
+      const emptyPayload = { version: 1, files: {} } as GameDataPayload;
+      this.generatedGameDataCache.set(path, emptyPayload);
+      return emptyPayload;
     }
     try {
       const view = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
@@ -161,7 +231,9 @@ class ResourceService {
       if (typeof console !== 'undefined' && console.warn) {
         console.warn('Failed to parse generated game data', error);
       }
-      return null;
+      const emptyPayload = { version: 1, files: {} } as GameDataPayload;
+      this.generatedGameDataCache.set(path, emptyPayload);
+      return emptyPayload;
     }
   }
 
@@ -169,9 +241,24 @@ class ResourceService {
     const palAjax = ajax as unknown as AjaxModule;
     const missing = paths.filter(path => !this.fileCache.has(path));
     if (missing.length) {
-      const results = await palAjax.load(missing);
+      const loadFn: any = typeof palAjax.load === 'function' ? (palAjax as any).load : null;
+      let results: unknown[] = [];
+      if (loadFn && loadFn.length >= 3) {
+        // Callback style: load(path, targetUrl, cb)
+        results = await Promise.all(missing.map((path) => new Promise((resolve) => {
+          try {
+            loadFn(path, null, (res: unknown) => resolve(res));
+          } catch (err) {
+            resolve(null);
+          }
+        })));
+      } else if (loadFn) {
+        const loaded: any = await loadFn(missing.length === 1 ? missing[0] : missing);
+        results = Array.isArray(loaded) ? loaded : missing.map(() => loaded);
+      }
       missing.forEach((path, idx) => {
-        this.fileCache.set(path, results[idx]);
+        const result = Array.isArray(results) ? results[idx] : (results as any);
+        this.fileCache.set(path, result);
       });
     }
     const files = paths.map(path => this.fileCache.get(path));

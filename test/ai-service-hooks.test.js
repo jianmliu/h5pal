@@ -18,16 +18,16 @@ vi.mock('../src/js/pal/uigame.js', () => {
   };
 });
 
-import stateService from '../src/services/state-service.js';
-import worldService from '../src/services/world-service.js';
-import battleService from '../src/services/battle-service.js';
-import resourceService from '../src/services/resource-service.js';
+import stateService from '../src/services/state-service.ts';
+import worldService from '../src/services/world-service.ts';
+import battleService from '../src/services/battle-service.ts';
+import resourceService from '../src/services/resource-service.ts';
 
 let scriptService;
 let uigameMock;
 
 beforeAll(async () => {
-  scriptService = (await import('../src/services/script-service.js')).default;
+  scriptService = (await import('../src/services/script-service.ts')).default;
   uigameMock = (await import('../src/js/pal/uigame.js')).default;
   global.ItemFlag = Object.freeze({
     ApplyToAll: 16,

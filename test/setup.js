@@ -22,6 +22,6 @@ if (typeof globalThis.sprintf !== 'function') {
 }
 
 await import('../test/.cache/src/js/pal/debug-overlay.js');
-await import('../src/js/pal/binary-helper.js');
+await import('../src/js/pal/binary-helper.ts');
 await import('../src/js/pal/pal-global.js');
 await import('../src/js/pal/common.js');

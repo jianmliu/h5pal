@@ -150,7 +150,11 @@ function deriveSelectionLabel(choice: DialogChoice | null, index: number | null,
     return resolvedValue ? 'YES' : 'NO';
   }
   if (typeof resolvedValue === 'number') {
-    return `Option ${resolvedValue}`;
+    const idx = clampIndex(resolvedValue, options.length) ?? Math.trunc(resolvedValue);
+    if (idx != null && options[idx] && typeof options[idx].label === 'string') {
+      return options[idx].label!.trim();
+    }
+    return `Slot ${resolvedValue}`;
   }
   return null;
 }

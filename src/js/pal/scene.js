@@ -2,15 +2,15 @@ import utils from './utils';
 import input from './input';
 import Sprite from './sprite';
 import Map from './map';
-import resourceService from '../../services/resource-service.js';
-import worldService from '../../services/world-service.js';
-import sceneEventAdapter from '../../services/scene-event-adapter.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import resourceService from '../../services/resource-service.ts';
+import worldService from '../../services/world-service.ts';
+import sceneEventAdapter from '../../services/scene-event-adapter.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
 import {
   getPlayerRoleField,
   getPlayerRoleFieldValue,
   getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
-} from '../../services/player-state-adapter.js';
+} from '../../services/player-state-adapter.ts';
 import {
   getViewportValue as getViewportSnapshot,
   getPartyOffsetValue as getPartyOffsetSnapshot,
@@ -21,12 +21,12 @@ import {
   getScreenWaveValue as getScreenWaveSnapshot,
   getLayerValue as getLayerSnapshot,
   getWaveProgressionValue as getWaveProgressionSnapshot
-} from '../../services/environment-adapter.js';
-import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.js';
+} from '../../services/environment-adapter.ts';
+import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.ts';
 import {
   getSceneEntry as getSceneEntrySnapshot,
   getSceneEventObjectRange as getSceneEventObjectRangeSnapshot
-} from '../../services/scene-data-adapter.js';
+} from '../../services/scene-data-adapter.ts';
 import overviewController from './overview-controller';
 import panoramaRenderer from './panorama-renderer';
 import panoramaControls from './panorama-controls';

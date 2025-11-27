@@ -1,4 +1,4 @@
-import dialogService from '../../services/dialog-service.js';
+import dialogService from '../../services/dialog-service.ts';
 
 const DEFAULT_FONT = '"Noto Sans CJK SC", "Microsoft YaHei", sans-serif';
 

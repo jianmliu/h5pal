@@ -32,6 +32,8 @@
     "src/js/pal/music.ts",
     "src/js/pal/rng.js",
     "src/js/pal/ajax.ts",
+    "src/js/pal/util-trace.js.d.ts",
+    "src/js/pal/mkf.js.d.ts",
     "src/services/event-bus.ts",
     "src/services/environment-adapter.ts",
     "src/services/dialog-service.ts",
@@ -80,7 +82,8 @@
     "src/state/slices/audio-resources.ts",
     "src/state/slices/time-flags.ts",
     "src/state/slices/scene-events.ts",
-    "src/state/slices/frame-count.ts"
+    "src/state/slices/frame-count.ts",
+    "src/js/pal/shims.d.ts"
   ],
   "exclude": [
     "node_modules",

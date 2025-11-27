@@ -1,4 +1,4 @@
-import sceneEventAdapter from '../../services/scene-event-adapter.js';
+import sceneEventAdapter from '../../services/scene-event-adapter.ts';
 
 const OVERLAY_ID = 'pal-debug-overlay';
 

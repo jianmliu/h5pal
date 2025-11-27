@@ -44,26 +44,26 @@ describe('environment-adapter observables', () => {
       getNeedToFadeIn: vi.fn(() => false),
       getWaveProgression: vi.fn(() => 0)
     };
-    vi.doMock('../src/services/world-service.js', () => ({
+    vi.doMock('../src/services/world-service.ts', () => ({
       __esModule: true,
       default: worldServiceMock
     }));
     reactiveContext = (await import('../src/state/reactive-context.js')).default;
-    ({ resetViewportSlice, updateViewportValue } = await import('../src/state/slices/viewport.js'));
+    ({ resetViewportSlice, updateViewportValue } = await import('../src/state/slices/viewport.ts'));
     ({
       resetTimeFlagSlice,
       updateNeedToFadeInValue,
       updateWaveProgressionValue
-    } = await import('../src/state/slices/time-flags.js'));
+    } = await import('../src/state/slices/time-flags.ts'));
     ({
       resetAudioResourceSlice,
       updatePaletteIdValue
-    } = await import('../src/state/slices/audio-resources.js'));
+    } = await import('../src/state/slices/audio-resources.ts'));
     reactiveContext.dispose();
     resetViewportSlice();
     resetTimeFlagSlice();
     resetAudioResourceSlice();
-    environmentAdapter = await import('../src/services/environment-adapter.js');
+    environmentAdapter = await import('../src/services/environment-adapter.ts');
   });
 
   afterEach(() => {
@@ -113,10 +113,10 @@ describe('battle-flags-adapter observables', () => {
   beforeEach(async () => {
     vi.resetModules();
     reactiveContext = (await import('../src/state/reactive-context.js')).default;
-    ({ resetBattleFlagsSlice, updateRepeatFlag } = await import('../src/state/slices/battle-flags.js'));
+    ({ resetBattleFlagsSlice, updateRepeatFlag } = await import('../src/state/slices/battle-flags.ts'));
     reactiveContext.dispose();
     resetBattleFlagsSlice();
-    battleFlagsAdapter = await import('../src/services/battle-flags-adapter.js');
+    battleFlagsAdapter = await import('../src/services/battle-flags-adapter.ts');
   });
 
   afterEach(() => {
@@ -153,7 +153,7 @@ describe('battle-state-adapter observables', () => {
     vi.resetModules();
     reactiveContext = (await import('../src/state/reactive-context.js')).default;
     ({ resetBattleFormationSlice, updateEnemyTeamValue } =
-      await import('../src/state/slices/battle-formation.js'));
+      await import('../src/state/slices/battle-formation.ts'));
     reactiveContext.dispose();
     resetBattleFormationSlice();
 
@@ -179,12 +179,12 @@ describe('battle-state-adapter observables', () => {
       getBattleState: vi.fn(() => currentState)
     };
 
-    vi.doMock('../src/services/battle-service.js', () => ({
+    vi.doMock('../src/services/battle-service.ts', () => ({
       __esModule: true,
       default: battleServiceMock
     }));
 
-    vi.doMock('../src/services/world-service.js', () => ({
+    vi.doMock('../src/services/world-service.ts', () => ({
       __esModule: true,
       default: worldServiceMock
     }));

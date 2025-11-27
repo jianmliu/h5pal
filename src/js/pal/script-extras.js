@@ -1,8 +1,8 @@
 import traceModuleLoad from './util-trace';
-import worldService from '../../services/world-service.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
-import { inventorySignals } from '../../state/slices/inventory.js';
+import worldService from '../../services/world-service.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
+import { inventorySignals } from '../../state/slices/inventory.ts';
 import {
   getPlayerRolesSnapshot,
   getPlayerRoleFieldValue,
@@ -25,7 +25,7 @@ import {
   getEquipmentEffect as getEquipmentEffectValue,
   findPlayerMagicSlot as findPlayerMagicSlotValue,
   getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
-} from '../../services/player-state-adapter.js';
+} from '../../services/player-state-adapter.ts';
 traceModuleLoad('script_extras module load');
 
 var surface = null

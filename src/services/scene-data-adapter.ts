@@ -28,7 +28,7 @@ function resolveSceneId(sceneId?: number | null): number {
 }
 
 export function getSceneEntry<T = SceneTableEntry | null>(sceneId?: number | null): T | null {
-  const resolvedId = resolveSceneId(sceneId ?? undefined);
+  const resolvedId = resolveSceneId(sceneId);
   if (resolvedId <= 0) {
     return null;
   }
@@ -57,7 +57,7 @@ function coerceRangeValue(value: unknown, fallback: unknown): number {
 }
 
 export function getSceneEventObjectRange(sceneId?: number | null): SceneEventObjectRange {
-  const resolvedId = resolveSceneId(sceneId ?? undefined);
+  const resolvedId = resolveSceneId(sceneId);
   if (resolvedId <= 0) {
     return {
       start: 0,
@@ -84,7 +84,7 @@ export function getSceneEventObjectRange(sceneId?: number | null): SceneEventObj
   if (!Number.isFinite(start) || !Number.isFinite(end)) {
     // TODO(rxjs-cleanup): remove worldService scene range fallback once table metadata is complete.
     if (worldService && typeof worldService.getSceneEventObjectRange === 'function') {
-      const fallback = worldService.getSceneEventObjectRange();
+      const fallback = worldService.getSceneEventObjectRange(resolvedId);
       if (!Number.isFinite(start) && fallback && Number.isFinite(fallback.start)) {
         start = Math.trunc(fallback.start);
       }

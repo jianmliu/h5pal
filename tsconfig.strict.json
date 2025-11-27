@@ -33,6 +33,8 @@
     "src/state/slices/script-objects.ts",
     "src/types/pal.d.ts",
     "src/js/pal/ajax.ts",
+    "src/js/pal/util-trace.js.d.ts",
+    "src/js/pal/mkf.js.d.ts",
     "src/js/pal/co.ts",
     "src/js/pal/binary-helper.ts",
     "src/js/pal/music.ts",
@@ -64,6 +66,7 @@
     "src/types/ambient-modules.d.ts",
     "src/state/slices/inventory.ts",
     "src/state/slices/player-state.ts",
-    "src/state/slices/party-trail.ts"
+    "src/state/slices/party-trail.ts",
+    "src/js/pal/shims.d.ts"
   ]
 }

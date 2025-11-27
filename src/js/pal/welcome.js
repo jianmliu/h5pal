@@ -1,5 +1,5 @@
 import utils from './utils';
-import resourceService from '../../services/resource-service.js';
+import resourceService from '../../services/resource-service.ts';
 import MKF from './mkf';
 import Sprite from './sprite';
 import Palette from './palette';

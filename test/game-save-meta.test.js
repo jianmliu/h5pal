@@ -1,26 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/js/pal/play.js', () => ({
+vi.mock('../src/js/pal/play.ts', () => ({
   default: {
     init: vi.fn(() => Promise.resolve()),
     startFrame: vi.fn(() => Promise.resolve())
   }
 }));
 
-vi.mock('../src/js/pal/script.js', () => ({
+vi.mock('../src/js/pal/script.ts', () => ({
   default: {
     updateEquipments: vi.fn(() => Promise.resolve())
   }
 }));
 
-vi.mock('../src/js/pal/res.js', () => ({
+vi.mock('../src/js/pal/res.ts', () => ({
   default: {
     setLoadFlags: vi.fn(),
     loadResources: vi.fn(() => Promise.resolve())
   }
 }));
 
-vi.mock('../src/js/pal/uigame.js', () => ({
+vi.mock('../src/js/pal/uigame.ts', () => ({
   default: {
     openingMenu: vi.fn(() => Promise.resolve(1))
   }

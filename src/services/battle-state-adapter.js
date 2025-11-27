@@ -1,10 +1,10 @@
 import { battleFormationSignals } from '../state/slices/battle-formation.ts';
-import { audioResourceSignals } from '../state/slices/audio-resources.js';
-import { autoBattleSignal } from '../state/slices/auto-battle.js';
+import { audioResourceSignals } from '../state/slices/audio-resources.ts';
+import { autoBattleSignal } from '../state/slices/auto-battle.ts';
 import { Observable } from 'rxjs';
 import battleService from './battle-service.ts';
 import worldService from './world-service.ts';
-import { createAdapterObservable } from './adapter-helpers.js';
+import { createAdapterObservable } from './adapter-helpers.ts';
 
 const stateListeners = new Set();
 let stateSubscriptions = [];

@@ -1,5 +1,5 @@
 import { viewportSignals } from '../state/slices/viewport.js';
-import { audioResourceSignals } from '../state/slices/audio-resources.js';
+import { audioResourceSignals } from '../state/slices/audio-resources.ts';
 import { timeFlagSignals } from '../state/slices/time-flags.js';
 import { createAdapterObservable } from './adapter-helpers.js';
 

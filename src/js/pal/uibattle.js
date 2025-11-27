@@ -8,10 +8,10 @@ import utils from './utils';
 import input from './input';
 import uigame from './uigame';
 import battleServiceDefault from '../../services/battle-service.ts';
-import worldService from '../../services/world-service.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
-import gameDataAdapter from '../../services/game-data-adapter.js';
+import worldService from '../../services/world-service.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
+import gameDataAdapter from '../../services/game-data-adapter.ts';
 import {
   getBattleStateSnapshot,
   subscribeBattleState
@@ -24,9 +24,9 @@ import {
   getPlayerMagicAt as getPlayerMagicAtValue,
   getPlayerStatusRow as getPlayerStatusRowValue,
   getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex
-} from '../../services/player-state-adapter.js';
-import { autoBattleSignal } from '../../state/slices/auto-battle.js';
-import { statusSignals } from '../../state/slices/status-matrices.js';
+} from '../../services/player-state-adapter.ts';
+import { autoBattleSignal } from '../../state/slices/auto-battle.ts';
+import { statusSignals } from '../../state/slices/status-matrices.ts';
 
 log.trace('uibattle module load');
 

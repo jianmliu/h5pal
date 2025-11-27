@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import battleFlagsAdapter from '../src/services/battle-flags-adapter.js';
-import battleService from '../src/services/battle-service.js';
+import battleFlagsAdapter from '../src/services/battle-flags-adapter.ts';
+import battleService from '../src/services/battle-service.ts';
 import reactiveContext from '../src/state/reactive-context.js';
-import stateService from '../src/services/state-service.js';
+import stateService from '../src/services/state-service.ts';
 
 function createBareBattleState() {
   return {

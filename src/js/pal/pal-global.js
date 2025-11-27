@@ -5,7 +5,7 @@
  * @namespace Const
  * @type {Object}
  */
-import './binary-helper.js';
+import './binary-helper.ts';
 
 const GLOBAL_SCOPE = (typeof globalThis !== 'undefined'
   ? globalThis

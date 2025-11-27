@@ -1,13 +1,13 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import worldService from '../src/services/world-service.js';
-import stateService from '../src/services/state-service.js';
+import worldService from '../src/services/world-service.ts';
+import stateService from '../src/services/state-service.ts';
 import scriptExtras from '../src/js/pal/script-extras.js';
 import {
   getPlayerLevel as getPlayerLevelValue,
   getPlayerMaxHP as getPlayerMaxHPValue,
   getPlayerMaxMP as getPlayerMaxMPValue,
   getPlayerAttackStrength as getPlayerAttackStrengthValue
-} from '../src/services/player-state-adapter.js';
+} from '../src/services/player-state-adapter.ts';
 
 const DEFAULT_PLAYER_ROLES = 4;
 const DEFAULT_POISON_SLOTS = 3;

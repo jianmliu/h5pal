@@ -3,17 +3,17 @@ import script from '../../services/script-service.ts';
 import Sprite from './sprite';
 import uibattle from './uibattle';
 import sound from './sound';
-import resourceService from '../../services/resource-service.js';
+import resourceService from '../../services/resource-service.ts';
 import utils from './utils';
 import battleService from '../../services/battle-service.ts';
-import dialogService from '../../services/dialog-service.js';
+import dialogService from '../../services/dialog-service.ts';
 import { recomputeTimeChargingUnit } from '../../services/battle-systems.js';
 import { BattleComponents } from '../../ecs/index.js';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
-import gameDataAdapter from '../../services/game-data-adapter.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
-import { audioResourceSignals } from '../../state/slices/audio-resources.js';
-import { autoBattleSignal } from '../../state/slices/auto-battle.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
+import gameDataAdapter from '../../services/game-data-adapter.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
+import { audioResourceSignals } from '../../state/slices/audio-resources.ts';
+import { autoBattleSignal } from '../../state/slices/auto-battle.ts';
 import {
   getBattleFieldEntry as getCachedBattleFieldEntry,
   getBattleFieldId as getCachedBattleFieldId,
@@ -41,8 +41,8 @@ import {
   getPlayerStatusRow,
   getPlayerStatusValue as getAdapterPlayerStatusValue,
   getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex
-} from '../../services/player-state-adapter.js';
-import worldService from '../../services/world-service.js';
+} from '../../services/player-state-adapter.ts';
+import worldService from '../../services/world-service.ts';
 import panoramaRenderer from './panorama-renderer';
 import panoramaDialog from './panorama-dialog';
 

@@ -775,7 +775,8 @@ class WorldService extends EventBus {
     updateInventoryValue(Array.isArray(inventoryValue) ? inventoryValue : [], { emitEvent: false, source: 'worldService:sync', capacity: this.getInventoryCapacity() });
 
     const cashValue = stateService.getGlobal('cash');
-    updateCashValue(typeof cashValue === 'number' ? Math.trunc(cashValue) : 0, { emitEvent: false, source: 'worldService:sync' });
+    const resolvedCash = typeof cashValue === 'number' ? Math.trunc(cashValue) : 0;
+    updateCashValue(resolvedCash, { emitEvent: false, source: 'worldService:sync', capacity: this.getInventoryCapacity ? this.getInventoryCapacity() : undefined });
 
     const lastUnequippedValue = stateService.getGlobal('lastUnequippedItem');
     updateLastUnequippedValue(typeof lastUnequippedValue === 'number' ? Math.trunc(lastUnequippedValue) : 0, { emitEvent: false, source: 'worldService:sync' });
@@ -1539,7 +1540,7 @@ class WorldService extends EventBus {
 
       let objectEntry = null;
       try {
-        const scriptObjects = yield loadServiceModule('scriptObjects', './script-object-adapter.js');
+        const scriptObjects = yield loadServiceModule('scriptObjects', './script-object-adapter.ts');
         if (scriptObjects && typeof scriptObjects.getObjectEntry === 'function') {
           objectEntry = scriptObjects.getObjectEntry(itemId);
         }
@@ -2078,18 +2079,33 @@ class WorldService extends EventBus {
     return resolved;
   }
 
-  getSceneEventObjectRange() {
+  getSceneEventObjectRange(sceneId?: number) {
     this._ensureInitialised();
-    const sceneRef = this.getSceneData();
-    const nextSceneRef = this.getNextSceneData();
     const store = getGameDataStore();
     const eventObjects = store && Array.isArray(store.eventObject) ? store.eventObject : [];
-    const start = sceneRef && typeof sceneRef.eventObjectIndex === 'number'
-      ? sceneRef.eventObjectIndex
-      : 0;
-    const end = nextSceneRef && typeof nextSceneRef.eventObjectIndex === 'number'
-      ? nextSceneRef.eventObjectIndex
-      : eventObjects.length;
+    const scenes = store && Array.isArray(store.scene) ? store.scene : [];
+
+    let start = 0;
+    let end = eventObjects.length;
+    if (typeof sceneId === 'number' && sceneId >= 0) {
+      const current = scenes[sceneId];
+      const next = scenes[sceneId + 1];
+      if (current && typeof current.eventObjectIndex === 'number') {
+        start = current.eventObjectIndex;
+      }
+      if (next && typeof next.eventObjectIndex === 'number') {
+        end = next.eventObjectIndex;
+      }
+    } else {
+      const sceneRef = this.getSceneData();
+      const nextSceneRef = this.getNextSceneData();
+      start = sceneRef && typeof sceneRef.eventObjectIndex === 'number'
+        ? sceneRef.eventObjectIndex
+        : 0;
+      end = nextSceneRef && typeof nextSceneRef.eventObjectIndex === 'number'
+        ? nextSceneRef.eventObjectIndex
+        : eventObjects.length;
+    }
     return {
       start,
       end,

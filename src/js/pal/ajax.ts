@@ -1,8 +1,8 @@
-import traceModuleLoad from './util-trace';
+import traceModuleLoad from './util-trace.js';
 import utils from './utils';
-import MKF from './mkf';
+import MKF from './mkf.js';
 import co from './co';
-import config from './config';
+import config from './config.js';
 
 traceModuleLoad('ajax module load');
 
@@ -16,7 +16,8 @@ const ajax: any = {
 
 utils.extend(ajax, utils.Events);
 
-ajax.requestBinary = function(filePath: string, targetUrl: string | null, callback: (data: Uint8Array | null) => void) {
+ajax.requestBinary = function(filePath: string, targetUrl: string | null, callback?: (data: Uint8Array | null) => void) {
+  const cb = typeof callback === 'function' ? callback : () => {};
   targetUrl = targetUrl || filePath;
   // if (targetUrl.indexOf('?') === -1) {
   //   targetUrl += '?v=' + Math.random();
@@ -26,8 +27,8 @@ ajax.requestBinary = function(filePath: string, targetUrl: string | null, callba
     fetch(targetUrl, { cache: 'no-store' })
       .then((response) => response.ok ? response.arrayBuffer() : null)
       .then((arrayBuffer) => arrayBuffer ? new Uint8Array(arrayBuffer) : null)
-      .then(callback)
-      .catch(() => callback(null));
+      .then(cb)
+      .catch(() => cb(null));
     return;
   }
   var xhr = new XMLHttpRequest();
@@ -36,28 +37,29 @@ ajax.requestBinary = function(filePath: string, targetUrl: string | null, callba
   xhr.onload = function() {
     if (xhr.status === 200 || (xhr.status === 0 && xhr.response)) {
       ajax.trigger('binaryLoaded', filePath);
-      callback(new Uint8Array(xhr.response));
+      cb(new Uint8Array(xhr.response));
     } else {
-      callback(null);
+      cb(null);
     }
   };
-  xhr.onerror = () => callback(null);
+  xhr.onerror = () => cb(null);
   xhr.send(null);
 };
 
-ajax.load = function(filePath: string, targetUrl: string | null, callback: (data: Uint8Array | null) => void) {
+ajax.load = function(filePath: string, targetUrl: string | null, callback?: (data: Uint8Array | null) => void) {
+  const cb = typeof callback === 'function' ? callback : () => {};
   if (ajax.cache[filePath]) {
-    callback(ajax.cache[filePath]);
+    cb(ajax.cache[filePath]);
     return;
   }
 
-  ajax.requestBinary(filePath, targetUrl, function(binary) {
+  ajax.requestBinary(filePath, targetUrl, function(binary: Uint8Array | null) {
     if (!binary) {
-      callback(null);
+      cb(null);
       return;
     }
     ajax.cache[filePath] = binary;
-    callback(binary);
+    cb(binary);
   });
 };
 

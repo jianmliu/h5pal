@@ -6,7 +6,7 @@ const { runTriggerScriptMock } = vi.hoisted(() => ({
   })
 }));
 
-vi.mock('../src/services/script-service.js', () => ({
+vi.mock('../src/services/script-service.ts', () => ({
   __esModule: true,
   default: {
     runTriggerScript: runTriggerScriptMock,
@@ -16,9 +16,9 @@ vi.mock('../src/services/script-service.js', () => ({
   }
 }));
 
-import battleService from '../src/services/battle-service.js';
-import worldService from '../src/services/world-service.js';
-import stateService from '../src/services/state-service.js';
+import battleService from '../src/services/battle-service.ts';
+import worldService from '../src/services/world-service.ts';
+import stateService from '../src/services/state-service.ts';
 import { BattleComponents } from '../src/ecs/index.js';
 import {
   statusDecaySystem,

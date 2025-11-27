@@ -3,13 +3,13 @@ import ui from './ui';
 import uigame from './uigame';
 import input from './input';
 import play from './play';
-import dialogService from '../../services/dialog-service.js';
+import dialogService from '../../services/dialog-service.ts';
 import script from '../../services/script-service.ts';
 import res from './res';
-import resourceService from '../../services/resource-service.js';
-import storageService from '../../services/storage-service.js';
-import worldService from '../../services/world-service.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import resourceService from '../../services/resource-service.ts';
+import storageService from '../../services/storage-service.ts';
+import worldService from '../../services/world-service.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
 import overviewController from './overview-controller';
 import panoramaRenderer from './panorama-renderer';
 import panoramaControls from './panorama-controls';
@@ -18,10 +18,10 @@ import config from './config';
 import {
   getPlayerRolesSnapshot,
   getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
-} from '../../services/player-state-adapter.js';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
-import { inventorySignals } from '../../state/slices/inventory.js';
-import { hydrateGeneratedGameData } from '../../services/generated-game-data.js';
+} from '../../services/player-state-adapter.ts';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
+import { inventorySignals } from '../../state/slices/inventory.ts';
+import { hydrateGeneratedGameData } from '../../services/generated-game-data.ts';
 import debugUtils from './debug-utils';
 import {
   getMusicTrack as getCachedMusicTrack,
@@ -33,7 +33,7 @@ import {
   getChaseRange as getChaseRangeFlagValue,
   getChaseSpeedChangeCycles as getChaseSpeedCyclesFlagValue,
   getBattleSpeed as getBattleSpeedFlagValue
-} from '../../services/game-flags-adapter.js';
+} from '../../services/game-flags-adapter.ts';
 import {
   getViewportValue as getViewportSnapshot,
   getPaletteIdValue as getPaletteIdSnapshot,
@@ -42,15 +42,15 @@ import {
   isNightPaletteEnabled,
   getScreenWaveValue as getScreenWaveSnapshot,
   getLayerValue as getLayerSnapshot
-} from '../../services/environment-adapter.js';
-import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.js';
+} from '../../services/environment-adapter.ts';
+import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.ts';
 import {
   getPartyStructSnapshot,
   getTrailStructSnapshot,
   getExpStructSnapshot,
   getPoisonStructSnapshot,
   getInventoryStructSnapshot
-} from '../../services/save-data-adapter.js';
+} from '../../services/save-data-adapter.ts';
 
 log.trace('game module load');
 

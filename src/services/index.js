@@ -5,17 +5,17 @@ import scriptService from './script-service.ts';
 import battleService from './battle-service.ts';
 import worldService from './world-service.ts';
 import dialogService from './dialog-service.ts';
-import environmentAdapter from './environment-adapter.js';
-import partyTrailAdapter from './party-trail-adapter.js';
-import playerStateAdapter from './player-state-adapter.js';
+import environmentAdapter from './environment-adapter.ts';
+import partyTrailAdapter from './party-trail-adapter.ts';
+import playerStateAdapter from './player-state-adapter.ts';
 import battleStateAdapter from './battle-state-adapter.js';
-import scriptObjectAdapter from './script-object-adapter.js';
-import sceneEventAdapter from './scene-event-adapter.js';
+import scriptObjectAdapter from './script-object-adapter.ts';
+import sceneEventAdapter from './scene-event-adapter.ts';
 import battleFlagsAdapter from './battle-flags-adapter.js';
-import gameFlagsAdapter from './game-flags-adapter.js';
+import gameFlagsAdapter from './game-flags-adapter.ts';
 import gameDataAdapter from './game-data-adapter.js';
-import saveDataAdapter from './save-data-adapter.js';
-import sceneDataAdapter from './scene-data-adapter.js';
+import saveDataAdapter from './save-data-adapter.ts';
+import sceneDataAdapter from './scene-data-adapter.ts';
 import sceneStateAdapter from './scene-state-adapter.js';
 import dialogAdapter from './dialog-adapter.js';
 import mudBridge from './mud-bridge.js';
@@ -84,7 +84,7 @@ const adapterManifest = Object.freeze({
       'environment.waveProgression'
     ],
     module: environmentAdapter,
-    importer: () => import('./environment-adapter.js')
+    importer: () => import('./environment-adapter.ts')
   }),
   partyTrail: createManifestEntry({
     id: 'partyTrail',
@@ -97,7 +97,7 @@ const adapterManifest = Object.freeze({
       'partyTrail.followers'
     ],
     module: partyTrailAdapter,
-    importer: () => import('./party-trail-adapter.js')
+    importer: () => import('./party-trail-adapter.ts')
   }),
   playerState: createManifestEntry({
     id: 'playerState',
@@ -112,7 +112,7 @@ const adapterManifest = Object.freeze({
       'playerState.maxPartyIndex'
     ],
     module: playerStateAdapter,
-    importer: () => import('./player-state-adapter.js')
+    importer: () => import('./player-state-adapter.ts')
   }),
   battleState: createManifestEntry({
     id: 'battleState',
@@ -152,7 +152,7 @@ const adapterManifest = Object.freeze({
       'gameFlags.battleSpeed'
     ],
     module: gameFlagsAdapter,
-    importer: () => import('./game-flags-adapter.js')
+    importer: () => import('./game-flags-adapter.ts')
   }),
   gameData: createManifestEntry({
     id: 'gameData',
@@ -187,7 +187,7 @@ const adapterManifest = Object.freeze({
     primaryStream: 'scene.data.table',
     streams: ['scene.data.table'],
     module: sceneDataAdapter,
-    importer: () => import('./scene-data-adapter.js')
+    importer: () => import('./scene-data-adapter.ts')
   }),
   sceneEvents: createManifestEntry({
     id: 'sceneEvents',
@@ -202,7 +202,7 @@ const adapterManifest = Object.freeze({
       'scene.events.version'
     ],
     module: sceneEventAdapter,
-    importer: () => import('./scene-event-adapter.js')
+    importer: () => import('./scene-event-adapter.ts')
   }),
   scriptObjects: createManifestEntry({
     id: 'scriptObjects',
@@ -215,7 +215,7 @@ const adapterManifest = Object.freeze({
       'scriptObjects.objectDesc'
     ],
     module: scriptObjectAdapter,
-    importer: () => import('./script-object-adapter.js')
+    importer: () => import('./script-object-adapter.ts')
   }),
   saveData: createManifestEntry({
     id: 'saveData',
@@ -224,7 +224,7 @@ const adapterManifest = Object.freeze({
     primaryStream: '',
     streams: [],
     module: saveDataAdapter,
-    importer: () => import('./save-data-adapter.js')
+    importer: () => import('./save-data-adapter.ts')
   }),
   dialog: createManifestEntry({
     id: 'dialog',

@@ -1,39 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import worldService from '../src/services/world-service.js';
-import stateService from '../src/services/state-service.js';
-import scriptObjectAdapter from '../src/services/script-object-adapter.js';
-import sceneEventAdapter from '../src/services/scene-event-adapter.js';
-import { getPlayerHP as getPlayerHPValue, getPlayerMP as getPlayerMPValue } from '../src/services/player-state-adapter.js';
+import worldService from '../src/services/world-service.ts';
+import stateService from '../src/services/state-service.ts';
+import scriptObjectAdapter from '../src/services/script-object-adapter.ts';
+import sceneEventAdapter from '../src/services/scene-event-adapter.ts';
+import { getPlayerHP as getPlayerHPValue, getPlayerMP as getPlayerMPValue } from '../src/services/player-state-adapter.ts';
 import reactiveContext from '../src/state/reactive-context.js';
-import { autoBattleSignal, autoBattleStream } from '../src/state/slices/auto-battle.js';
-import { frameCountSignal, frameCountStream } from '../src/state/slices/frame-count.js';
+import { autoBattleSignal, autoBattleStream } from '../src/state/slices/auto-battle.ts';
+import { frameCountSignal, frameCountStream } from '../src/state/slices/frame-count.ts';
 import {
   menuSelectionSignals,
   audioToggleSignals
-} from '../src/state/slices/menu-selections.js';
-import { inventorySignals } from '../src/state/slices/inventory.js';
-import { sceneEventSignals } from '../src/state/slices/scene-events.js';
+} from '../src/state/slices/menu-selections.ts';
+import { inventorySignals } from '../src/state/slices/inventory.ts';
+import { sceneEventSignals } from '../src/state/slices/scene-events.ts';
 import {
   audioResourceSignals,
   getScreenWaveValue as getScreenWaveSliceValue,
   getPaletteIdValue as getPaletteSliceValue,
   getNightPaletteValue as getNightPaletteSliceValue,
   getLayerValue as getLayerSliceValue
-} from '../src/state/slices/audio-resources.js';
+} from '../src/state/slices/audio-resources.ts';
 import {
   timeFlagSignals,
   getWaveProgressionValue as getWaveProgressionSliceValue,
   getNeedToFadeInValue as getNeedToFadeInSliceValue
-} from '../src/state/slices/time-flags.js';
+} from '../src/state/slices/time-flags.ts';
 import {
   gameFlagSignals,
   getCollectValue as getCollectFlagSliceValue,
   getChaseRangeValue as getChaseRangeSliceValue,
   getChaseSpeedCyclesValue as getChaseSpeedSliceValue,
   getBattleSpeedValue as getBattleSpeedSliceValue
-} from '../src/state/slices/game-flags.js';
-import { scriptObjectSignals } from '../src/state/slices/script-objects.js';
-import { battleFormationSignals } from '../src/state/slices/battle-formation.js';
+} from '../src/state/slices/game-flags.ts';
+import { scriptObjectSignals } from '../src/state/slices/script-objects.ts';
+import { battleFormationSignals } from '../src/state/slices/battle-formation.ts';
 import {
   partyTrailSignals,
   partyStream,
@@ -42,7 +42,7 @@ import {
   getPartyValue as getPartySliceValue,
   getTrailValue as getTrailSliceValue,
   getFollowerCountValue as getFollowerCountSliceValue
-} from '../src/state/slices/party-trail.js';
+} from '../src/state/slices/party-trail.ts';
 
 function createTrailEntry() {
   return { x: 0, y: 0, direction: 0 };

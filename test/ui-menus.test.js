@@ -76,12 +76,12 @@ const gameDataAdapterMock = {
   getMagicEntry: vi.fn()
 };
 
-vi.mock('../src/services/world-service.js', () => ({
+vi.mock('../src/services/world-service.ts', () => ({
   __esModule: true,
   default: worldServiceMock
 }));
 
-vi.mock('../src/services/state-service.js', () => ({
+vi.mock('../src/services/state-service.ts', () => ({
   __esModule: true,
   default: stateServiceMock
 }));
@@ -104,7 +104,7 @@ vi.mock('../src/js/pal/rle.js', () => ({
   default: (data) => data
 }));
 
-vi.mock('../src/services/game-data-adapter.js', () => ({
+vi.mock('../src/services/game-data-adapter.ts', () => ({
   __esModule: true,
   default: gameDataAdapterMock,
   getExpStateSnapshot: vi.fn(() => null)
@@ -249,23 +249,23 @@ describe('ui menus (service-backed)', () => {
       updateCashValue,
       resetInventorySlice,
       inventorySignals
-    } = await import('../src/state/slices/inventory.js'));
+    } = await import('../src/state/slices/inventory.ts'));
     ({
       updateObjectTableValue,
       resetScriptObjectSlice
-    } = await import('../src/state/slices/script-objects.js'));
+    } = await import('../src/state/slices/script-objects.ts'));
     ({
       updatePartyValue,
       resetPartyTrailSlice
-    } = await import('../src/state/slices/party-trail.js'));
+    } = await import('../src/state/slices/party-trail.ts'));
     ({
       updateMaxPartyIndexValue,
       resetViewportSlice
-    } = await import('../src/state/slices/viewport.js'));
+    } = await import('../src/state/slices/viewport.ts'));
     ({
       updatePlayerRolesValue,
       resetPlayerStateSlice
-    } = await import('../src/state/slices/player-state.js'));
+    } = await import('../src/state/slices/player-state.ts'));
     resetInventorySlice();
     resetScriptObjectSlice();
     resetPartyTrailSlice();

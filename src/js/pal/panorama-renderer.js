@@ -1,6 +1,6 @@
 import config from './config';
 import Palette from './palette';
-import { getPaletteIdValue as getPaletteIdSnapshot, isNightPaletteEnabled } from '../../services/environment-adapter.js';
+import { getPaletteIdValue as getPaletteIdSnapshot, isNightPaletteEnabled } from '../../services/environment-adapter.ts';
 
 const HAS_DOM = typeof window !== 'undefined' && typeof document !== 'undefined';
 const WRAP = HAS_DOM ? (document.getElementById('wrap') || document.body) : null;

@@ -1,6 +1,6 @@
 import { worldService } from '../services/index.js';
 import resourceService from '../services/resource-service.js';
-import scriptObjectAdapter from '../services/script-object-adapter.js';
+import scriptObjectAdapter from '../services/script-object-adapter.ts';
 import { getSceneIdValue as getCurrentSceneId } from '../services/scene-state-adapter.js';
 
 const big5Decoder = (() => {

@@ -1,16 +1,16 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { BattleComponents } from '../src/ecs/index.js';
-import worldService from '../src/services/world-service.js';
-import stateService from '../src/services/state-service.js';
-import scriptService from '../src/services/script-service.js';
+import worldService from '../src/services/world-service.ts';
+import stateService from '../src/services/state-service.ts';
+import scriptService from '../src/services/script-service.ts';
 import reactiveContext from '../src/state/reactive-context.js';
-import { getCashValue } from '../src/state/slices/inventory.js';
+import { getCashValue } from '../src/state/slices/inventory.ts';
 import {
   getPlayerLevel as getPlayerLevelValue,
   getPlayerHP as getPlayerHPValue,
   getPlayerMaxHP as getPlayerMaxHPValue,
   getPlayerAttackStrength as getPlayerAttackStrengthValue
-} from '../src/services/player-state-adapter.js';
+} from '../src/services/player-state-adapter.ts';
 
 const initMock = vi.fn(function* (...args) {
   yield { type: 'initStep', args };
@@ -54,7 +54,7 @@ describe('BattleService', () => {
     wonMock.mockClear();
     playerEscapeMock.mockClear();
     enemyEscapeMock.mockClear();
-    const module = await import('../src/services/battle-service.js');
+    const module = await import('../src/services/battle-service.ts');
     battleService = module.default;
     battleService._events = {};
     battleService.state = null;

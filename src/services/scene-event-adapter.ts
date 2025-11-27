@@ -3,7 +3,7 @@ import stateService from './state-service.js';
 import reactiveContext from '../state/reactive-context.js';
 import { Observable } from 'rxjs';
 import { sceneEventSignals } from '../state/slices/scene-events.js';
-import { getSceneEventObjectRange as getSceneEventObjectRangeSnapshot } from './scene-data-adapter.js';
+import { getSceneEventObjectRange as getSceneEventObjectRangeSnapshot } from './scene-data-adapter.ts';
 import { createAdapterObservable } from './adapter-helpers.js';
 
 type SceneEventEntry = { index: number | null; id: number | null; state: SceneEventState | null };

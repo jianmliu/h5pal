@@ -4,21 +4,21 @@ import script from '../../services/script-service.ts';
 import battleModule from './battle';
 import battleService from '../../services/battle-service.ts';
 import ending from './ending';
-import worldService from '../../services/world-service.js';
-import sceneEventAdapter from '../../services/scene-event-adapter.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
+import worldService from '../../services/world-service.ts';
+import sceneEventAdapter from '../../services/scene-event-adapter.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
 import {
   getViewportValue as getViewportSnapshot,
   getPartyOffsetValue as getPartyOffsetSnapshot,
   getPartyDirectionValue as getPartyDirectionSnapshot
-} from '../../services/environment-adapter.js';
-import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.js';
+} from '../../services/environment-adapter.ts';
+import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.ts';
 import {
   getSceneEntry as getSceneEntrySnapshot,
   getSceneEventObjectRange as getSceneEventObjectRangeSnapshot
-} from '../../services/scene-data-adapter.js';
-import { getChaseSpeedChangeCycles } from '../../services/game-flags-adapter.js';
+} from '../../services/scene-data-adapter.ts';
+import { getChaseSpeedChangeCycles } from '../../services/game-flags-adapter.ts';
 
 battleService.bindModule(battleModule);
 

@@ -1,5 +1,5 @@
 import utils from './utils';
-import resourceService from '../../services/resource-service.js';
+import resourceService from '../../services/resource-service.ts';
 
 log.trace('font module load');
 

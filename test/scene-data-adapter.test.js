@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import sceneDataAdapter, {
   getSceneEntry as getSceneEntryViaNamed,
   getSceneEventObjectRange
-} from '../src/services/scene-data-adapter.js';
-import worldService from '../src/services/world-service.js';
+} from '../src/services/scene-data-adapter.ts';
+import worldService from '../src/services/world-service.ts';
 import reactiveContext from '../src/state/reactive-context.js';
-import stateService from '../src/services/state-service.js';
+import stateService from '../src/services/state-service.ts';
 import {
   updateSceneTableValue,
   resetSceneTableSlice
-} from '../src/state/slices/scene-table.js';
+} from '../src/state/slices/scene-table.ts';
 
 describe('scene-data-adapter', () => {
   beforeEach(() => {

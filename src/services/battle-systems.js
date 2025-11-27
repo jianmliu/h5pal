@@ -1,18 +1,18 @@
-import EventBus from './event-bus.js';
+import EventBus from './event-bus.ts';
 import scriptService from './script-service.ts';
 import worldService from './world-service.ts';
-import sceneEventAdapter from './scene-event-adapter.js';
-import partyTrailAdapter from './party-trail-adapter.js';
+import sceneEventAdapter from './scene-event-adapter.ts';
+import partyTrailAdapter from './party-trail-adapter.ts';
 import {
   getPlayerStatusRow as getPlayerStatusRowSnapshot,
   getMaxPartyMemberIndex as getMaxPartyMemberIndexSnapshot,
   getPoisonStatusMatrix
-} from './player-state-adapter.js';
+} from './player-state-adapter.ts';
 import {
   getBattleStateSnapshot,
   isAutoBattleEnabled
 } from './battle-state-adapter.js';
-import { getBattleSpeed } from './game-flags-adapter.js';
+import { getBattleSpeed } from './game-flags-adapter.ts';
 import {
   BattleComponents,
   createQueueEntryComponent

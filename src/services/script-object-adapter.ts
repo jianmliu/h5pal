@@ -1,6 +1,7 @@
 import worldService from './world-service';
 import reactiveContext from '../state/reactive-context.js';
 import { scriptObjectSignals } from '../state/slices/script-objects.ts';
+import type { ObjectTable, ObjectDesc } from '../state/slices/script-objects.ts';
 import { createAdapterObservable } from './adapter-helpers.js';
 
 type SignalSubscription = { unsubscribe?: () => void } | (() => void) | null | undefined;
@@ -130,24 +131,24 @@ function ensureInitialised() {
 
   const signals = scriptObjectSignals();
   subscriptions = [
-    signals.scriptEntries.subscribe((value) => {
+    signals.scriptEntries.subscribe((value: ScriptEntry[]) => {
       if (Array.isArray(value) && value !== scriptEntriesCache) {
         const previous = scriptEntriesCache;
         scriptEntriesCache = value;
         notify({ type: 'scriptEntries', value, previous });
       }
     }),
-    signals.objectTable.subscribe((value) => {
+    signals.objectTable.subscribe((value: ObjectTable) => {
       if (Array.isArray(value) && value !== objectTableCache) {
         const previous = objectTableCache;
         objectTableCache = value;
         notify({ type: 'objectTable', value, previous });
       }
     }),
-    signals.objectDesc.subscribe((value) => {
+    signals.objectDesc.subscribe((value: ObjectDesc | null) => {
       if (value !== objectDescCache) {
         const previous = objectDescCache;
-        objectDescCache = typeof value === 'undefined' ? null : value;
+        objectDescCache = Array.isArray(value) ? (value as ObjectDescEntry[]) : null;
         notify({ type: 'objectDesc', value: objectDescCache, previous });
       }
     })

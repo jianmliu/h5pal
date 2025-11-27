@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { StateService } from '../src/services/state-service.js';
+import { StateService } from '../src/services/state-service.ts';
 
 describe('StateService', () => {
   it('reads and writes global values with events', () => {

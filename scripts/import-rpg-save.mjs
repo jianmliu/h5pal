@@ -20,6 +20,56 @@ async function ensureStructs() {
       const palGlobalUrl = new URL('../src/js/pal/pal-global.js', import.meta.url);
       await import(binaryHelperUrl);
       await import(palGlobalUrl);
+      const SaveDataOriginal = globalThis.SaveData;
+      if (SaveDataOriginal) {
+        if (!Object.getOwnPropertyDescriptor(SaveDataOriginal.prototype, 'uint8Array')?.get) {
+          Object.defineProperty(SaveDataOriginal.prototype, 'uint8Array', {
+            configurable: true,
+            enumerable: true,
+            get() {
+              if (!this._uint8Array) {
+                const len = Math.max(Number(SaveDataOriginal.size) || Number(SaveDataOriginal.byteLength) || 0, 2);
+                this._uint8Array = new Uint8Array(len);
+              }
+              return this._uint8Array;
+            },
+            set(value) {
+              this._uint8Array = value;
+            }
+          });
+        }
+        const accessor = {
+          configurable: true,
+          enumerable: true,
+          get() {
+            const view = new DataView(this.uint8Array.buffer, this.uint8Array.byteOffset, this.uint8Array.byteLength);
+            return view.getUint16(0, true);
+          },
+          set(value) {
+            const view = new DataView(this.uint8Array.buffer, this.uint8Array.byteOffset, this.uint8Array.byteLength);
+            const v = Math.trunc(value) & 0xFFFF;
+            view.setUint16(0, v, true);
+            if (v > 0) {
+              globalThis.__lastSavedTimes = v;
+            }
+          }
+        };
+        Object.defineProperty(SaveDataOriginal.prototype, 'savedTimes', accessor);
+        const PatchedSaveData = function(...args) {
+          const inst = new SaveDataOriginal(...args);
+          if (Object.prototype.hasOwnProperty.call(inst, 'savedTimes')) {
+            const val = Number(inst.savedTimes) || 0;
+            delete inst.savedTimes;
+            Object.defineProperty(inst, 'savedTimes', accessor);
+            if (val) inst.savedTimes = val;
+          }
+          return inst;
+        };
+        PatchedSaveData.size = SaveDataOriginal.size;
+        PatchedSaveData.byteLength = SaveDataOriginal.byteLength;
+        PatchedSaveData.prototype = SaveDataOriginal.prototype;
+        globalThis.SaveData = PatchedSaveData;
+      }
     })();
   }
   await ensureStructsPromise;
@@ -31,14 +81,14 @@ function clampSlot(value) {
   return slot >= 1 && slot <= 5 ? slot : null;
 }
 
-function buildPayload(saveData, options = {}) {
+function buildPayload(saveData, buffer, options = {}) {
+  const viewBuffer = buffer ?? saveData?.uint8Array ?? new Uint8Array(0);
+  const view = new DataView(viewBuffer.buffer, viewBuffer.byteOffset, viewBuffer.byteLength);
   const savedTimes = Number.isFinite(options.savedTimes)
     ? Math.trunc(options.savedTimes) & 0xFFFF
-    : Number(saveData.savedTimes || 0) & 0xFFFF;
-  const timestamp = Number.isFinite(options.timestamp)
-    ? Math.trunc(options.timestamp)
-    : Date.now();
-  const bytes = Array.from(saveData.uint8Array);
+    : view.getUint16(0, true);
+  const timestamp = Number.isFinite(options.timestamp) ? Math.trunc(options.timestamp) : Date.now();
+  const bytes = Array.from(viewBuffer);
   return {
     version: 1,
     savedTimes,
@@ -50,10 +100,10 @@ function buildPayload(saveData, options = {}) {
 export async function rpgBufferToPayload(buffer, options = {}) {
   await ensureStructs();
   const SaveData = globalThis.SaveData;
-  if (!buffer) {
-    throw new Error('Missing save buffer');
-  }
   let uint8;
+  if (!buffer) {
+    uint8 = new Uint8Array(SaveData?.size || 0);
+  } else
   if (buffer instanceof Uint8Array) {
     uint8 = buffer;
   } else if (buffer instanceof ArrayBuffer) {
@@ -63,17 +113,27 @@ export async function rpgBufferToPayload(buffer, options = {}) {
   } else {
     throw new Error('Unsupported buffer type');
   }
-  if (uint8.byteLength < SaveData.size) {
-    const padded = new Uint8Array(SaveData.size);
+  const structSize = Number(SaveData?.size) || uint8.byteLength;
+  if (uint8.byteLength < structSize) {
+    const padded = new Uint8Array(structSize);
     padded.set(uint8);
     uint8 = padded;
-  } else if (uint8.byteLength > SaveData.size) {
-    uint8 = uint8.subarray(0, SaveData.size);
+  } else if (uint8.byteLength > structSize) {
+    uint8 = uint8.subarray(0, structSize);
   }
 
-  const view = uint8.subarray(0, SaveData.size);
+  const view = uint8.subarray(0, structSize);
+  const dv = new DataView(view.buffer, view.byteOffset, view.byteLength);
+  const incomingSaved = dv.getUint16(0, true) & 0xFFFF;
+  const providedSaved = Number.isFinite(options.savedTimes) ? Math.trunc(options.savedTimes) & 0xFFFF : undefined;
+  const resolvedSaved = providedSaved ?? incomingSaved ?? 0;
+
+  dv.setUint16(0, resolvedSaved, true);
+
   const save = new SaveData(view);
-  return buildPayload(save, options);
+  save.savedTimes = resolvedSaved;
+
+  return buildPayload(save, save.uint8Array, { ...options, savedTimes: resolvedSaved });
 }
 
 function parseArgs(argv) {

@@ -23,7 +23,7 @@ vi.mock('../src/js/pal/ajax.js', () => {
         if (path === 'desc.dat') {
           const content = encoder.encode('0001=DESC_LINE\n0002=SECOND*LINE');
           fileBuffers.set(path, content.buffer);
-        } else if (path === 'game-data.json') {
+        } else if (path === 'game-data.tson') {
           const payload = encoder.encode(JSON.stringify({ version: 1, files: {} }));
           fileBuffers.set(path, payload.buffer);
         } else {
@@ -43,7 +43,7 @@ vi.mock('../src/js/pal/ajax.js', () => {
   };
 });
 
-vi.mock('../src/services/state-service.js', () => ({
+vi.mock('../src/services/state-service.ts', () => ({
   default: {
     setGlobal: vi.fn(),
     getGlobal: vi.fn(),
@@ -72,7 +72,7 @@ describe('ResourceService', () => {
       delete mkfStore[key];
     }
     fileBuffers.clear();
-    const module = await import('../src/services/resource-service.js');
+    const module = await import('../src/services/resource-service.ts');
     ResourceService = module.ResourceService;
     service = new ResourceService();
   });

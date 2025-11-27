@@ -9,7 +9,7 @@ import {
   getCashValue,
   updateLastUnequippedValue,
   getLastUnequippedValue
-} from '../src/state/slices/inventory.js';
+} from '../src/state/slices/inventory.ts';
 
 function createSlot(overrides = {}) {
   return {

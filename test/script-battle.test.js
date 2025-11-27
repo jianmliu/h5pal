@@ -1,12 +1,12 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import worldService from '../src/services/world-service.js';
-import scriptObjectAdapter from '../src/services/script-object-adapter.js';
-import sceneEventAdapter from '../src/services/scene-event-adapter.js';
-import stateService from '../src/services/state-service.js';
-import { resetInventorySlice, getCashValue } from '../src/state/slices/inventory.js';
-import { resetScriptObjectSlice } from '../src/state/slices/script-objects.js';
-import { getPlayerMP as getPlayerMPValue } from '../src/services/player-state-adapter.js';
-import { updatePlayerRolesValue } from '../src/state/slices/player-state.js';
+import worldService from '../src/services/world-service.ts';
+import scriptObjectAdapter from '../src/services/script-object-adapter.ts';
+import sceneEventAdapter from '../src/services/scene-event-adapter.ts';
+import stateService from '../src/services/state-service.ts';
+import { resetInventorySlice, getCashValue } from '../src/state/slices/inventory.ts';
+import { resetScriptObjectSlice } from '../src/state/slices/script-objects.ts';
+import { getPlayerMP as getPlayerMPValue } from '../src/services/player-state-adapter.ts';
+import { updatePlayerRolesValue } from '../src/state/slices/player-state.ts';
 
 vi.mock('../src/js/pal/script-extras.js', () => ({
   default: {
@@ -235,7 +235,7 @@ const battleServiceMock = {
   })
 };
 
-vi.mock('../src/services/battle-service.js', () => ({
+vi.mock('../src/services/battle-service.ts', () => ({
   __esModule: true,
   default: battleServiceMock
 }));

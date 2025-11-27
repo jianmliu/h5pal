@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import sceneEventAdapter from '../src/services/scene-event-adapter.js';
-import worldService from '../src/services/world-service.js';
+import sceneEventAdapter from '../src/services/scene-event-adapter.ts';
+import worldService from '../src/services/world-service.ts';
 import reactiveContext from '../src/state/reactive-context.js';
-import stateService from '../src/services/state-service.js';
+import stateService from '../src/services/state-service.ts';
 import {
   getEventObjectsValue as getEventObjectsSliceValue,
   updateEventObjectsValue as updateEventObjectsSlice
-} from '../src/state/slices/scene-events.js';
+} from '../src/state/slices/scene-events.ts';
 
 describe('sceneEventAdapter', () => {
   beforeEach(() => {

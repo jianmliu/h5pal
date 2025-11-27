@@ -8,11 +8,11 @@ import utils from './utils';
 import RLE from './rle';
 import input from './input';
 import music from './music';
-import resourceService from '../../services/resource-service.js';
-import worldService from '../../services/world-service.js';
+import resourceService from '../../services/resource-service.ts';
+import worldService from '../../services/world-service.ts';
 import scene from './scene';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
-import gameDataAdapter from '../../services/game-data-adapter.js';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
+import gameDataAdapter from '../../services/game-data-adapter.ts';
 import {
   getPlayerNameId,
   getPlayerHP,
@@ -28,14 +28,14 @@ import {
   getPlayerEquipment,
   getPlayerAvatarId,
   getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex
-} from '../../services/player-state-adapter.js';
-import { menuSelectionSignals, audioToggleSignals } from '../../state/slices/menu-selections.js';
-import { inventorySignals } from '../../state/slices/inventory.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
-import { statusSignals } from '../../state/slices/status-matrices.js';
-import { audioResourceSignals } from '../../state/slices/audio-resources.js';
-import { timeFlagSignals } from '../../state/slices/time-flags.js';
-import { viewportSignals } from '../../state/slices/viewport.js';
+} from '../../services/player-state-adapter.ts';
+import { menuSelectionSignals, audioToggleSignals } from '../../state/slices/menu-selections.ts';
+import { inventorySignals } from '../../state/slices/inventory.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
+import { statusSignals } from '../../state/slices/status-matrices.ts';
+import { audioResourceSignals } from '../../state/slices/audio-resources.ts';
+import { timeFlagSignals } from '../../state/slices/time-flags.ts';
+import { viewportSignals } from '../../state/slices/viewport.ts';
 import overviewController from './overview-controller';
 import panoramaRenderer from './panorama-renderer';
 import panoramaControls from './panorama-controls';

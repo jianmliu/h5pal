@@ -4,10 +4,10 @@
 type GeneratorFunctionLike = (...args: any[]) => Generator<any, any, any>;
 type GeneratorLike = Generator<any, any, any>;
 
-function co(gen: GeneratorFunctionLike | GeneratorLike): Promise<any> {
-  const ctx = this;
+function co(gen: GeneratorFunctionLike | GeneratorLike, ctx?: unknown): Promise<any> {
+  const boundCtx: any = ctx;
   if (typeof gen === 'function') {
-    gen = (gen as GeneratorFunctionLike).call(ctx);
+    gen = (gen as GeneratorFunctionLike).call(boundCtx);
   }
   return new Promise((resolve, reject) => {
     onFulfilled(undefined);
@@ -36,7 +36,7 @@ function co(gen: GeneratorFunctionLike | GeneratorLike): Promise<any> {
         resolve(ret.value);
         return;
       }
-      const value = toPromise.call(ctx, ret.value);
+      const value = toPromise.call(boundCtx, ret.value);
       if (value && isPromise(value)) {
         value.then(onFulfilled, onRejected);
       } else {
@@ -63,15 +63,15 @@ function isPromise(obj: any): obj is Promise<any> {
 function toPromise(this: any, obj: any): any {
   if (!obj) return obj;
   if (isPromise(obj)) return obj;
-  if (typeof obj === 'function') return thunkToPromise(obj);
+  if (typeof obj === 'function') return thunkToPromise.call(this, obj);
   if (isGenerator(obj) || isGeneratorFunction(obj)) return co.call(this, obj);
   if (Array.isArray(obj)) return Promise.all(obj.map(toPromise, this));
   if (isObject(obj)) return objectToPromise.call(this, obj);
   return obj;
 }
 
-function thunkToPromise(fn: Function): Promise<any> {
-  const ctx = this;
+function thunkToPromise(this: any, fn: Function): Promise<any> {
+  const ctx: any = this;
   return new Promise((resolve, reject) => {
     fn.call(ctx, function(err: any, ...args: any[]) {
       if (err) return reject(err);

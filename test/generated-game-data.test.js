@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import '../src/js/pal/binary-helper.js';
+import '../src/js/pal/binary-helper.ts';
 import '../src/js/pal/pal-global.js';
-import { hydrateGeneratedGameData, applyGeneratedGameData } from '../src/services/generated-game-data.js';
+import { hydrateGeneratedGameData, applyGeneratedGameData } from '../src/services/generated-game-data.ts';
 
 function createFilledArray(length, start = 1) {
   const buffer = new Uint8Array(length);

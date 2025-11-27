@@ -6,14 +6,14 @@ import {
   getBattleFieldId,
   isAutoBattleEnabled
 } from '../src/services/battle-state-adapter.js';
-import worldService from '../src/services/world-service.js';
+import worldService from '../src/services/world-service.ts';
 import reactiveContext from '../src/state/reactive-context.js';
-import stateService from '../src/services/state-service.js';
+import stateService from '../src/services/state-service.ts';
 import {
   updateEnemyTeamValue,
   updateEnemyPositionValue,
   updateBattleFieldValue
-} from '../src/state/slices/battle-formation.js';
+} from '../src/state/slices/battle-formation.ts';
 
 function createTrailEntry() {
   return { x: 0, y: 0, direction: 0 };

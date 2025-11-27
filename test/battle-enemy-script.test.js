@@ -62,10 +62,10 @@ vi.mock('../src/js/pal/utils.js', () => ({
 vi.mock('../src/js/pal/scene.js', () => ({ default: {} }));
 vi.mock('../src/js/pal/sprite.js', () => ({ default: vi.fn(() => ({})) }));
 vi.mock('../src/js/pal/input.js', () => ({ default: {} }));
-vi.mock('../src/services/script-service.js', () => ({ default: { runTriggerScript: vi.fn() } }));
+vi.mock('../src/services/script-service.ts', () => ({ default: { runTriggerScript: vi.fn() } }));
 vi.mock('../src/js/pal/music.js', () => ({ default: { play: vi.fn() } }));
 vi.mock('../src/js/pal/sound.js', () => ({ default: { play: vi.fn() } }));
-vi.mock('../src/services/resource-service.js', () => ({
+vi.mock('../src/services/resource-service.ts', () => ({
   default: {
     loadMKF: vi.fn(() => Promise.resolve()),
     getMKF: vi.fn(() => ({
@@ -83,10 +83,10 @@ vi.mock('../src/js/pal/uibattle.js', () => ({
     dispose: vi.fn()
   }
 }));
-vi.mock('../src/services/battle-service.js', () => ({ default: battleServiceMock }));
-vi.mock('../src/services/scene-event-adapter.js', () => ({ default: sceneEventAdapterMock }));
+vi.mock('../src/services/battle-service.ts', () => ({ default: battleServiceMock }));
+vi.mock('../src/services/scene-event-adapter.ts', () => ({ default: sceneEventAdapterMock }));
 vi.mock('../src/services/battle-systems.js', () => ({ default: vi.fn(() => ({})) }));
-vi.mock('../src/services/world-service.js', () => ({
+vi.mock('../src/services/world-service.ts', () => ({
   default: {
     copyEnemyTemplate: vi.fn((enemyID) => ({ enemyID })),
     getSceneEventObjectRange: vi.fn(() => ({ start: 0, end: 100 })),
@@ -96,20 +96,20 @@ vi.mock('../src/services/world-service.js', () => ({
     setSceneBuffer: vi.fn()
   }
 }));
-vi.mock('../src/services/game-data-adapter.js', () => ({
+vi.mock('../src/services/game-data-adapter.ts', () => ({
   __esModule: true,
   default: {
     getLevelUpMagicTable: vi.fn(() => [])
   },
   getExpStateSnapshot: vi.fn(() => null)
 }));
-vi.mock('../src/services/script-object-adapter.js', () => ({ default: scriptObjectAdapterMock }));
-vi.mock('../src/services/party-trail-adapter.js', () => ({
+vi.mock('../src/services/script-object-adapter.ts', () => ({ default: scriptObjectAdapterMock }));
+vi.mock('../src/services/party-trail-adapter.ts', () => ({
   default: {
     getPartyState: () => []
   }
 }));
-vi.mock('../src/services/player-state-adapter.js', () => ({
+vi.mock('../src/services/player-state-adapter.ts', () => ({
   default: {},
   getEquipmentEffectsMatrix: () => [],
   getEquipmentEffectAt: () => 0,

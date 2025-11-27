@@ -1,6 +1,6 @@
-import traceModuleLoad from './util-trace';
-import config from './config';
-import worldService from '../../services/world-service.js';
+import traceModuleLoad from './util-trace.js';
+import config from './config.js';
+import worldService from '../../services/world-service.ts';
 
 traceModuleLoad('music module load');
 

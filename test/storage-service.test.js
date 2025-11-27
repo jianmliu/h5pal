@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { StorageService } from '../src/services/storage-service.js';
+import { StorageService } from '../src/services/storage-service.ts';
 
 describe('StorageService', () => {
   it('writes and reads slots', () => {

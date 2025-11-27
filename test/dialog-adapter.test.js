@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import dialogService from '../src/services/dialog-service.js';
-import { currentLine$, status$, choice$ } from '../src/services/dialog-adapter.js';
+import dialogService from '../src/services/dialog-service.ts';
+import { currentLine$, status$, choice$ } from '../src/services/dialog-adapter.ts';
 
 describe('dialog adapter', () => {
   afterEach(() => {

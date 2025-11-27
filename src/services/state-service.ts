@@ -54,6 +54,14 @@ function ensureGameDataStore(): GameDataStore {
 }
 
 class StateService extends EventBus {
+  private emitGlobalChanged(key: keyof Store | string, previous: unknown, value: unknown): void {
+    this.fire('globalChanged', { key, previous, value });
+  }
+
+  private emitGameDataChanged(key: keyof GameDataStore | string, previous: unknown, value: unknown): void {
+    this.fire('gameDataChanged', { key, previous, value });
+  }
+
   getGlobal<T = unknown>(key?: keyof Store | string): T | Store | undefined {
     const store = resolveGlobalStore();
     if (!store) return undefined;
@@ -64,7 +72,7 @@ class StateService extends EventBus {
     const store = ensureGlobalStore();
     const previous = store[key as keyof Store];
     (store as Record<string, unknown>)[key as string] = value as unknown;
-    this.fire('globalChanged', { key, previous, value, type: 'globalChanged' });
+    this.emitGlobalChanged(key, previous, value);
     return value;
   }
 
@@ -81,7 +89,7 @@ class StateService extends EventBus {
     if (typeof result !== 'undefined' && result !== current) {
       return this.setGlobal(key, result);
     }
-    this.fire('globalChanged', { key, previous: current, value: current, type: 'globalChanged' });
+    this.emitGlobalChanged(key, current, current);
     return current;
   }
 
@@ -95,7 +103,7 @@ class StateService extends EventBus {
     const store = ensureGameDataStore();
     const previous = store[key as keyof GameDataStore];
     (store as Record<string, unknown>)[key as string] = value as unknown;
-    this.fire('gameDataChanged', { key, previous, value, type: 'gameDataChanged' });
+    this.emitGameDataChanged(key, previous, value);
     return value;
   }
 
@@ -112,7 +120,7 @@ class StateService extends EventBus {
     if (typeof result !== 'undefined' && result !== current) {
       return this.setGameData(key, result);
     }
-    this.fire('gameDataChanged', { key, previous: current, value: current, type: 'gameDataChanged' });
+    this.emitGameDataChanged(key, current, current);
     return current;
   }
 }

@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import scriptObjectAdapter from '../src/services/script-object-adapter.js';
-import worldService from '../src/services/world-service.js';
+import scriptObjectAdapter from '../src/services/script-object-adapter.ts';
+import worldService from '../src/services/world-service.ts';
 import reactiveContext from '../src/state/reactive-context.js';
-import stateService from '../src/services/state-service.js';
+import stateService from '../src/services/state-service.ts';
 
 describe('scriptObjectAdapter', () => {
   beforeEach(() => {

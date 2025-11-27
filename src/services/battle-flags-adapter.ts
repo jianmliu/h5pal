@@ -79,35 +79,35 @@ function ensureInitialised() {
 
   const signals = battleFlagSignals();
   subscriptions = [
-    signals.repeat.subscribe((value) => {
+    signals.repeat.subscribe((value: boolean) => {
       if (value !== flagsCache.repeat) {
         const previous = { ...flagsCache };
         flagsCache.repeat = !!value;
         notify({ type: 'flags', value: { ...flagsCache }, previous });
       }
     }),
-    signals.force.subscribe((value) => {
+    signals.force.subscribe((value: boolean) => {
       if (value !== flagsCache.force) {
         const previous = { ...flagsCache };
         flagsCache.force = !!value;
         notify({ type: 'flags', value: { ...flagsCache }, previous });
       }
     }),
-    signals.flee.subscribe((value) => {
+    signals.flee.subscribe((value: boolean) => {
       if (value !== flagsCache.flee) {
         const previous = { ...flagsCache };
         flagsCache.flee = !!value;
         notify({ type: 'flags', value: { ...flagsCache }, previous });
       }
     }),
-    signals.result.subscribe((value) => {
+    signals.result.subscribe((value: number) => {
       if (value !== flagsCache.result) {
         const previous = { ...flagsCache };
         flagsCache.result = Number.isFinite(value) ? value : 0;
         notify({ type: 'flags', value: { ...flagsCache }, previous });
       }
     }),
-    signals.phase.subscribe((value) => {
+    signals.phase.subscribe((value: number) => {
       if (value !== flagsCache.phase) {
         const previous = { ...flagsCache };
         flagsCache.phase = Number.isFinite(value) ? value : 0;

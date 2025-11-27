@@ -30,7 +30,7 @@
  * @module yj_1
  */
 import utils from './utils';
-import './binary-helper.js';
+import './binary-helper.ts';
 
 const GLOBAL_SCOPE = typeof globalThis !== 'undefined'
   ? globalThis

@@ -5,13 +5,13 @@ import font from './font';
 import Sprite from './sprite';
 import Palette from './palette';
 import input from './input';
-import resourceService from '../../services/resource-service.js';
-import worldService from '../../services/world-service.js';
-import dialogService from '../../services/dialog-service.js';
+import resourceService from '../../services/resource-service.ts';
+import worldService from '../../services/world-service.ts';
+import dialogService from '../../services/dialog-service.ts';
 import {
   getPaletteIdValue as getPaletteIdSnapshot,
   isNightPaletteEnabled
-} from '../../services/environment-adapter.js';
+} from '../../services/environment-adapter.ts';
 import { getBattleStateSnapshot } from '../../services/battle-state-adapter.js';
 
 log.trace('text module load');

@@ -24,7 +24,7 @@ import {
   getPlayerFleeRate,
   getPlayerStatusRow,
   getMaxPartyMemberIndex
-} from './player-state-adapter.js';
+} from './player-state-adapter.ts';
 import partyTrailAdapter from './party-trail-adapter.js';
 import { getExpStateSnapshot } from './game-data-adapter.js';
 import {
@@ -42,7 +42,7 @@ import {
   createQueueEntryComponent,
   createUIStateComponent
 } from '../ecs/index.js';
-import { autoBattleStream, getAutoBattleValue } from '../state/slices/auto-battle.js';
+import { autoBattleStream, getAutoBattleValue } from '../state/slices/auto-battle.ts';
 import { updateBattleFlagsFromState, resetBattleFlagsSlice } from '../state/slices/battle-flags.js';
 
 function getBattleActionEnum(): Record<string, number> | null {

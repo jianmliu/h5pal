@@ -2,15 +2,15 @@ import utils from './utils';
 import input from './input';
 import scene from './scene';
 import uibattle from './uibattle';
-import gameDataAdapter from '../../services/game-data-adapter.js';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
-import { inventorySignals } from '../../state/slices/inventory.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import gameDataAdapter from '../../services/game-data-adapter.ts';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
+import { inventorySignals } from '../../state/slices/inventory.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
 import {
   getPlayerMP as getPlayerMPValue,
   getPlayerMagicSlots as getPlayerMagicSlotsValue,
   getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
-} from '../../services/player-state-adapter.js';
+} from '../../services/player-state-adapter.ts';
 
 log.trace('magicmenu module load');
 

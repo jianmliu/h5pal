@@ -1,15 +1,15 @@
 import utils from './utils';
 import input from './input';
 import scene from './scene';
-import worldService from '../../services/world-service.js';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
-import { menuSelectionSignals } from '../../state/slices/menu-selections.js';
-import { inventorySignals } from '../../state/slices/inventory.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import worldService from '../../services/world-service.ts';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
+import { menuSelectionSignals } from '../../state/slices/menu-selections.ts';
+import { inventorySignals } from '../../state/slices/inventory.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
 import {
   getPlayerEquipment as getPlayerEquipmentValue,
   getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
-} from '../../services/player-state-adapter.js';
+} from '../../services/player-state-adapter.ts';
 
 log.trace('itemmenu module load');
 

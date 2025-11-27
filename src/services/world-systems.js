@@ -1,4 +1,4 @@
-import EventBus from './event-bus.js';
+import EventBus from './event-bus.ts';
 import collisionSystem from '../ecs/systems/collision-system.js';
 import npcMoveSystem from '../ecs/systems/npc-move-system.js';
 import renderMapSystem from '../ecs/systems/render-map-system.js';

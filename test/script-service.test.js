@@ -22,7 +22,7 @@ describe('ScriptService', () => {
     runTriggerScript.mockClear();
     scriptModuleMock.scriptSuccess = true;
     scriptModuleMock.value = 42;
-    const module = await import('../src/services/script-service.js');
+    const module = await import('../src/services/script-service.ts');
     scriptService = module.default;
     scriptService._events = {};
   });

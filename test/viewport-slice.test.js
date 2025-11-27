@@ -10,7 +10,7 @@ import {
   updatePartyDirectionValue,
   getMaxPartyIndexValue,
   updateMaxPartyIndexValue
-} from '../src/state/slices/viewport.js';
+} from '../src/state/slices/viewport.ts';
 
 describe('viewport slice', () => {
   beforeEach(() => {

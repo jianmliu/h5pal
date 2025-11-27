@@ -6,7 +6,7 @@ import traceModuleLoad from './util-trace';
 import utils from './utils';
 import yj_1 from './yj_1';
 import modService from '../../services/mod-service.ts';
-import './binary-helper.js';
+import './binary-helper.ts';
 
 /** @type {typeof globalThis & { LPBYTE?: typeof Uint8Array; BinaryReader?: new (...args: any[]) => any }} */
 const GLOBAL_SCOPE = typeof globalThis !== 'undefined'

@@ -1,12 +1,12 @@
 // @ts-nocheck
 import yj_1 from './yj_1';
-import resourceService from '../../services/resource-service.js';
-import worldService from '../../services/world-service.js';
+import resourceService from '../../services/resource-service.ts';
+import worldService from '../../services/world-service.ts';
 import {
   shouldFadeIn,
   getPaletteIdValue as getPaletteIdSnapshot,
   isNightPaletteEnabled
-} from '../../services/environment-adapter.js';
+} from '../../services/environment-adapter.ts';
 
 log.trace('rng module load');
 

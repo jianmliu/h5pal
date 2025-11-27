@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import worldService from '../src/services/world-service.js';
-import stateService from '../src/services/state-service.js';
+import worldService from '../src/services/world-service.ts';
+import stateService from '../src/services/state-service.ts';
 import Map from '../src/js/pal/map.js';
 
 const originalMapFromFile = Map.fromFile;

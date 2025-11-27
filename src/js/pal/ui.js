@@ -10,7 +10,7 @@ import text from './text';
 import uigame from './uigame';
 import itemmenu from './itemmenu';
 import magicmenu from './magicmenu';
-import resourceService from '../../services/resource-service.js';
+import resourceService from '../../services/resource-service.ts';
 
 log.trace('ui module load');
 

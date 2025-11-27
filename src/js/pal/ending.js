@@ -1,12 +1,12 @@
-import resourceService from '../../services/resource-service.js';
-import worldService from '../../services/world-service.js';
+import resourceService from '../../services/resource-service.ts';
+import worldService from '../../services/world-service.ts';
 import Sprite from './sprite';
 import scene from './scene';
 import {
   shouldFadeIn,
   getPaletteIdValue as getPaletteIdSnapshot,
   isNightPaletteEnabled
-} from '../../services/environment-adapter.js';
+} from '../../services/environment-adapter.ts';
 
 log.trace('script module load');
 

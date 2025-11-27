@@ -10,7 +10,7 @@ import rng from './rng';
 import co from './co';
 import services from '../../services/index.js';
 import modService from '../../services/mod-service.ts';
-import worldService from '../../services/world-service.js';
+import worldService from '../../services/world-service.ts';
 import { bootstrapAI } from '../../ai/ai-controller.js';
 import '../../tools/storygraph-export.js';
 import '../../tools/npc-map-export.js';

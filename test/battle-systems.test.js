@@ -16,7 +16,7 @@ vi.mock('../src/js/pal/input.js', () => ({
 }));
 
 const getPartyStateMock = vi.fn(() => []);
-vi.mock('../src/services/party-trail-adapter.js', () => ({
+vi.mock('../src/services/party-trail-adapter.ts', () => ({
   __esModule: true,
   default: {
     getPartyState: getPartyStateMock

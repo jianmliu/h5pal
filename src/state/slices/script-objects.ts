@@ -1,8 +1,8 @@
 import reactiveContext from '../reactive-context.js';
 
-type ScriptEntry = Record<string, unknown>;
-type ObjectDesc = unknown;
-type ObjectTable = unknown[];
+export type ScriptEntry = Record<string, unknown>;
+export type ObjectDesc = unknown;
+export type ObjectTable = Record<string, unknown>[];
 type UpdateOptions = { emitEvent?: boolean; source?: string };
 
 const SCRIPT_ENTRIES_KEY = 'world.script.entries';

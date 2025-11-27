@@ -87,7 +87,15 @@ function filterProperty(arr: any[]) {
       item = item.split('|');
     }
     const type = convertType(item[1]);
-    item.size = typeToSize(type) * (item[2] || 1) || 0;
+    if (!item) {
+      return;
+    }
+    const typedItem = item as any;
+    const factor = typedItem[2] || 1;
+    const baseSize = typeToSize(type);
+    if (baseSize && typedItem) {
+      typedItem.size = baseSize * (factor || 1);
+    }
     if (item[0] == null) {
       item[0] = 'field_' + Math.random();
     }
@@ -195,29 +203,39 @@ export function defineStruct(typename: string, define: string | any[]) {
       (this as any).uint8Array = tarr;
     } else {
       let arr: any[] = filterProperty(define as any);
-      arr = arr.map((item) => {
-        let ret;
+      arr = arr.map((item, idx) => {
+        if (!Array.isArray(item) || item.length < 2) {
+          return { value: 0, fieldName: `field${idx}` };
+        }
+        let ret: any;
+        const fieldName = item[0];
         const len = item[2] || 1;
-        if ((item[1] as string).indexOf('@') === 0) {
-          ret = new (StructStore[(item[1] as string).substr(1)])(len);
+        const type = item[1] as string;
+        if (typeof type === 'string' && type.indexOf('@') === 0) {
+          const ctor = StructStore[type.substr(1)];
+          ret = typeof ctor === 'function' ? new ctor(len) : {};
         } else if (typeof len === 'string' && ('' + len).indexOf('*') > 0) {
           const l = (len as string).split('*');
           const len1 = parseInt(l[0], 10);
           const len2 = parseInt(l[1], 10);
           ret = new Array(len1);
           for (let i = 0; i < len1; i++) {
-            const sub = typeToArray(item[1], len2);
+            const sub = typeToArray(type, len2);
             ret[i] = sub;
           }
         } else if (len > 1) {
-          ret = typeToArray(item[1], len);
+          ret = typeToArray(type, len);
         } else {
           ret = 0;
         }
-        (ret as any).fieldName = item[0];
+        if (ret && typeof ret === 'object') {
+          (ret as any).fieldName = fieldName;
+        } else {
+          ret = { value: ret, fieldName };
+        }
         return ret;
       });
-      const arrFunc: any = function() {
+  const arrFunc: any = function(this: any) {
         const args = arguments;
         arr.forEach((item, i) => {
           this[arr[i].fieldName] = args[i] || (item instanceof Array ? [] : item);
@@ -285,7 +303,7 @@ export function isCopyable(x: any) {
   return false;
 }
 
-export function clone(src: any) {
+export function clone(src: any): any {
   if (ArrayBuffer.isView(src)) {
     return (src as any).slice();
   }
@@ -293,7 +311,7 @@ export function clone(src: any) {
     if (src.length && ArrayBuffer.isView(src[0])) {
       return src.map((obj) => (obj as any).slice());
     }
-    return src.map((obj) => clone(obj));
+    return (src as any[]).map((obj) => clone(obj));
   }
   if (src && typeof src === 'object') {
     const ret: any = {};

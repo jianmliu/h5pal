@@ -1,5 +1,5 @@
 import config from './config';
-import { getViewportValue as getViewportSnapshot, viewport$ } from '../../services/environment-adapter.js';
+import { getViewportValue as getViewportSnapshot, viewport$ } from '../../services/environment-adapter.ts';
 
 const HAS_DOM = typeof window !== 'undefined' && typeof document !== 'undefined';
 const DEFAULT_FOLDER = 'map-overview';

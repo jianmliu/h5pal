@@ -5,36 +5,36 @@ import input from './input';
 import script from '../../services/script-service.ts';
 import music from './music';
 import sound from './sound';
-import resourceService from '../../services/resource-service.js';
+import resourceService from '../../services/resource-service.ts';
 import fight from './fight';
 import ui from './ui';
 import overviewController from './overview-controller';
 import uibattle from './uibattle';
 import battleService from '../../services/battle-service.ts';
-import sceneEventAdapter from '../../services/scene-event-adapter.js';
+import sceneEventAdapter from '../../services/scene-event-adapter.ts';
 import createBattleSystemManager from '../../services/battle-systems.js';
-import worldService from '../../services/world-service.js';
+import worldService from '../../services/world-service.ts';
 import panoramaRenderer from './panorama-renderer';
 import panoramaDialog from './panorama-dialog';
 import config from './config';
-import gameDataAdapter from '../../services/game-data-adapter.js';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
-import { getSceneEventObjectRange as getSceneEventObjectRangeSnapshot } from '../../services/scene-data-adapter.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
+import gameDataAdapter from '../../services/game-data-adapter.ts';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
+import { getSceneEventObjectRange as getSceneEventObjectRangeSnapshot } from '../../services/scene-data-adapter.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
 import {
   shouldFadeIn,
   getPaletteIdValue as getPaletteIdSnapshot,
   isNightPaletteEnabled,
   getScreenWaveValue as getScreenWaveSnapshot,
   getWaveProgressionValue as getWaveProgressionSnapshot
-} from '../../services/environment-adapter.js';
+} from '../../services/environment-adapter.ts';
 import {
   getEquipmentEffectsMatrix,
   getEquipmentEffectAt,
   getMaxPartyMemberIndex as getCachedMaxPartyMemberIndex,
   getPlayerRoleFieldValue,
   getPlayerHP as getPlayerHPValue
-} from '../../services/player-state-adapter.js';
+} from '../../services/player-state-adapter.ts';
 import {
   getEnemyTeamEntry as getCachedEnemyTeamEntry,
   getEnemyFormationPosition as getCachedEnemyFormationPosition,

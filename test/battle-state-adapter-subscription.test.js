@@ -32,12 +32,12 @@ describe('battle-state adapter subscription lifecycle', () => {
       getBattleState: vi.fn(() => ({ fallback: true }))
     };
 
-    vi.doMock('../src/services/battle-service.js', () => ({
+    vi.doMock('../src/services/battle-service.ts', () => ({
       __esModule: true,
       default: battleServiceMock
     }));
 
-    vi.doMock('../src/services/world-service.js', () => ({
+    vi.doMock('../src/services/world-service.ts', () => ({
       __esModule: true,
       default: worldServiceMock
     }));

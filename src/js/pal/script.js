@@ -7,15 +7,15 @@ import rng from './rng';
 import music from './music';
 import sound from './sound';
 import battleService from '../../services/battle-service.ts';
-import worldService from '../../services/world-service.js';
+import worldService from '../../services/world-service.ts';
 import stateService from '../../services/state-service.ts';
-import dialogService from '../../services/dialog-service.js';
-import gameDataAdapter from '../../services/game-data-adapter.js';
-import sceneEventAdapter from '../../services/scene-event-adapter.js';
-import partyTrailAdapter from '../../services/party-trail-adapter.js';
-import scriptObjectAdapter from '../../services/script-object-adapter.js';
-import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.js';
-import { getSceneEntry as getSceneEntrySnapshot } from '../../services/scene-data-adapter.js';
+import dialogService from '../../services/dialog-service.ts';
+import gameDataAdapter from '../../services/game-data-adapter.ts';
+import sceneEventAdapter from '../../services/scene-event-adapter.ts';
+import partyTrailAdapter from '../../services/party-trail-adapter.ts';
+import scriptObjectAdapter from '../../services/script-object-adapter.ts';
+import { getSceneIdValue as getSceneIdSnapshot } from '../../services/scene-state-adapter.ts';
+import { getSceneEntry as getSceneEntrySnapshot } from '../../services/scene-data-adapter.ts';
 import {
   getPlayerEquipment as getPlayerEquipmentFromAdapter,
   getPlayerHP as getPlayerHPValue,
@@ -25,14 +25,14 @@ import {
   getPlayerNameId as getPlayerNameIdValue,
   getPlayerRoleWord as getPlayerRoleWordValue,
   getMaxPartyMemberIndex as getMaxPartyMemberIndexValue
-} from '../../services/player-state-adapter.js';
+} from '../../services/player-state-adapter.ts';
 import {
   getBattleStateSnapshot,
   subscribeBattleState
 } from '../../services/battle-state-adapter.js';
-import { inventorySignals } from '../../state/slices/inventory.js';
-import { gameFlagSignals } from '../../state/slices/game-flags.js';
-import { viewportSignals } from '../../state/slices/viewport.js';
+import { inventorySignals } from '../../state/slices/inventory.ts';
+import { gameFlagSignals } from '../../state/slices/game-flags.ts';
+import { viewportSignals } from '../../state/slices/viewport.ts';
 import {
   shouldFadeIn,
   getCurrentSaveSlotValue as getCurrentSaveSlotSnapshot,
@@ -41,11 +41,11 @@ import {
   getViewportValue as getViewportSnapshot,
   getPartyOffsetValue as getPartyOffsetSnapshot,
   getPartyDirectionValue as getPartyDirectionSnapshot
-} from '../../services/environment-adapter.js';
+} from '../../services/environment-adapter.ts';
 import {
   getChaseRange as getChaseRangeFlagValue,
   getCollectValue as getCollectValueFlagValue
-} from '../../services/game-flags-adapter.js';
+} from '../../services/game-flags-adapter.ts';
 
 log.trace('script module load');
 

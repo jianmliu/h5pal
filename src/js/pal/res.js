@@ -3,7 +3,7 @@
  * @module res
  * 由于资源加载已经都放在用时了，这里似乎没用了
  */
-import worldService from '../../services/world-service.js';
+import worldService from '../../services/world-service.ts';
 
 var res = {
   loadFlag: 0,

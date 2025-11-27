@@ -4,7 +4,7 @@ import {
   updateLevelUpExpTableValue,
   updateLevelUpMagicTableValue,
   resetGameDataSlice
-} from '../src/state/slices/game-data.js';
+} from '../src/state/slices/game-data.ts';
 
 let worldServiceMock;
 let gameDataAdapter;
@@ -37,11 +37,11 @@ describe('game-data-adapter level-up helpers', () => {
       m: Array.isArray(entry.m) ? entry.m.map((item) => ({ ...item })) : []
     })), { source: 'test:setup' });
     worldServiceMock = createWorldServiceMock(baseTable);
-    vi.doMock('../src/services/world-service.js', () => ({
+    vi.doMock('../src/services/world-service.ts', () => ({
       __esModule: true,
       default: worldServiceMock
     }));
-    gameDataAdapter = (await import('../src/services/game-data-adapter.js')).default;
+    gameDataAdapter = (await import('../src/services/game-data-adapter.ts')).default;
     updateLevelUpExpTableValue(baseTable.slice(), { source: 'test:postImport' });
     updateLevelUpMagicTableValue(baseMagicTable.map((entry) => ({
       ...entry,

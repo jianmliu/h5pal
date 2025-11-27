@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import partyTrailAdapter from '../src/services/party-trail-adapter.js';
-import worldService from '../src/services/world-service.js';
+import partyTrailAdapter from '../src/services/party-trail-adapter.ts';
+import worldService from '../src/services/world-service.ts';
 import reactiveContext from '../src/state/reactive-context.js';
-import stateService from '../src/services/state-service.js';
+import stateService from '../src/services/state-service.ts';
 
 function createTrailEntry() {
   return { x: 10, y: 20, direction: 0 };
